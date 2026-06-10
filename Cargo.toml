@@ -1,0 +1,26 @@
+[package]
+name = "nte-dps-tool"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+crossbeam-channel = "0.5"
+eframe = { version = "0.32", features = ["default_fonts", "glow"] }
+egui_plot = "0.33"
+hex = "0.4"
+libloading = "0.8"
+rfd = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,6 @@
+/target/
+/target-qa*/
+/.venv/
+__pycache__/
+*.pyc
+.python-version
