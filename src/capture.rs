@@ -17,13 +17,15 @@ use pcap_file::DataLink;
 use pcap_file::pcapng::{Block, PcapNgReader};
 use serde::Deserialize;
 
-use crate::model::{CharacterInfo, EngineEvent, Hit, PacketDebug};
+use crate::model::{AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, PacketDebug};
 use crate::parser::{
     declared_character_ids, find_declared_character_evidence, parse_damage_payload,
 };
 
 const PCAP_ERRBUF_SIZE: usize = 256;
 const MIN_READABLE_TEXT_LEN: usize = 4;
+const MAX_IGNORABLE_BINARY_PACKET_LEN: usize = 96;
+const UNREADABLE_PROTOCOL_TEXT: &str = "未解析到可读协议文本";
 
 #[repr(C)]
 struct PcapIf {
@@ -221,36 +223,84 @@ fn decode_shifted_payload(data: &[u8], bit_shift: u8) -> Vec<u8> {
         .collect()
 }
 
-fn is_readable_protocol_text(value: &str) -> bool {
+fn protocol_text_score(value: &str) -> usize {
     let length = value.len();
     if length < MIN_READABLE_TEXT_LEN {
-        return false;
+        return 0;
     }
     let letters = value.bytes().filter(u8::is_ascii_alphabetic).count();
+    let digits = value.bytes().filter(u8::is_ascii_digit).count();
+    let spaces = value.bytes().filter(|byte| *byte == b' ').count();
+    let punctuation = length.saturating_sub(letters + digits + spaces);
     let protocol_markers = [
         "Abyss",
+        "Ability.",
+        "AbilitySystem",
+        "AppearMelee",
+        "BackEvade",
         "Boss",
+        "CharacterForNet",
+        "CityEvent",
+        "CityLive",
+        "CoolDown.",
+        "CurrentGameplayID",
         "DataLayer",
+        "DissolveMontage",
+        "DropBox",
+        "Event.",
+        "FrontEvade",
         "Game/",
+        "GameplayCue.",
+        "HTClient",
+        "HTRoom",
+        "Monster",
         "PrivateSpawn",
         "Record",
+        "SilentCheckComponent",
+        "SkeletalMesh",
+        "Stamina",
         "State.",
-        "Ability.",
-        "Event.",
-        "CoolDown.",
-        "GameplayCue.",
+        "Teleport",
+        "UnbalCurrent",
+        "WorldBoss",
         "FirstHalf",
         "SecondHalf",
         "Phase",
         "Wave",
         "MaxHP",
     ];
-    protocol_markers.iter().any(|marker| value.contains(marker))
-        || (length >= 8 && letters >= 5 && letters * 2 >= length)
+    if protocol_markers.iter().any(|marker| value.contains(marker)) {
+        return 100 + length.min(100);
+    }
+    if value.starts_with("/Game/") {
+        return 200 + length.min(100);
+    }
+
+    let structured_identifier = value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'/' | b'-')
+    });
+    let has_upper = value.bytes().any(|byte| byte.is_ascii_uppercase());
+    let has_lower = value.bytes().any(|byte| byte.is_ascii_lowercase());
+    let has_structure = value.contains('_') || value.contains('.') || value.contains("::");
+    let bytes = value.as_bytes();
+    let unreal_type_name = bytes.len() >= 2
+        && matches!(bytes[0], b'A' | b'E' | b'F' | b'U')
+        && bytes[1].is_ascii_uppercase()
+        && has_upper
+        && has_lower;
+    if length >= 8
+        && structured_identifier
+        && (has_structure || unreal_type_name)
+        && letters >= 5
+        && punctuation * 4 <= length
+    {
+        return 20 + length.min(50);
+    }
+    0
 }
 
 fn decode_payload_text(data: &[u8]) -> String {
-    let mut found = Vec::<String>::new();
+    let mut found = Vec::<(usize, String)>::new();
     for bit_shift in 0..8 {
         let shifted = decode_shifted_payload(data, bit_shift);
         for bytes in shifted.split(|byte| !(0x20..=0x7e).contains(byte)) {
@@ -261,17 +311,111 @@ fn decode_payload_text(data: &[u8]) -> String {
                 continue;
             };
             let value = value.trim();
-            if !is_readable_protocol_text(value) || found.iter().any(|item| item == value) {
+            let score = protocol_text_score(value);
+            if score == 0 || found.iter().any(|(_, item)| item == value) {
                 continue;
             }
-            found.push(value.to_owned());
+            found.push((score, value.to_owned()));
         }
     }
     if found.is_empty() {
-        "未解析到可读协议文本".to_owned()
+        UNREADABLE_PROTOCOL_TEXT.to_owned()
     } else {
-        found.join("\n")
+        found.sort_by(|left, right| right.0.cmp(&left.0));
+        found
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
+}
+
+fn is_padding_payload(data: &[u8]) -> bool {
+    data.is_empty()
+        || data
+            .first()
+            .is_some_and(|first| data.iter().all(|byte| byte == first))
+}
+
+fn should_keep_debug_packet(
+    payload: &[u8],
+    declared_ids: &[u32],
+    parsed_hits: usize,
+    decoded_text: &str,
+) -> bool {
+    if parsed_hits > 0 || !declared_ids.is_empty() || decoded_text != UNREADABLE_PROTOCOL_TEXT {
+        return true;
+    }
+    !is_padding_payload(payload) && payload.len() > MAX_IGNORABLE_BINARY_PACKET_LEN
+}
+
+fn parse_abyss_stage_id(value: &str) -> Option<(u32, AbyssHalf)> {
+    let parts: Vec<_> = value.split('_').collect();
+    if parts.len() < 4 || parts.first().copied() != Some("Abyss") {
+        return None;
+    }
+    let floor = parts.get(parts.len() - 2)?.parse().ok()?;
+    let half = match *parts.last()? {
+        "0" => AbyssHalf::First,
+        "1" => AbyssHalf::Second,
+        _ => return None,
+    };
+    Some((floor, half))
+}
+
+fn abyss_events_from_text(timestamp: f64, decoded_text: &str) -> Vec<AbyssEvent> {
+    let mut events = Vec::new();
+    let is_success = decoded_text.contains("ConditionState_Success")
+        && decoded_text.contains("FAbyssGamePlayData");
+    let mut explicit_stage = None;
+    if !is_success {
+        for value in decoded_text.lines() {
+            if let Some(stage) = parse_abyss_stage_id(value) {
+                explicit_stage = Some(stage);
+            }
+        }
+    }
+    if let Some((floor, half)) = explicit_stage {
+        events.push(AbyssEvent::Stage {
+            timestamp,
+            floor: Some(floor),
+            half,
+        });
+    } else if !is_success
+        && decoded_text.contains("FAbyssGamePlayData")
+        && !decoded_text.contains("AbyssClone")
+    {
+        let first = decoded_text.contains("EAbyssFightStage::FirstHalf");
+        let second = decoded_text.contains("EAbyssFightStage::SecondHalf");
+        if first ^ second {
+            events.push(AbyssEvent::Stage {
+                timestamp,
+                floor: None,
+                half: if first {
+                    AbyssHalf::First
+                } else {
+                    AbyssHalf::Second
+                },
+            });
+        }
+    }
+    if decoded_text.contains("Abyss_Battle_Born") {
+        events.push(AbyssEvent::RestartDetected { timestamp });
+    }
+    if is_success {
+        events.push(AbyssEvent::Success { timestamp });
+    }
+    if decoded_text.contains("Abyss_Station_LeaveClone") {
+        events.push(AbyssEvent::Exit { timestamp });
+    }
+    events
+}
+
+fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
+    for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
+        let _ = sender.send(EngineEvent::Abyss(event));
+    }
+    let _ = sender.send(EngineEvent::Packet(packet));
 }
 
 #[derive(Default)]
@@ -335,23 +479,29 @@ impl PacketDecoder {
         let preview_len = payload.len().min(96);
         let payload_hex = hex::encode(payload);
         let decoded_text = decode_payload_text(payload);
-        let _ = sender.send(EngineEvent::Packet(PacketDebug {
-            timestamp,
-            source: format!("{src}:{src_port}"),
-            destination: format!("{dst}:{dst_port}"),
-            direction: direction.to_owned(),
-            payload_len: payload.len(),
-            declared_ids: ids,
-            parsed_hits: accepted,
-            note: if hits.len() != accepted {
-                format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
-            } else {
-                String::new()
+        if !should_keep_debug_packet(payload, &ids, accepted, &decoded_text) {
+            return;
+        }
+        send_packet_events(
+            sender,
+            PacketDebug {
+                timestamp,
+                source: format!("{src}:{src_port}"),
+                destination: format!("{dst}:{dst_port}"),
+                direction: direction.to_owned(),
+                payload_len: payload.len(),
+                declared_ids: ids,
+                parsed_hits: accepted,
+                note: if hits.len() != accepted {
+                    format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
+                } else {
+                    String::new()
+                },
+                payload_preview: payload_hex[..preview_len * 2].to_owned(),
+                payload_hex,
+                decoded_text,
             },
-            payload_preview: payload_hex[..preview_len * 2].to_owned(),
-            payload_hex,
-            decoded_text,
-        }));
+        );
         for hit in hits {
             if include_incoming || hit.direction != "incoming" {
                 let _ = sender.send(EngineEvent::Hit(hit));
@@ -602,6 +752,8 @@ struct ExportHit {
     char_id: u32,
     char_name: String,
     damage: f64,
+    #[serde(default = "default_outgoing_direction")]
+    direction: String,
     #[serde(default)]
     target_hp_before: f64,
     #[serde(default)]
@@ -616,6 +768,10 @@ struct ExportHit {
     target_name: Option<String>,
     #[serde(default)]
     target_context: Vec<String>,
+}
+
+fn default_outgoing_direction() -> String {
+    "outgoing".to_owned()
 }
 
 #[derive(Deserialize)]
@@ -651,48 +807,79 @@ pub fn import_capture_json(
             let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
             let document = parse_capture_export(&text)?;
             let hit_count = document.hits.len();
-            let packet_count = document.packets.len();
+            let mut packet_count = 0;
+            let mut events = Vec::<(f64, u8, EngineEvent)>::new();
 
             for packet in document.packets {
-                if stop.load(Ordering::Relaxed) {
-                    break;
+                let declared_ids = parse_export_ids(&packet.declared_ids);
+                let payload = hex::decode(&packet.payload_hex).unwrap_or_default();
+                let decoded_text = if payload.is_empty() {
+                    packet.decoded_text
+                } else {
+                    decode_payload_text(&payload)
+                };
+                if !should_keep_debug_packet(
+                    &payload,
+                    &declared_ids,
+                    packet.parsed_hits,
+                    &decoded_text,
+                ) {
+                    continue;
                 }
-                let _ = sender.send(EngineEvent::Packet(PacketDebug {
+                packet_count += 1;
+                let packet = PacketDebug {
                     timestamp: packet.timestamp_unix,
                     source: packet.source,
                     destination: packet.destination,
                     direction: packet.direction,
                     payload_len: packet.payload_len,
-                    declared_ids: parse_export_ids(&packet.declared_ids),
+                    declared_ids,
                     parsed_hits: packet.parsed_hits,
                     note: packet.note,
                     payload_preview: packet.payload_preview,
                     payload_hex: packet.payload_hex,
-                    decoded_text: packet.decoded_text,
-                }));
+                    decoded_text,
+                };
+                for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
+                    events.push((packet.timestamp, 0, EngineEvent::Abyss(event)));
+                }
+                events.push((packet.timestamp, 1, EngineEvent::Packet(packet)));
             }
             for hit in document.hits {
+                let timestamp = hit.timestamp_unix;
+                events.push((
+                    timestamp,
+                    2,
+                    EngineEvent::Hit(Hit {
+                        timestamp: hit.timestamp_unix,
+                        char_id: hit.char_id,
+                        char_name: hit.char_name,
+                        char_known: true,
+                        damage: hit.damage,
+                        byte_offset: 0,
+                        bit_shift: 0,
+                        char_source: "export_json".to_owned(),
+                        direction: hit.direction,
+                        target_hp_before: hit.target_hp_before,
+                        target_hp_after: hit.target_hp_after,
+                        target_max_hp: hit.target_max_hp,
+                        target_hp_percent: hit.target_hp_percent,
+                        target_id: hit.target_id,
+                        target_name: hit.target_name,
+                        target_context: hit.target_context,
+                    }),
+                ));
+            }
+            events.sort_by(|left, right| {
+                left.0
+                    .total_cmp(&right.0)
+                    .then_with(|| left.1.cmp(&right.1))
+            });
+            for (_, _, event) in events {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                let _ = sender.send(EngineEvent::Hit(Hit {
-                    timestamp: hit.timestamp_unix,
-                    char_id: hit.char_id,
-                    char_name: hit.char_name,
-                    char_known: true,
-                    damage: hit.damage,
-                    byte_offset: 0,
-                    bit_shift: 0,
-                    char_source: "export_json".to_owned(),
-                    direction: "outgoing".to_owned(),
-                    target_hp_before: hit.target_hp_before,
-                    target_hp_after: hit.target_hp_after,
-                    target_max_hp: hit.target_max_hp,
-                    target_hp_percent: hit.target_hp_percent,
-                    target_id: hit.target_id,
-                    target_name: hit.target_name,
-                    target_context: hit.target_context,
-                }));
+                sender.send(event).map_err(|error| error.to_string())?;
             }
             Ok((hit_count, packet_count))
         })();
@@ -866,5 +1053,134 @@ mod tests {
         assert!(decoded.contains("FAbyssGamePlayData"));
         assert!(decoded.contains("Abyss_2_12_0"));
         assert!(decoded.contains("EAbyssFightStage::FirstHalf"));
+    }
+
+    #[test]
+    fn rejects_shifted_garbage_text() {
+        for value in [
+            "Zbjdrpp\\`hl```Xddjfpd\\bnd```",
+            ":xB\"xB\"xB",
+            "bjrjhjjnrj",
+            "AAhw?*vF",
+            "ZKccsQJss",
+        ] {
+            assert_eq!(protocol_text_score(value), 0, "{value}");
+        }
+    }
+
+    #[test]
+    fn keeps_scene_and_unreal_protocol_identifiers() {
+        for value in [
+            "CurrentGameplayID",
+            "WorldBoss_Boss13",
+            "TeleportWithCar",
+            "CityLive",
+            "FHTClientActiveGE",
+            "FCharacterForNet",
+            "/Game/Maps/Map_bigworld/XL_map_bigworld_test",
+        ] {
+            assert!(protocol_text_score(value) > 0, "{value}");
+        }
+    }
+
+    #[test]
+    fn filters_only_short_unparsed_debug_packets() {
+        let long_binary: Vec<u8> = (0..128).map(|value| value as u8).collect();
+        assert!(!should_keep_debug_packet(
+            &[0xff; 30],
+            &[],
+            0,
+            UNREADABLE_PROTOCOL_TEXT,
+        ));
+        assert!(!should_keep_debug_packet(
+            &[0x10; 48],
+            &[],
+            0,
+            UNREADABLE_PROTOCOL_TEXT,
+        ));
+        assert!(should_keep_debug_packet(
+            &long_binary,
+            &[],
+            0,
+            UNREADABLE_PROTOCOL_TEXT,
+        ));
+        assert!(should_keep_debug_packet(
+            &[0x10; 11],
+            &[],
+            1,
+            UNREADABLE_PROTOCOL_TEXT,
+        ));
+        assert!(should_keep_debug_packet(&[0x10; 11], &[], 0, "CityLive",));
+    }
+
+    #[test]
+    fn recognizes_reliable_abyss_stage_events() {
+        let first = abyss_events_from_text(
+            1.0,
+            "EAbyssFightStage::FirstHalf\nFAbyssGamePlayData\nAbyss_2_12_0",
+        );
+        let second = abyss_events_from_text(
+            2.0,
+            "EAbyssFightStage::SecondHalf\nFAbyssGamePlayData\nAbyss_2_12_1",
+        );
+        let clone_data = abyss_events_from_text(
+            3.0,
+            "EAbyssFightStage::FirstHalf\nEAbyssFightStage::SecondHalf\nAbyssCloneCharacterData",
+        );
+        let success = abyss_events_from_text(
+            4.0,
+            "EAbyssFightStage::SecondHalf\nFAbyssGamePlayData\nConditionState_Success",
+        );
+        let restart = abyss_events_from_text(5.0, "Abyss_Battle_Born\nXL_map_bigworld_test");
+
+        assert!(matches!(
+            first.as_slice(),
+            [AbyssEvent::Stage {
+                floor: Some(12),
+                half: AbyssHalf::First,
+                ..
+            }]
+        ));
+        assert!(matches!(
+            second.as_slice(),
+            [AbyssEvent::Stage {
+                floor: Some(12),
+                half: AbyssHalf::Second,
+                ..
+            }]
+        ));
+        assert!(clone_data.is_empty());
+        assert!(matches!(success.as_slice(), [AbyssEvent::Success { .. }]));
+        assert!(matches!(
+            restart.as_slice(),
+            [AbyssEvent::RestartDetected { .. }]
+        ));
+    }
+
+    #[test]
+    fn imports_latest_abyss_capture_into_two_parties() {
+        let path = PathBuf::from("data/nte_capture_20260611_214538.json");
+        if !path.is_file() {
+            return;
+        }
+        let (sender, receiver) = unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+        import_capture_json(path, sender, stop).join().unwrap();
+        let mut state = crate::model::CombatState::default();
+        for event in receiver.try_iter() {
+            match event {
+                EngineEvent::Abyss(event) => state.apply_abyss_event(event),
+                EngineEvent::Hit(hit) => state.push_hit(hit),
+                _ => {}
+            }
+        }
+
+        assert_eq!(state.abyss.floor, Some(12));
+        assert_eq!(state.abyss.first_half.hits.len(), 219);
+        assert_eq!(state.abyss.second_half.hits.len(), 233);
+        assert!(state.abyss.first_half.stats.contains_key(&1010));
+        assert!(state.abyss.second_half.stats.contains_key(&1004));
+        assert!(state.abyss.success_at.is_some());
+        assert!(state.abyss.exited_at.is_some());
     }
 }

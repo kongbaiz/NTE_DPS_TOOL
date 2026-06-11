@@ -26,7 +26,9 @@ use crate::capture::{
     start_capture,
 };
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
-use crate::model::{CharacterInfo, CombatState, EngineEvent};
+use crate::model::{
+    AbyssEvent, AbyssHalf, CharacterInfo, CombatState, EngineEvent, PartyCombatState,
+};
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::load_characters;
 
@@ -36,12 +38,12 @@ enum DebugImportKind {
     CaptureJson,
 }
 
-const AVATAR_DISPLAY_SIZE: f32 = 40.0;
-
 pub struct DpsApp {
     characters: Arc<HashMap<u32, CharacterInfo>>,
     avatar_textures: HashMap<String, egui::TextureHandle>,
     state: CombatState,
+    selected_abyss_half: AbyssHalf,
+    abyss_compact_mode: bool,
     hit_detail_char_id: Option<u32>,
     devices: Vec<CaptureDevice>,
     selected_device: usize,
@@ -87,20 +89,10 @@ impl DpsApp {
             Err(error) => (Vec::new(), Some(error)),
         };
         let (selected_device, game_network, status, diagnostic) = match device_error {
-            Some(error) => (
-                0,
-                None,
-                "采集环境不可用，请查看 Debug".to_owned(),
-                Some(error),
-            ),
+            Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
             None => match detect_game_device(&devices) {
                 Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
-                Err(error) => (
-                    0,
-                    None,
-                    "未检测到游戏，请查看 Debug".to_owned(),
-                    Some(error),
-                ),
+                Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
             },
         };
         let local_ip = game_network
@@ -111,13 +103,15 @@ impl DpsApp {
             characters: Arc::new(characters),
             avatar_textures,
             state: CombatState::default(),
+            selected_abyss_half: AbyssHalf::First,
+            abyss_compact_mode: false,
             hit_detail_char_id: None,
             devices,
             selected_device,
             local_ip,
             game_network,
             filter: "udp".to_owned(),
-            include_incoming: false,
+            include_incoming: true,
             capture: None,
             replay_stop: None,
             replay_thread: None,
@@ -159,6 +153,10 @@ impl DpsApp {
             match event {
                 HotkeyEvent::TogglePassthrough => {
                     self.toggle_mouse_passthrough(ctx);
+                }
+                #[cfg(not(feature = "no_debug"))]
+                HotkeyEvent::ToggleDebug => {
+                    self.debug_open = !self.debug_open;
                 }
                 HotkeyEvent::RegistrationFailed(shortcut) => {
                     self.diagnostic = Some(format!(
@@ -220,53 +218,63 @@ impl DpsApp {
         );
 
         child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("×").on_hover_text("关闭").clicked() {
+            if ui
+                .add(egui::Button::new("×").frame(false))
+                .on_hover_text("关闭")
+                .clicked()
+            {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
-            if ui.small_button("−").on_hover_text("最小化").clicked() {
+            if ui
+                .add(egui::Button::new("−").frame(false))
+                .on_hover_text("最小化")
+                .clicked()
+            {
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
-            ui.menu_button("外观", |ui| {
-                ui.set_min_width(190.0);
-                ui.horizontal(|ui| {
-                    ui.label("透明度");
-                    ui.add(
-                        egui::Slider::new(&mut self.opacity, 0.35..=1.0)
-                            .show_value(true)
-                            .custom_formatter(|value, _| format!("{:.0}%", value * 100.0)),
-                    );
+            if !self.abyss_compact_mode || !self.state.abyss.is_active() {
+                ui.menu_button("外观", |ui| {
+                    ui.set_min_width(190.0);
+                    ui.horizontal(|ui| {
+                        ui.label("透明度");
+                        ui.add(
+                            egui::Slider::new(&mut self.opacity, 0.35..=1.0)
+                                .show_value(true)
+                                .custom_formatter(|value, _| format!("{:.0}%", value * 100.0)),
+                        );
+                    });
+                    if ui
+                        .button(if self.dark_mode {
+                            "切换为亮色"
+                        } else {
+                            "切换为深色"
+                        })
+                        .clicked()
+                    {
+                        self.dark_mode = !self.dark_mode;
+                        ui.close();
+                    }
                 });
+                let passthrough_label = if self.mouse_passthrough {
+                    "穿透中"
+                } else {
+                    "穿透"
+                };
                 if ui
-                    .button(if self.dark_mode {
-                        "切换为亮色"
-                    } else {
-                        "切换为深色"
-                    })
+                    .selectable_label(self.mouse_passthrough, passthrough_label)
+                    .on_hover_text("Home 可随时切换鼠标穿透")
                     .clicked()
                 {
-                    self.dark_mode = !self.dark_mode;
-                    ui.close();
+                    self.toggle_mouse_passthrough(ui.ctx());
                 }
-            });
-            let passthrough_label = if self.mouse_passthrough {
-                "穿透中"
-            } else {
-                "穿透"
-            };
-            if ui
-                .selectable_label(self.mouse_passthrough, passthrough_label)
-                .on_hover_text("Home 可随时切换鼠标穿透")
-                .clicked()
-            {
-                self.toggle_mouse_passthrough(ui.ctx());
-            }
-            if ui
-                .selectable_label(self.always_on_top, "置顶")
-                .on_hover_text("保持主窗口位于游戏上方")
-                .clicked()
-            {
-                self.toggle_always_on_top(ui.ctx());
+                if ui
+                    .selectable_label(self.always_on_top, "置顶")
+                    .on_hover_text("保持主窗口位于游戏上方")
+                    .clicked()
+                {
+                    self.toggle_always_on_top(ui.ctx());
+                }
             }
 
             let drag_width = ui.available_width();
@@ -320,6 +328,8 @@ impl DpsApp {
     fn start_replay(&mut self, path: PathBuf) {
         self.stop_engine();
         self.state.clear();
+        self.selected_abyss_half = AbyssHalf::First;
+        self.abyss_compact_mode = false;
         self.hit_detail_char_id = None;
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(replay_hits(path, self.sender.clone(), stop.clone()));
@@ -330,6 +340,8 @@ impl DpsApp {
     fn start_pcapng_import(&mut self, path: PathBuf) {
         self.stop_engine();
         self.state.clear();
+        self.selected_abyss_half = AbyssHalf::First;
+        self.abyss_compact_mode = false;
         self.hit_detail_char_id = None;
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_pcapng(
@@ -346,6 +358,8 @@ impl DpsApp {
     fn start_capture_json_import(&mut self, path: PathBuf) {
         self.stop_engine();
         self.state.clear();
+        self.selected_abyss_half = AbyssHalf::First;
+        self.abyss_compact_mode = false;
         self.hit_detail_char_id = None;
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
@@ -414,6 +428,16 @@ impl DpsApp {
             match event {
                 EngineEvent::Hit(hit) => self.state.push_hit(hit),
                 EngineEvent::Packet(packet) => self.state.push_packet(packet),
+                EngineEvent::Abyss(event) => {
+                    if let AbyssEvent::Stage { half, .. } = &event {
+                        self.selected_abyss_half = *half;
+                        self.abyss_compact_mode = true;
+                    } else if matches!(&event, AbyssEvent::Success { .. } | AbyssEvent::Exit { .. })
+                    {
+                        self.abyss_compact_mode = false;
+                    }
+                    self.state.apply_abyss_event(event);
+                }
                 EngineEvent::Status(status) => self.status = status,
                 EngineEvent::Error(error) => {
                     self.status = "运行失败".to_owned();
@@ -452,7 +476,7 @@ impl DpsApp {
 
         match std::fs::write(&path, self.capture_export_json()) {
             Ok(()) => {
-                self.status = format!("已导出抓包信息：{}", path.display());
+                self.status = "已导出抓包信息".to_owned();
                 self.last_error = None;
             }
             Err(error) => {
@@ -583,6 +607,65 @@ impl DpsApp {
         }
         writeln!(&mut out, "  ],").ok();
 
+        writeln!(&mut out, "  \"abyss\": {{").ok();
+        writeln!(
+            &mut out,
+            "    \"detected\": {},",
+            self.state.abyss.is_active()
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"floor\": {},",
+            self.state
+                .abyss
+                .floor
+                .map_or_else(|| "null".to_owned(), |floor| floor.to_string())
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"active_half\": {},",
+            self.state
+                .abyss
+                .active_half
+                .map(|half| json_string(half.label()))
+                .unwrap_or_else(|| "null".to_owned())
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"success_at_unix\": {},",
+            json_option_f64(self.state.abyss.success_at)
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"first_half_at_unix\": {},",
+            json_option_f64(self.state.abyss.first_half_at)
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"second_half_at_unix\": {},",
+            json_option_f64(self.state.abyss.second_half_at)
+        )
+        .ok();
+        writeln!(
+            &mut out,
+            "    \"exited_at_unix\": {},",
+            json_option_f64(self.state.abyss.exited_at)
+        )
+        .ok();
+        write_abyss_half_json(&mut out, "first_half", &self.state.abyss.first_half, true);
+        write_abyss_half_json(
+            &mut out,
+            "second_half",
+            &self.state.abyss.second_half,
+            false,
+        );
+        writeln!(&mut out, "  }},").ok();
+
         writeln!(&mut out, "  \"hits\": [").ok();
         for (index, hit) in self.state.hits.iter().enumerate() {
             writeln!(&mut out, "    {{").ok();
@@ -606,6 +689,12 @@ impl DpsApp {
             )
             .ok();
             writeln!(&mut out, "      \"damage\": {},", json_f64(hit.damage)).ok();
+            writeln!(
+                &mut out,
+                "      \"direction\": {},",
+                json_string(&hit.direction)
+            )
+            .ok();
             writeln!(
                 &mut out,
                 "      \"target_hp_before\": {},",
@@ -744,14 +833,72 @@ impl DpsApp {
         out
     }
 
+    fn selected_party_state(&self) -> Option<&PartyCombatState> {
+        self.state
+            .abyss
+            .is_active()
+            .then(|| self.state.abyss.half(self.selected_abyss_half))
+    }
+
+    fn abyss_selector(&mut self, ui: &mut egui::Ui) {
+        if !self.state.abyss.is_active() {
+            return;
+        }
+        ui.horizontal(|ui| {
+            let floor = self
+                .state
+                .abyss
+                .floor
+                .map_or_else(|| "深渊".to_owned(), |floor| format!("深渊 {floor} 层"));
+            ui.label(RichText::new(floor).strong());
+            ui.separator();
+            ui.selectable_value(
+                &mut self.selected_abyss_half,
+                AbyssHalf::First,
+                AbyssHalf::First.label(),
+            );
+            ui.selectable_value(
+                &mut self.selected_abyss_half,
+                AbyssHalf::Second,
+                AbyssHalf::Second.label(),
+            );
+            if self.state.abyss.success_at.is_some() {
+                ui.separator();
+                ui.label(RichText::new("挑战成功").color(Color32::from_rgb(76, 185, 128)));
+            }
+            if self.abyss_compact_mode {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("展开").clicked() {
+                        self.abyss_compact_mode = false;
+                    }
+                });
+            }
+        });
+        ui.add_space(3.0);
+    }
+
     fn summary_bar(&mut self, ui: &mut egui::Ui) {
-        let hits = self.state.hits.len();
-        let duration = self.state.duration();
+        let (duration, dps, total_damage, total_damage_taken) =
+            if let Some(party) = self.selected_party_state() {
+                (
+                    party.duration(),
+                    party.dps(),
+                    party.total_damage,
+                    party.total_damage_taken,
+                )
+            } else {
+                (
+                    self.state.duration(),
+                    self.state.dps(),
+                    self.state.total_damage,
+                    self.state.total_damage_taken,
+                )
+            };
         ui.columns(4, |columns| {
             compact_metric(
                 &mut columns[0],
                 "DPS",
-                format_number(self.state.dps()),
+                format_number(dps),
                 theme_accent(self.dark_mode),
                 true,
             );
@@ -759,16 +906,15 @@ impl DpsApp {
             compact_metric(
                 &mut columns[1],
                 "总伤害",
-                format_number(self.state.total_damage),
+                format_number(total_damage),
                 total_color,
                 true,
             );
-            let hit_color = columns[2].visuals().text_color();
             compact_metric(
                 &mut columns[2],
-                "命中",
-                format_number(hits as f64),
-                hit_color,
+                "总受击",
+                format_number(total_damage_taken),
+                Color32::from_rgb(194, 74, 92),
                 false,
             );
             let time_color = columns[3].visuals().text_color();
@@ -802,6 +948,8 @@ impl DpsApp {
             }
             if ui.button("重置").clicked() {
                 self.state.clear();
+                self.selected_abyss_half = AbyssHalf::First;
+                self.abyss_compact_mode = false;
                 self.hit_detail_char_id = None;
             }
             if ui
@@ -810,7 +958,9 @@ impl DpsApp {
             {
                 self.paused = !self.paused;
             }
-            ui.toggle_value(&mut self.debug_open, "Debug");
+            if self.state.abyss.is_active() && ui.button("折叠").clicked() {
+                self.abyss_compact_mode = true;
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let status_color = if self.capture.is_some() {
                     Color32::from_rgb(76, 185, 128)
@@ -831,7 +981,16 @@ impl DpsApp {
     }
 
     fn party_panel(&mut self, ui: &mut egui::Ui) {
-        let mut rows: Vec<_> = self.state.stats.values().cloned().collect();
+        let compact = self.abyss_compact_mode && self.state.abyss.is_active();
+        let (mut rows, total_damage): (Vec<_>, f64) =
+            if let Some(party) = self.selected_party_state() {
+                (party.stats.values().cloned().collect(), party.total_damage)
+            } else {
+                (
+                    self.state.stats.values().cloned().collect(),
+                    self.state.total_damage,
+                )
+            };
         rows.sort_by(|left, right| right.damage.total_cmp(&left.damage));
         let max_damage = rows.first().map_or(1.0, |row| row.damage.max(1.0));
         egui::ScrollArea::vertical()
@@ -846,13 +1005,13 @@ impl DpsApp {
                         .and_then(|character| character.avatar.as_deref())
                         .and_then(|avatar| self.avatar_textures.get(avatar));
                     let fraction = (row.damage / max_damage) as f32;
-                    let share = if self.state.total_damage > 0.0 {
-                        row.damage / self.state.total_damage * 100.0
+                    let share = if total_damage > 0.0 {
+                        row.damage / total_damage * 100.0
                     } else {
                         0.0
                     };
                     let (rect, response) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 52.0),
+                        egui::vec2(ui.available_width(), if compact { 40.0 } else { 44.0 }),
                         egui::Sense::click(),
                     );
                     ui.painter().rect_filled(
@@ -887,12 +1046,10 @@ impl DpsApp {
                         egui::FontId::proportional(13.0),
                         ui.visuals().weak_text_color(),
                     );
+                    let avatar_size = if compact { 32.0 } else { 36.0 };
                     let avatar_rect = pixel_aligned_rect(
-                        egui::pos2(
-                            rect.left() + 20.0,
-                            rect.center().y - AVATAR_DISPLAY_SIZE * 0.5,
-                        ),
-                        AVATAR_DISPLAY_SIZE,
+                        egui::pos2(rect.left() + 20.0, rect.center().y - avatar_size * 0.5),
+                        avatar_size,
                         ui.ctx().pixels_per_point(),
                     );
                     let avatar_border = if self.dark_mode {
@@ -948,7 +1105,11 @@ impl DpsApp {
                     ui.painter().text(
                         egui::pos2(rect.right() - 10.0, rect.center().y + 9.0),
                         egui::Align2::RIGHT_CENTER,
-                        format!("{} · {share:.1}%", format_number(row.damage)),
+                        format!(
+                            "{} · {share:.1}% · 受击 {}",
+                            format_number(row.damage),
+                            format_number(row.damage_taken)
+                        ),
                         egui::FontId::monospace(10.5),
                         ui.visuals().weak_text_color(),
                     );
@@ -974,32 +1135,33 @@ impl DpsApp {
     fn character_hits(&self, ui: &mut egui::Ui, char_id: u32) {
         let layout = CharacterHitLayout::new(ui.available_width());
         draw_character_hit_header(ui, layout);
-        let hit_count = self
-            .state
-            .stats
-            .get(&char_id)
-            .map_or(0, |stats| stats.hits as usize);
+        let hits = if let Some(party) = self.selected_party_state() {
+            &party.hits
+        } else {
+            &self.state.hits
+        };
+        let mut character_hits: Vec<_> = hits.iter().filter(|hit| hit.char_id == char_id).collect();
+        character_hits.sort_by(|left, right| compare_hit_display_order(left, right));
+        let hit_count = character_hits.len();
         egui::ScrollArea::vertical()
             .id_salt(("character_hits", char_id))
             .max_height(ui.available_height())
             .stick_to_bottom(true)
             .show_rows(ui, 22.0, hit_count, |ui, visible_rows| {
                 let visible_count = visible_rows.end.saturating_sub(visible_rows.start);
-                for hit in self
-                    .state
-                    .hits
-                    .iter()
-                    .filter(|hit| hit.char_id == char_id)
-                    .skip(visible_rows.start)
-                    .take(visible_count)
-                {
+                for hit in character_hits[visible_rows].iter().take(visible_count) {
                     draw_character_hit_row(ui, layout, hit);
                 }
             });
     }
 
     fn hit_detail_panel(&mut self, ctx: &egui::Context, char_id: u32) {
-        let Some(stats) = self.state.stats.get(&char_id).cloned() else {
+        let stats = if let Some(party) = self.selected_party_state() {
+            party.stats.get(&char_id).cloned()
+        } else {
+            self.state.stats.get(&char_id).cloned()
+        };
+        let Some(stats) = stats else {
             self.hit_detail_char_id = None;
             return;
         };
@@ -1042,6 +1204,8 @@ impl DpsApp {
                         );
                         ui.separator();
                         ui.monospace(format!("总伤害 {}", format_number(stats.damage)));
+                        ui.separator();
+                        ui.monospace(format!("总受击 {}", format_number(stats.damage_taken)));
                     });
                     ui.add_space(6.0);
                     ui.separator();
@@ -1145,7 +1309,7 @@ impl DpsApp {
                     {
                         self.last_error = Some(error);
                     }
-                    ui.checkbox(&mut self.include_incoming, "伤害统计包含受击");
+                    ui.label("受击记录已启用");
                     let can_export = self.capture.is_none()
                         && self.replay_thread.is_none()
                         && (!self.state.hits.is_empty() || !self.state.packets.is_empty());
@@ -1288,14 +1452,20 @@ impl eframe::App for DpsApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.controls(ui);
-            ui.separator();
+            if !self.abyss_compact_mode || !self.state.abyss.is_active() {
+                self.controls(ui);
+                ui.separator();
+            }
+            if self.state.abyss.is_active() {
+                self.abyss_selector(ui);
+            }
             self.summary_bar(ui);
             ui.add_space(2.0);
             ui.label(RichText::new("队伍").size(12.0).strong());
             self.party_panel(ui);
         });
 
+        #[cfg(not(feature = "no_debug"))]
         if self.debug_open {
             self.debug_panel(ctx);
         }
@@ -1353,10 +1523,18 @@ fn secondary_title_bar(ui: &mut egui::Ui, title: &str) -> bool {
                 .color(ui.visuals().text_color()),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("×").on_hover_text("关闭").clicked() {
+            if ui
+                .add(egui::Button::new("×").frame(false))
+                .on_hover_text("关闭")
+                .clicked()
+            {
                 close_clicked = true;
             }
-            if ui.small_button("−").on_hover_text("最小化").clicked() {
+            if ui
+                .add(egui::Button::new("−").frame(false))
+                .on_hover_text("最小化")
+                .clicked()
+            {
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
@@ -1400,23 +1578,15 @@ fn load_character_avatars(
         let Ok(image) = image::load_from_memory(&bytes) else {
             continue;
         };
-        let target_pixels = (AVATAR_DISPLAY_SIZE * ctx.pixels_per_point())
-            .round()
-            .max(32.0) as u32;
-        let image = image
-            .resize_exact(
-                target_pixels,
-                target_pixels,
-                image::imageops::FilterType::Lanczos3,
-            )
-            .unsharpen(0.6, 1)
-            .to_rgba8();
+        // Keep the source resolution so the texture remains sharp if the window
+        // moves to a monitor with a different DPI after startup.
+        let image = image.to_rgba8();
         let size = [image.width() as usize, image.height() as usize];
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
         let texture = ctx.load_texture(
             format!("character-avatar:{avatar}"),
             color_image,
-            egui::TextureOptions::NEAREST,
+            egui::TextureOptions::LINEAR,
         );
         textures.insert(avatar.to_owned(), texture);
     }
@@ -1578,7 +1748,7 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
     painter.text(
         egui::pos2(x + layout.target_x, y),
         egui::Align2::LEFT_CENTER,
-        "目标",
+        "类型",
         font.clone(),
         color,
     );
@@ -1592,7 +1762,7 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
     painter.text(
         egui::pos2(x + layout.hp_x, y),
         egui::Align2::LEFT_CENTER,
-        "当前HP / 最大HP",
+        "角色/目标 HP",
         font,
         color,
     );
@@ -1617,12 +1787,11 @@ fn draw_character_hit_row(ui: &mut egui::Ui, layout: CharacterHitLayout, hit: &c
     let damage_color = theme_accent(ui.visuals().dark_mode);
     let mono = egui::FontId::monospace(12.0);
     draw_hit_column_separators(painter, rect, layout);
-    let target = hit
-        .target_name
-        .as_deref()
-        .or(hit.target_id.as_deref())
-        .map(|value| compact_label(value, 18))
-        .unwrap_or_default();
+    let hit_type = if hit.direction == "incoming" {
+        "受击"
+    } else {
+        "输出"
+    };
     let time = format_short_time(hit.timestamp);
     let damage = format_number(hit.damage);
     let target_hp = format!(
@@ -1642,7 +1811,7 @@ fn draw_character_hit_row(ui: &mut egui::Ui, layout: CharacterHitLayout, hit: &c
     painter.text(
         egui::pos2(x + layout.target_x, y),
         egui::Align2::LEFT_CENTER,
-        &target,
+        hit_type,
         mono.clone(),
         text_color,
     );
@@ -1660,24 +1829,12 @@ fn draw_character_hit_row(ui: &mut egui::Ui, layout: CharacterHitLayout, hit: &c
         mono,
         text_color,
     );
-    if response.hovered()
-        && (hit.target_id.is_some() || hit.target_name.is_some() || !hit.target_context.is_empty())
-    {
-        let target_details = [
-            hit.target_id
-                .as_ref()
-                .map(|value| format!("目标 ID: {value}")),
-            hit.target_name
-                .as_ref()
-                .map(|value| format!("目标名称: {value}")),
-            (!hit.target_context.is_empty())
-                .then(|| format!("封包上下文: {}", hit.target_context.join(" | "))),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join("\n");
-        response.on_hover_text(target_details);
+    if response.hovered() {
+        response.on_hover_text(if hit.direction == "incoming" {
+            "角色受到的伤害"
+        } else {
+            "角色造成的伤害"
+        });
     }
 }
 
@@ -1702,15 +1859,6 @@ fn draw_hit_column_separators(
 
 fn default_export_filename() -> String {
     format!("nte_capture_{}.json", Local::now().format("%Y%m%d_%H%M%S"))
-}
-
-fn compact_label(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_owned();
-    }
-    let mut result: String = value.chars().take(max_chars.saturating_sub(1)).collect();
-    result.push('…');
-    result
 }
 
 fn json_option_time(value: Option<f64>) -> String {
@@ -1751,6 +1899,79 @@ fn json_string(value: &str) -> String {
     }
     escaped.push('"');
     escaped
+}
+
+fn write_abyss_half_json(
+    out: &mut String,
+    key: &str,
+    party: &PartyCombatState,
+    trailing_comma: bool,
+) {
+    let mut rows: Vec<_> = party.stats.values().collect();
+    rows.sort_by(|left, right| right.damage.total_cmp(&left.damage));
+    writeln!(out, "    \"{key}\": {{").ok();
+    writeln!(out, "      \"hits\": {},", party.hits.len()).ok();
+    writeln!(
+        out,
+        "      \"total_damage\": {},",
+        json_f64(party.total_damage)
+    )
+    .ok();
+    writeln!(
+        out,
+        "      \"total_damage_taken\": {},",
+        json_f64(party.total_damage_taken)
+    )
+    .ok();
+    writeln!(out, "      \"dps\": {},", json_f64(party.dps())).ok();
+    writeln!(
+        out,
+        "      \"duration_seconds\": {},",
+        json_f64(party.duration())
+    )
+    .ok();
+    writeln!(
+        out,
+        "      \"started_at_unix\": {},",
+        json_option_f64(party.started_at)
+    )
+    .ok();
+    writeln!(
+        out,
+        "      \"ended_at_unix\": {},",
+        json_option_f64(party.ended_at)
+    )
+    .ok();
+    writeln!(out, "      \"party\": [").ok();
+    for (index, row) in rows.iter().enumerate() {
+        let share = if party.total_damage > 0.0 {
+            row.damage / party.total_damage * 100.0
+        } else {
+            0.0
+        };
+        writeln!(out, "        {{").ok();
+        writeln!(out, "          \"char_id\": {},", row.char_id).ok();
+        writeln!(out, "          \"name\": {},", json_string(&row.name)).ok();
+        writeln!(out, "          \"hits\": {},", row.hits).ok();
+        writeln!(out, "          \"damage\": {},", json_f64(row.damage)).ok();
+        writeln!(out, "          \"hits_taken\": {},", row.hits_taken).ok();
+        writeln!(
+            out,
+            "          \"damage_taken\": {},",
+            json_f64(row.damage_taken)
+        )
+        .ok();
+        writeln!(out, "          \"dps\": {},", json_f64(row.dps())).ok();
+        writeln!(out, "          \"share_percent\": {}", json_f64(share)).ok();
+        writeln!(
+            out,
+            "        }}{}",
+            if index + 1 == rows.len() { "" } else { "," }
+        )
+        .ok();
+    }
+    writeln!(out, "      ]").ok();
+    writeln!(out, "    }}{}", if trailing_comma { "," } else { "" }).ok();
 }
 
 fn compact_metric(ui: &mut egui::Ui, label: &str, value: String, color: Color32, prominent: bool) {
@@ -1804,6 +2025,28 @@ fn format_short_time(timestamp: f64) -> String {
     DateTime::<Local>::from(std::time::UNIX_EPOCH + Duration::from_secs_f64(timestamp.max(0.0)))
         .format("%H:%M:%S")
         .to_string()
+}
+
+fn compare_hit_display_order(
+    left: &crate::model::Hit,
+    right: &crate::model::Hit,
+) -> std::cmp::Ordering {
+    let second_order = (left.timestamp.floor() as i64).cmp(&(right.timestamp.floor() as i64));
+    let same_health_pool = left.direction == "outgoing"
+        && right.direction == "outgoing"
+        && left.target_max_hp > 0.0
+        && right.target_max_hp > 0.0
+        && (left.target_max_hp - right.target_max_hp).abs()
+            <= left.target_max_hp.max(right.target_max_hp) * 0.05;
+    second_order
+        .then_with(|| {
+            if same_health_pool {
+                right.target_hp_after.total_cmp(&left.target_hp_after)
+            } else {
+                left.timestamp.total_cmp(&right.timestamp)
+            }
+        })
+        .then_with(|| left.byte_offset.cmp(&right.byte_offset))
 }
 
 fn character_color(
@@ -1890,14 +2133,7 @@ mod avatar_tests {
         )]);
         let context = egui::Context::default();
         let textures = load_character_avatars(&context, &root, &characters);
-        let expected_size = (AVATAR_DISPLAY_SIZE * context.pixels_per_point())
-            .round()
-            .max(32.0) as usize;
-
-        assert_eq!(
-            textures.get(avatar_name).unwrap().size(),
-            [expected_size, expected_size]
-        );
+        assert_eq!(textures.get(avatar_name).unwrap().size(), [200, 200]);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -1908,5 +2144,33 @@ mod avatar_tests {
         assert_eq!(rect.width() * 1.5, 60.0);
         assert_eq!((rect.left() * 1.5).fract(), 0.0);
         assert_eq!((rect.top() * 1.5).fract(), 0.0);
+    }
+
+    #[test]
+    fn sorts_zero_health_after_positive_health_in_the_same_second() {
+        let hit = |timestamp: f64, hp_after: f64, offset: usize| crate::model::Hit {
+            timestamp,
+            char_id: 1,
+            char_name: "Test".to_owned(),
+            char_known: true,
+            damage: 1.0,
+            byte_offset: offset,
+            bit_shift: 0,
+            char_source: "test".to_owned(),
+            direction: "outgoing".to_owned(),
+            target_hp_before: hp_after + 1.0,
+            target_hp_after: hp_after,
+            target_max_hp: 1_356_337.0,
+            target_hp_percent: hp_after / 1_356_337.0 * 100.0,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
+        };
+        let mut hits = [hit(10.1, 0.0, 1), hit(10.8, 1_524.0, 2)];
+
+        hits.sort_by(compare_hit_display_order);
+
+        assert_eq!(hits[0].target_hp_after, 1_524.0);
+        assert_eq!(hits[1].target_hp_after, 0.0);
     }
 }

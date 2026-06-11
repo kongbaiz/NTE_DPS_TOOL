@@ -1,21 +1,73 @@
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, unbounded};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey, VK_HOME,
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+#[cfg(not(feature = "no_debug"))]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F12;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, KBDLLHOOKSTRUCT, MSG, PM_REMOVE, PeekMessageW, SetWindowsHookExW,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{MSG, PM_REMOVE, PeekMessageW, WM_HOTKEY};
 
-const PASSTHROUGH_HOTKEY_ID: i32 = 0x4E54;
+static HOTKEY_SENDER: OnceLock<Sender<HotkeyEvent>> = OnceLock::new();
+static HOME_DOWN: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
+static F12_DOWN: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy)]
 pub enum HotkeyEvent {
     TogglePassthrough,
+    #[cfg(not(feature = "no_debug"))]
+    ToggleDebug,
     RegistrationFailed(&'static str),
+}
+
+unsafe extern "system" fn low_level_keyboard_proc(
+    code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
+    if code >= 0 {
+        let keyboard = unsafe { &*(l_param as *const KBDLLHOOKSTRUCT) };
+        if keyboard.vkCode == VK_HOME as u32 {
+            match w_param as u32 {
+                WM_KEYDOWN | WM_SYSKEYDOWN => {
+                    if !HOME_DOWN.swap(true, Ordering::Relaxed)
+                        && let Some(sender) = HOTKEY_SENDER.get()
+                    {
+                        let _ = sender.send(HotkeyEvent::TogglePassthrough);
+                    }
+                }
+                WM_KEYUP | WM_SYSKEYUP => {
+                    HOME_DOWN.store(false, Ordering::Relaxed);
+                }
+                _ => {}
+            }
+        }
+        #[cfg(not(feature = "no_debug"))]
+        if keyboard.vkCode == VK_F12 as u32 {
+            match w_param as u32 {
+                WM_KEYDOWN | WM_SYSKEYDOWN => {
+                    if !F12_DOWN.swap(true, Ordering::Relaxed)
+                        && let Some(sender) = HOTKEY_SENDER.get()
+                    {
+                        let _ = sender.send(HotkeyEvent::ToggleDebug);
+                    }
+                }
+                WM_KEYUP | WM_SYSKEYUP => {
+                    F12_DOWN.store(false, Ordering::Relaxed);
+                }
+                _ => {}
+            }
+        }
+    }
+    unsafe { CallNextHookEx(std::ptr::null_mut(), code, w_param, l_param) }
 }
 
 pub struct HotkeyHandle {
@@ -26,45 +78,33 @@ pub struct HotkeyHandle {
 impl HotkeyHandle {
     pub fn start() -> (Self, Receiver<HotkeyEvent>) {
         let (sender, receiver) = unbounded();
+        let _ = HOTKEY_SENDER.set(sender.clone());
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
         let thread = thread::spawn(move || {
-            let passthrough_registered = unsafe {
-                RegisterHotKey(
+            let hook = unsafe {
+                SetWindowsHookExW(
+                    WH_KEYBOARD_LL,
+                    Some(low_level_keyboard_proc),
                     std::ptr::null_mut(),
-                    PASSTHROUGH_HOTKEY_ID,
-                    MOD_NOREPEAT,
-                    VK_HOME as u32,
+                    0,
                 )
-            } != 0;
-            if !passthrough_registered {
-                let _ = sender.send(HotkeyEvent::RegistrationFailed("Home"));
+            };
+            if hook.is_null() {
+                let _ = sender.send(HotkeyEvent::RegistrationFailed("Home (低级键盘钩子)"));
                 return;
             }
 
             let mut message = unsafe { std::mem::zeroed::<MSG>() };
             while !worker_stop.load(Ordering::Relaxed) {
-                while unsafe {
-                    PeekMessageW(
-                        &mut message,
-                        std::ptr::null_mut(),
-                        WM_HOTKEY,
-                        WM_HOTKEY,
-                        PM_REMOVE,
-                    )
-                } != 0
-                {
-                    if message.wParam == PASSTHROUGH_HOTKEY_ID as usize {
-                        let _ = sender.send(HotkeyEvent::TogglePassthrough);
-                    }
-                }
-                thread::sleep(Duration::from_millis(25));
+                while unsafe { PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) }
+                    != 0
+                {}
+                thread::sleep(Duration::from_millis(8));
             }
 
             unsafe {
-                if passthrough_registered {
-                    UnregisterHotKey(std::ptr::null_mut(), PASSTHROUGH_HOTKEY_ID);
-                }
+                UnhookWindowsHookEx(hook);
             }
         });
 

@@ -13,6 +13,7 @@ const SCAN_END: usize = 700;
 const MAX_FIELD_LENGTH: usize = 64;
 const MIN_DAMAGE: f32 = 2.0;
 const MAX_DAMAGE: f32 = 1_000_000_000.0;
+const MAX_PLAUSIBLE_CHARACTER_HP: f32 = 500_000.0;
 
 #[derive(Deserialize)]
 struct CharacterDocument {
@@ -205,7 +206,8 @@ pub fn parse_damage_payload(
             let target_hp_after = (target_hp_before - damage).max(0.0);
             let (target_id, target_name, target_context) =
                 extract_target_metadata(data, byte_offset, bit_shift);
-            let direction = if packet_char_id.is_some()
+            let direction = if target_max_hp <= MAX_PLAUSIBLE_CHARACTER_HP
+                && packet_char_id.is_some()
                 && evidence
                     .iter()
                     .any(|(id, shift, _)| Some(*id) == packet_char_id && *shift == bit_shift)
@@ -375,6 +377,19 @@ mod tests {
         assert_eq!(declared_character_ids(&data), vec![1033]);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].damage, 12345.5);
+    }
+
+    #[test]
+    fn does_not_classify_enemy_health_as_incoming_damage() {
+        let mut data = synthetic_payload(1004, 3480.0);
+        let max_hp = 1_528_385_f32.to_le_bytes();
+        let max_hp_field_offset = SCAN_START + 4 + 5 + 4 + 5;
+        data[max_hp_field_offset..max_hp_field_offset + 4].copy_from_slice(&max_hp);
+        let evidence = find_declared_character_evidence(&data);
+        let hits = parse_damage_payload(&data, 1.0, Some(1004), None, &HashMap::new(), &evidence);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "outgoing");
     }
 
     #[test]

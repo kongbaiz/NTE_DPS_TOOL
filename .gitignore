@@ -8,3 +8,4 @@ pyproject.toml
 uv.lock
 /logs/
 /data/
+/NTE_Assets/

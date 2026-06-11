@@ -1,3 +1,6 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+#![cfg_attr(feature = "no_debug", allow(dead_code))]
+
 mod app;
 mod capture;
 mod hotkey;

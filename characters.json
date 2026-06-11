@@ -160,12 +160,12 @@
       "avatar": "Character_Haniel.png"
     },
     "1020": {
-      "name_zh": "哈尼婭",
+      "name_zh": "哈尼亚",
       "name_en": "Haniel",
       "codename": "Haniel",
       "verified": false,
       "color": "#a83c78",
-      "avatar": "Character_Haniel.png"
+      "avatar": "res/player_020_256.png"
     },
     "1025": {
       "name_zh": "哈索爾",
@@ -194,20 +194,20 @@
       "verified": false
     },
     "1013": {
-      "name_zh": "潯",
+      "name_zh": "浔",
       "name_en": "Hotori",
       "codename": "Jin",
       "verified": false,
       "color": "#950742",
-      "avatar": "Character_Jin.png"
+      "avatar": "res/player_052_256.png"
     },
       "1052": {
-      "name_zh": "潯",
+      "name_zh": "浔",
       "name_en": "Hotori",
       "codename": "Jin",
       "verified": false,
       "color": "#950742",
-      "avatar": "Character_Jin.png"
+      "avatar": "res/player_052_256.png"
     },
     "1055": {
       "name_zh": "九原",
@@ -231,7 +231,7 @@
       "codename": "Lacrimosa",
       "verified": false,
       "color": "#c3c3c5",
-      "avatar": "res/player_004.png"
+      "avatar": "res/player_004_256.png"
     },
     "1046": {
       "name_zh": "零(男)",
@@ -269,7 +269,7 @@
       "codename": "Nanally",
       "verified": true,
       "color": "#f52859",
-      "avatar": "res/player_010.png"
+      "avatar": "res/player_010_256.png"
     },
     "1075": {
       "name_zh": "Iroi",
@@ -304,12 +304,12 @@
       "verified": false
     },
     "1003": {
-      "name_zh": "早霧",
+      "name_zh": "早雾",
       "name_en": "Sagiri",
       "codename": "Sagiri",
       "verified": true,
       "color": "#c34804",
-      "avatar": "Character_Sagiri.png"
+      "avatar": "res/player_003_256.png"
     },
     "1076": {
       "name_zh": "Shinku",
