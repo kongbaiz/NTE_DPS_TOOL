@@ -10,15 +10,21 @@ crossbeam-channel = "0.5"
 eframe = { version = "0.32", features = ["default_fonts", "glow"] }
 egui_plot = "0.33"
 hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 libloading = "0.8"
+pcap-file = "2.0"
+raw-window-handle = "0.6"
 rfd = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 windows-sys = { version = "0.60", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_NetworkManagement_IpHelper",
     "Win32_Networking_WinSock",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [profile.release]

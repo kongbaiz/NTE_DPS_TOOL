@@ -231,7 +231,7 @@
       "codename": "Lacrimosa",
       "verified": false,
       "color": "#c3c3c5",
-      "avatar": "Character_lacrimosa.png"
+      "avatar": "res/player_004.png"
     },
     "1046": {
       "name_zh": "零(男)",
@@ -269,7 +269,7 @@
       "codename": "Nanally",
       "verified": true,
       "color": "#f52859",
-      "avatar": "Character_Nanally.png"
+      "avatar": "res/player_010.png"
     },
     "1075": {
       "name_zh": "Iroi",

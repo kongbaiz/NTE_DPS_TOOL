@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString, c_char, c_int, c_uchar, c_uint};
+use std::fs::File;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::ptr;
@@ -12,13 +13,17 @@ use std::time::Duration;
 
 use crossbeam_channel::Sender;
 use libloading::Library;
+use pcap_file::DataLink;
+use pcap_file::pcapng::{Block, PcapNgReader};
+use serde::Deserialize;
 
-use crate::model::{CharacterInfo, EngineEvent, PacketDebug};
+use crate::model::{CharacterInfo, EngineEvent, Hit, PacketDebug};
 use crate::parser::{
     declared_character_ids, find_declared_character_evidence, parse_damage_payload,
 };
 
 const PCAP_ERRBUF_SIZE: usize = 256;
+const MIN_READABLE_TEXT_LEN: usize = 4;
 
 #[repr(C)]
 struct PcapIf {
@@ -207,6 +212,154 @@ fn parse_udp_ipv4(packet: &[u8]) -> Option<(Ipv4Addr, u16, Ipv4Addr, u16, &[u8])
     ))
 }
 
+fn decode_shifted_payload(data: &[u8], bit_shift: u8) -> Vec<u8> {
+    if bit_shift == 0 {
+        return data.to_vec();
+    }
+    data.windows(2)
+        .map(|pair| (pair[0] >> bit_shift) | (pair[1] << (8 - bit_shift)))
+        .collect()
+}
+
+fn is_readable_protocol_text(value: &str) -> bool {
+    let length = value.len();
+    if length < MIN_READABLE_TEXT_LEN {
+        return false;
+    }
+    let letters = value.bytes().filter(u8::is_ascii_alphabetic).count();
+    let protocol_markers = [
+        "Abyss",
+        "Boss",
+        "DataLayer",
+        "Game/",
+        "PrivateSpawn",
+        "Record",
+        "State.",
+        "Ability.",
+        "Event.",
+        "CoolDown.",
+        "GameplayCue.",
+        "FirstHalf",
+        "SecondHalf",
+        "Phase",
+        "Wave",
+        "MaxHP",
+    ];
+    protocol_markers.iter().any(|marker| value.contains(marker))
+        || (length >= 8 && letters >= 5 && letters * 2 >= length)
+}
+
+fn decode_payload_text(data: &[u8]) -> String {
+    let mut found = Vec::<String>::new();
+    for bit_shift in 0..8 {
+        let shifted = decode_shifted_payload(data, bit_shift);
+        for bytes in shifted.split(|byte| !(0x20..=0x7e).contains(byte)) {
+            if bytes.len() < MIN_READABLE_TEXT_LEN {
+                continue;
+            }
+            let Ok(value) = std::str::from_utf8(bytes) else {
+                continue;
+            };
+            let value = value.trim();
+            if !is_readable_protocol_text(value) || found.iter().any(|item| item == value) {
+                continue;
+            }
+            found.push(value.to_owned());
+        }
+    }
+    if found.is_empty() {
+        "未解析到可读协议文本".to_owned()
+    } else {
+        found.join("\n")
+    }
+}
+
+#[derive(Default)]
+struct PacketDecoder {
+    session_characters: HashMap<(Ipv4Addr, u16, Ipv4Addr, u16), u32>,
+    client_endpoints: HashSet<(Ipv4Addr, u16)>,
+}
+
+impl PacketDecoder {
+    fn process_ethernet_frame(
+        &mut self,
+        packet: &[u8],
+        timestamp: f64,
+        local_ip: Option<Ipv4Addr>,
+        include_incoming: bool,
+        characters: &HashMap<u32, CharacterInfo>,
+        sender: &Sender<EngineEvent>,
+    ) {
+        let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(packet) else {
+            return;
+        };
+        if local_ip.is_some_and(|ip| src != ip && dst != ip) {
+            return;
+        }
+
+        let evidence = find_declared_character_evidence(payload);
+        let ids = declared_character_ids(payload);
+        if !ids.is_empty() {
+            self.client_endpoints.insert((src, src_port));
+        }
+        let outgoing = local_ip
+            .map(|ip| src == ip)
+            .unwrap_or_else(|| ids.len() == 1 || self.client_endpoints.contains(&(src, src_port)));
+        let direction = if outgoing { "C2S" } else { "S2C" };
+        let hits = if outgoing {
+            let packet_char_id = if ids.len() == 1 {
+                ids.first().copied()
+            } else {
+                None
+            };
+            let session_key = (src, src_port, dst, dst_port);
+            if let Some(id) = packet_char_id {
+                self.session_characters.insert(session_key, id);
+            }
+            let fallback = self.session_characters.get(&session_key).copied();
+            parse_damage_payload(
+                payload,
+                timestamp,
+                packet_char_id,
+                fallback,
+                characters,
+                &evidence,
+            )
+        } else {
+            Vec::new()
+        };
+        let accepted = hits
+            .iter()
+            .filter(|hit| include_incoming || hit.direction != "incoming")
+            .count();
+        let preview_len = payload.len().min(96);
+        let payload_hex = hex::encode(payload);
+        let decoded_text = decode_payload_text(payload);
+        let _ = sender.send(EngineEvent::Packet(PacketDebug {
+            timestamp,
+            source: format!("{src}:{src_port}"),
+            destination: format!("{dst}:{dst_port}"),
+            direction: direction.to_owned(),
+            payload_len: payload.len(),
+            declared_ids: ids,
+            parsed_hits: accepted,
+            note: if hits.len() != accepted {
+                format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
+            } else {
+                String::new()
+            },
+            payload_preview: payload_hex[..preview_len * 2].to_owned(),
+            payload_hex,
+            decoded_text,
+        }));
+        for hit in hits {
+            if include_incoming || hit.direction != "incoming" {
+                let _ = sender.send(EngineEvent::Hit(hit));
+            }
+        }
+    }
+}
+
 pub fn start_capture(
     device: CaptureDevice,
     local_ip: Option<Ipv4Addr>,
@@ -294,7 +447,7 @@ fn run_capture(
                 .unwrap_or_else(|| "不过滤本机 IP".to_owned())
         )));
 
-        let mut session_characters: HashMap<(Ipv4Addr, u16, Ipv4Addr, u16), u32> = HashMap::new();
+        let mut decoder = PacketDecoder::default();
         while !stop.load(Ordering::Relaxed) {
             let mut header = ptr::null();
             let mut packet_data = ptr::null();
@@ -315,60 +468,16 @@ fn run_capture(
                 continue;
             }
             let packet = std::slice::from_raw_parts(packet_data, header_ref.caplen as usize);
-            let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(packet) else {
-                continue;
-            };
-            if local_ip.is_some_and(|ip| src != ip) {
-                continue;
-            }
             let timestamp =
                 header_ref.ts.tv_sec as f64 + header_ref.ts.tv_usec as f64 / 1_000_000.0;
-            let evidence = find_declared_character_evidence(payload);
-            let ids = declared_character_ids(payload);
-            let packet_char_id = if ids.len() == 1 {
-                ids.first().copied()
-            } else {
-                None
-            };
-            let session_key = (src, src_port, dst, dst_port);
-            if let Some(id) = packet_char_id {
-                session_characters.insert(session_key, id);
-            }
-            let fallback = session_characters.get(&session_key).copied();
-            let hits = parse_damage_payload(
-                payload,
+            decoder.process_ethernet_frame(
+                packet,
                 timestamp,
-                packet_char_id,
-                fallback,
+                local_ip,
+                include_incoming,
                 characters,
-                &evidence,
+                sender,
             );
-            let accepted = hits
-                .iter()
-                .filter(|hit| include_incoming || hit.direction != "incoming")
-                .count();
-            if !hits.is_empty() || !ids.is_empty() {
-                let preview_len = payload.len().min(96);
-                let _ = sender.send(EngineEvent::Packet(PacketDebug {
-                    timestamp,
-                    source: format!("{src}:{src_port}"),
-                    destination: format!("{dst}:{dst_port}"),
-                    payload_len: payload.len(),
-                    declared_ids: ids,
-                    parsed_hits: accepted,
-                    note: if hits.len() != accepted {
-                        format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
-                    } else {
-                        String::new()
-                    },
-                    payload_preview: hex::encode(&payload[..preview_len]),
-                }));
-            }
-            for hit in hits {
-                if include_incoming || hit.direction != "incoming" {
-                    let _ = sender.send(EngineEvent::Hit(hit));
-                }
-            }
         }
         close(handle);
     }
@@ -413,14 +522,349 @@ pub fn replay_hits(
     })
 }
 
+pub fn import_pcapng(
+    path: PathBuf,
+    characters: Arc<HashMap<u32, CharacterInfo>>,
+    include_incoming: bool,
+    sender: Sender<EngineEvent>,
+    stop: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let result = (|| -> Result<(usize, usize), String> {
+            let file = File::open(&path).map_err(|error| error.to_string())?;
+            let mut reader = PcapNgReader::new(file).map_err(|error| error.to_string())?;
+            let mut decoder = PacketDecoder::default();
+            let mut packet_count = 0;
+            let mut supported_count = 0;
+
+            while let Some(block) = reader.next_block() {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let block = block.map_err(|error| error.to_string())?;
+                let (interface_id, timestamp, data) = match block {
+                    Block::EnhancedPacket(packet) => (
+                        packet.interface_id as usize,
+                        packet.timestamp.as_secs_f64(),
+                        packet.data.into_owned(),
+                    ),
+                    Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
+                    _ => continue,
+                };
+                packet_count += 1;
+                let Some(interface) = reader.interfaces().get(interface_id) else {
+                    continue;
+                };
+                if interface.linktype != DataLink::ETHERNET {
+                    continue;
+                }
+                supported_count += 1;
+                decoder.process_ethernet_frame(
+                    &data,
+                    timestamp,
+                    None,
+                    include_incoming,
+                    &characters,
+                    &sender,
+                );
+            }
+            if packet_count > 0 && supported_count == 0 {
+                return Err("pcapng 中没有受支持的 Ethernet 数据包".to_owned());
+            }
+            Ok((packet_count, supported_count))
+        })();
+
+        let _ = sender.send(EngineEvent::CaptureStopped);
+        match result {
+            Ok((packet_count, supported_count)) => {
+                let _ = sender.send(EngineEvent::Status(format!(
+                    "pcapng 导入完成：读取 {packet_count} 包，解析 {supported_count} 个 Ethernet 包"
+                )));
+            }
+            Err(error) => {
+                let _ = sender.send(EngineEvent::Error(format!("pcapng 导入失败：{error}")));
+            }
+        }
+    })
+}
+
+#[derive(Deserialize)]
+struct CaptureExport {
+    #[serde(default)]
+    hits: Vec<ExportHit>,
+    #[serde(default)]
+    packets: Vec<ExportPacket>,
+}
+
+#[derive(Deserialize)]
+struct ExportHit {
+    timestamp_unix: f64,
+    char_id: u32,
+    char_name: String,
+    damage: f64,
+    #[serde(default)]
+    target_hp_before: f64,
+    #[serde(default)]
+    target_hp_after: f64,
+    #[serde(default)]
+    target_max_hp: f64,
+    #[serde(default)]
+    target_hp_percent: f64,
+    #[serde(default)]
+    target_id: Option<String>,
+    #[serde(default)]
+    target_name: Option<String>,
+    #[serde(default)]
+    target_context: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ExportPacket {
+    timestamp_unix: f64,
+    source: String,
+    destination: String,
+    #[serde(default)]
+    direction: String,
+    #[serde(default)]
+    payload_len: usize,
+    #[serde(default)]
+    declared_ids: serde_json::Value,
+    #[serde(default)]
+    parsed_hits: usize,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    payload_preview: String,
+    #[serde(default)]
+    payload_hex: String,
+    #[serde(default)]
+    decoded_text: String,
+}
+
+pub fn import_capture_json(
+    path: PathBuf,
+    sender: Sender<EngineEvent>,
+    stop: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let result = (|| -> Result<(usize, usize), String> {
+            let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+            let document = parse_capture_export(&text)?;
+            let hit_count = document.hits.len();
+            let packet_count = document.packets.len();
+
+            for packet in document.packets {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let _ = sender.send(EngineEvent::Packet(PacketDebug {
+                    timestamp: packet.timestamp_unix,
+                    source: packet.source,
+                    destination: packet.destination,
+                    direction: packet.direction,
+                    payload_len: packet.payload_len,
+                    declared_ids: parse_export_ids(&packet.declared_ids),
+                    parsed_hits: packet.parsed_hits,
+                    note: packet.note,
+                    payload_preview: packet.payload_preview,
+                    payload_hex: packet.payload_hex,
+                    decoded_text: packet.decoded_text,
+                }));
+            }
+            for hit in document.hits {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let _ = sender.send(EngineEvent::Hit(Hit {
+                    timestamp: hit.timestamp_unix,
+                    char_id: hit.char_id,
+                    char_name: hit.char_name,
+                    char_known: true,
+                    damage: hit.damage,
+                    byte_offset: 0,
+                    bit_shift: 0,
+                    char_source: "export_json".to_owned(),
+                    direction: "outgoing".to_owned(),
+                    target_hp_before: hit.target_hp_before,
+                    target_hp_after: hit.target_hp_after,
+                    target_max_hp: hit.target_max_hp,
+                    target_hp_percent: hit.target_hp_percent,
+                    target_id: hit.target_id,
+                    target_name: hit.target_name,
+                    target_context: hit.target_context,
+                }));
+            }
+            Ok((hit_count, packet_count))
+        })();
+
+        let _ = sender.send(EngineEvent::CaptureStopped);
+        match result {
+            Ok((hit_count, packet_count)) => {
+                let _ = sender.send(EngineEvent::Status(format!(
+                    "JSON 导入完成：{packet_count} 个封包，{hit_count} 条伤害"
+                )));
+            }
+            Err(error) => {
+                let _ = sender.send(EngineEvent::Error(format!("JSON 导入失败：{error}")));
+            }
+        }
+    })
+}
+
+fn parse_capture_export(text: &str) -> Result<CaptureExport, String> {
+    serde_json::from_str(text)
+        .or_else(|_| {
+            let repaired = text
+                .lines()
+                .map(|line| {
+                    if line.trim_start().starts_with("\"payload_hex\":") && !line.ends_with(',') {
+                        format!("{line},")
+                    } else {
+                        line.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            serde_json::from_str(&repaired)
+        })
+        .map_err(|error| error.to_string())
+}
+
+fn parse_export_ids(value: &serde_json::Value) -> Vec<u32> {
+    match value {
+        serde_json::Value::Array(values) => values
+            .iter()
+            .filter_map(serde_json::Value::as_u64)
+            .map(|value| value as u32)
+            .collect(),
+        serde_json::Value::String(value) => value
+            .trim_matches(['[', ']'])
+            .split(',')
+            .filter_map(|part| part.trim().parse().ok())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossbeam_channel::unbounded;
+
+    fn udp_ipv4_frame(source: Ipv4Addr, destination: Ipv4Addr, payload: &[u8]) -> Vec<u8> {
+        let mut frame = vec![0_u8; 14 + 20 + 8 + payload.len()];
+        frame[12..14].copy_from_slice(&0x0800_u16.to_be_bytes());
+        let ip = &mut frame[14..];
+        ip[0] = 0x45;
+        ip[2..4].copy_from_slice(&((20 + 8 + payload.len()) as u16).to_be_bytes());
+        ip[9] = 17;
+        ip[12..16].copy_from_slice(&source.octets());
+        ip[16..20].copy_from_slice(&destination.octets());
+        let udp = &mut ip[20..];
+        udp[0..2].copy_from_slice(&64592_u16.to_be_bytes());
+        udp[2..4].copy_from_slice(&30216_u16.to_be_bytes());
+        udp[4..6].copy_from_slice(&((8 + payload.len()) as u16).to_be_bytes());
+        udp[8..].copy_from_slice(payload);
+        frame
+    }
 
     #[test]
     fn rejects_empty_and_truncated_packets() {
         assert!(parse_udp_ipv4(&[]).is_none());
         assert!(parse_udp_ipv4(&[0_u8; 13]).is_none());
         assert!(parse_udp_ipv4(&[0_u8; 42]).is_none());
+    }
+
+    #[test]
+    fn imports_recorded_pcapng_into_debug_events() {
+        let path = PathBuf::from("data/1.pcapng");
+        if !path.is_file() {
+            return;
+        }
+        let characters = Arc::new(
+            crate::parser::load_characters(std::path::Path::new("characters.json")).unwrap(),
+        );
+        let (sender, receiver) = unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+        import_pcapng(path, characters, false, sender, stop)
+            .join()
+            .unwrap();
+
+        let events: Vec<_> = receiver.try_iter().collect();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, EngineEvent::Packet(_)))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, EngineEvent::Hit(_)))
+        );
+    }
+
+    #[test]
+    fn imports_exported_capture_json_and_repairs_legacy_comma() {
+        let text = r#"{
+  "hits": [{
+    "timestamp_unix": 1.25,
+    "char_id": 1010,
+    "char_name": "娜娜莉",
+    "damage": 1234,
+    "target_hp_after": 8000,
+    "target_max_hp": 10000,
+    "target_hp_percent": 80
+  }],
+  "packets": [{
+    "timestamp_unix": 1.25,
+    "source": "127.0.0.1:1",
+    "destination": "127.0.0.1:2",
+    "direction": "C2S",
+    "payload_len": 2,
+    "declared_ids": "[1010]",
+    "parsed_hits": 1,
+    "note": "",
+    "payload_preview": "abcd",
+    "payload_hex": "abcd"
+    "decoded_text": "Abyss_2_12_0"
+  }]
+}"#;
+        let document = parse_capture_export(text).unwrap();
+        assert_eq!(document.hits.len(), 1);
+        assert_eq!(document.packets.len(), 1);
+        assert_eq!(
+            parse_export_ids(&document.packets[0].declared_ids),
+            vec![1010]
+        );
+    }
+
+    #[test]
+    fn preserves_complete_udp_payload() {
+        let payload: Vec<u8> = (0..=255).cycle().take(900).collect();
+        let frame = udp_ipv4_frame(
+            Ipv4Addr::new(192, 168, 31, 61),
+            Ipv4Addr::new(49, 232, 46, 87),
+            &payload,
+        );
+        let (_, _, _, _, parsed_payload) = parse_udp_ipv4(&frame).expect("valid UDP frame");
+
+        assert_eq!(parsed_payload, payload);
+        assert_eq!(hex::encode(parsed_payload).len(), payload.len() * 2);
+    }
+
+    #[test]
+    fn extracts_shifted_protocol_text() {
+        let source = b"FAbyssGamePlayData\0Abyss_2_12_0\0EAbyssFightStage::FirstHalf";
+        let mut shifted = Vec::with_capacity(source.len() + 1);
+        shifted.push(source[0] << 4);
+        for pair in source.windows(2) {
+            shifted.push((pair[0] >> 4) | (pair[1] << 4));
+        }
+        shifted.push(source[source.len() - 1] >> 4);
+
+        let decoded = decode_payload_text(&shifted);
+        assert!(decoded.contains("FAbyssGamePlayData"));
+        assert!(decoded.contains("Abyss_2_12_0"));
+        assert!(decoded.contains("EAbyssFightStage::FirstHalf"));
     }
 }

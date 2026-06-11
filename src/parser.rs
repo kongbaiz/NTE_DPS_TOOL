@@ -203,6 +203,8 @@ pub fn parse_damage_payload(
                     }
                 });
             let target_hp_after = (target_hp_before - damage).max(0.0);
+            let (target_id, target_name, target_context) =
+                extract_target_metadata(data, byte_offset, bit_shift);
             let direction = if packet_char_id.is_some()
                 && evidence
                     .iter()
@@ -240,10 +242,102 @@ pub fn parse_damage_payload(
                 } else {
                     0.0
                 },
+                target_id,
+                target_name,
+                target_context,
             });
         }
     }
     hits
+}
+
+fn extract_target_metadata(
+    data: &[u8],
+    byte_offset: usize,
+    bit_shift: u8,
+) -> (Option<String>, Option<String>, Vec<String>) {
+    let start = byte_offset.saturating_sub(256);
+    let end = data.len().min(byte_offset.saturating_add(320));
+    let shifted: Vec<u8> = (start..end)
+        .filter_map(|index| decode_shifted_bytes(data, index, bit_shift, 0, 1))
+        .map(|value| value[0])
+        .collect();
+    let mut strings = Vec::new();
+    let mut cursor = 0;
+    while cursor < shifted.len() {
+        if shifted[cursor].is_ascii_graphic() || shifted[cursor] == b' ' {
+            let begin = cursor;
+            while cursor < shifted.len()
+                && (shifted[cursor].is_ascii_graphic() || shifted[cursor] == b' ')
+            {
+                cursor += 1;
+            }
+            if cursor - begin >= 4 {
+                let value = String::from_utf8_lossy(&shifted[begin..cursor])
+                    .trim()
+                    .to_owned();
+                let lower = value.to_ascii_lowercase();
+                if [
+                    "target",
+                    "boss",
+                    "enemy",
+                    "monster",
+                    "actor",
+                    "entity",
+                    "npc",
+                    "characterfornet",
+                ]
+                .iter()
+                .any(|marker| lower.contains(marker))
+                    && !strings.contains(&value)
+                {
+                    strings.push(value);
+                }
+            }
+        } else {
+            cursor += 1;
+        }
+    }
+
+    let target_id = strings
+        .iter()
+        .find_map(|value| metadata_value(value, &["targetid", "target_id", "entityid", "actorid"]));
+    let target_name = strings.iter().find_map(|value| {
+        metadata_value(
+            value,
+            &[
+                "targetname",
+                "target_name",
+                "enemyname",
+                "monstername",
+                "bossname",
+            ],
+        )
+    });
+    (target_id, target_name, strings)
+}
+
+fn metadata_value(value: &str, keys: &[&str]) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    for key in keys {
+        let Some(index) = lower.find(key) else {
+            continue;
+        };
+        let tail = value[index + key.len()..]
+            .trim_start_matches(|character: char| {
+                character.is_ascii_whitespace() || matches!(character, ':' | '=' | '#')
+            })
+            .split(|character: char| {
+                character.is_ascii_whitespace() || matches!(character, ',' | ';' | '|' | '\0')
+            })
+            .next()
+            .unwrap_or_default()
+            .trim();
+        if !tail.is_empty() && tail.len() <= 96 {
+            return Some(tail.to_owned());
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -281,6 +375,19 @@ mod tests {
         assert_eq!(declared_character_ids(&data), vec![1033]);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].damage, 12345.5);
+    }
+
+    #[test]
+    fn extracts_explicit_target_metadata_when_present() {
+        let mut data = synthetic_payload(1033, 12345.5);
+        let metadata = b"TargetId=enemy-42 TargetName=TrainingDummy";
+        data[320..320 + metadata.len()].copy_from_slice(metadata);
+        let evidence = find_declared_character_evidence(&data);
+        let hits = parse_damage_payload(&data, 1.0, Some(1033), None, &HashMap::new(), &evidence);
+
+        assert_eq!(hits[0].target_id.as_deref(), Some("enemy-42"));
+        assert_eq!(hits[0].target_name.as_deref(), Some("TrainingDummy"));
+        assert!(!hits[0].target_context.is_empty());
     }
 
     #[test]
