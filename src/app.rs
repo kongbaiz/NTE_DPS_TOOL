@@ -22,8 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::capture::{
-    CaptureDevice, CaptureHandle, import_capture_json, import_pcapng, list_devices, replay_hits,
-    start_capture,
+    CaptureDevice, CaptureHandle, import_capture_json, import_pcapng, list_devices, start_capture,
 };
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
 use crate::model::{
@@ -38,6 +37,209 @@ enum DebugImportKind {
     CaptureJson,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum DebugTab {
+    #[default]
+    Packets,
+    Characters,
+    Environment,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum HitDetailFilter {
+    #[default]
+    All,
+    Outgoing,
+    Incoming,
+}
+
+impl HitDetailFilter {
+    fn matches(self, hit: &crate::model::Hit) -> bool {
+        match self {
+            Self::All => true,
+            Self::Outgoing => hit.direction != "incoming",
+            Self::Incoming => hit.direction == "incoming",
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct CharacterEditForm {
+    id: String,
+    name_zh: String,
+    name_en: String,
+    codename: String,
+    verified: bool,
+    color: String,
+    avatar: String,
+}
+
+struct CharacterEditorState {
+    document: serde_json::Value,
+    selected_id: Option<String>,
+    form: CharacterEditForm,
+    search: String,
+    new_id: String,
+    dirty: bool,
+    message: String,
+    cancel_selection: Option<String>,
+}
+
+impl CharacterEditorState {
+    fn load(path: &std::path::Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
+        let document: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| format!("角色表 JSON 无效: {error}"))?;
+        if !document
+            .get("characters")
+            .is_some_and(serde_json::Value::is_object)
+        {
+            return Err("characters.json 缺少 characters 对象".to_owned());
+        }
+        Ok(Self {
+            document,
+            selected_id: None,
+            form: CharacterEditForm::default(),
+            search: String::new(),
+            new_id: String::new(),
+            dirty: false,
+            message: String::new(),
+            cancel_selection: None,
+        })
+    }
+
+    fn character_ids(&self) -> Vec<String> {
+        let mut ids = self
+            .document
+            .get("characters")
+            .and_then(serde_json::Value::as_object)
+            .map(|characters| characters.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        ids.sort_by_key(|id| id.parse::<u32>().unwrap_or(u32::MAX));
+        ids
+    }
+
+    fn select(&mut self, id: &str) {
+        let Some(row) = self
+            .document
+            .get("characters")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|characters| characters.get(id))
+            .and_then(serde_json::Value::as_object)
+        else {
+            return;
+        };
+        self.selected_id = Some(id.to_owned());
+        self.form = CharacterEditForm {
+            id: id.to_owned(),
+            name_zh: json_string_field(row, "name_zh"),
+            name_en: json_string_field(row, "name_en"),
+            codename: json_string_field(row, "codename"),
+            verified: row
+                .get("verified")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            color: json_string_field(row, "color"),
+            avatar: json_string_field(row, "avatar"),
+        };
+        self.dirty = false;
+        self.message.clear();
+        self.cancel_selection = None;
+    }
+
+    fn start_new(&mut self) -> Result<(), String> {
+        let id = self.new_id.trim();
+        let parsed = id
+            .parse::<u32>()
+            .map_err(|_| "角色 ID 必须是正整数".to_owned())?;
+        if parsed == 0 {
+            return Err("角色 ID 必须大于 0".to_owned());
+        }
+        let id = parsed.to_string();
+        if self
+            .document
+            .get("characters")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|characters| characters.contains_key(&id))
+        {
+            self.select(&id);
+            return Err(format!("ID {id} 已存在，已切换到现有记录"));
+        }
+        self.cancel_selection = self.selected_id.clone();
+        self.selected_id = None;
+        self.form = CharacterEditForm {
+            id,
+            ..Default::default()
+        };
+        self.new_id.clear();
+        self.dirty = true;
+        self.message = "正在新增角色，填写后保存".to_owned();
+        Ok(())
+    }
+
+    fn apply_form(&mut self) -> Result<String, String> {
+        let id = self
+            .form
+            .id
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| "角色 ID 必须是正整数".to_owned())?
+            .to_string();
+        if self.form.name_zh.trim().is_empty() && self.form.name_en.trim().is_empty() {
+            return Err("中文名和英文名至少填写一项".to_owned());
+        }
+        let color = self.form.color.trim();
+        if !color.is_empty() && parse_hex_color(color).is_none() {
+            return Err("颜色必须是 #RRGGBB 格式".to_owned());
+        }
+        if let Some(selected_id) = &self.selected_id
+            && selected_id != &id
+        {
+            return Err("现有角色 ID 不允许直接修改，请新增记录".to_owned());
+        }
+        let characters = self
+            .document
+            .get_mut("characters")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "characters.json 缺少 characters 对象".to_owned())?;
+        let row = characters
+            .entry(id.clone())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        let row = row
+            .as_object_mut()
+            .ok_or_else(|| format!("ID {id} 的数据不是 JSON 对象"))?;
+        set_json_string(row, "name_zh", self.form.name_zh.trim());
+        set_json_string(row, "name_en", self.form.name_en.trim());
+        set_json_string(row, "codename", self.form.codename.trim());
+        row.insert(
+            "verified".to_owned(),
+            serde_json::Value::Bool(self.form.verified),
+        );
+        set_optional_json_string(row, "color", color);
+        set_optional_json_string(row, "avatar", self.form.avatar.trim());
+        self.selected_id = Some(id.clone());
+        self.form.id = id.clone();
+        self.dirty = false;
+        self.cancel_selection = None;
+        Ok(id)
+    }
+
+    fn cancel_edit(&mut self) {
+        if let Some(id) = self
+            .cancel_selection
+            .take()
+            .or_else(|| self.selected_id.clone())
+        {
+            self.select(&id);
+        } else {
+            self.form = CharacterEditForm::default();
+            self.dirty = false;
+            self.message.clear();
+        }
+    }
+}
+
 pub struct DpsApp {
     characters: Arc<HashMap<u32, CharacterInfo>>,
     avatar_textures: HashMap<String, egui::TextureHandle>,
@@ -45,6 +247,7 @@ pub struct DpsApp {
     selected_abyss_half: AbyssHalf,
     abyss_compact_mode: bool,
     hit_detail_char_id: Option<u32>,
+    hit_detail_filter: HitDetailFilter,
     devices: Vec<CaptureDevice>,
     selected_device: usize,
     local_ip: String,
@@ -52,6 +255,7 @@ pub struct DpsApp {
     filter: String,
     include_incoming: bool,
     capture: Option<CaptureHandle>,
+    raw_capture_path: Option<PathBuf>,
     replay_stop: Option<Arc<AtomicBool>>,
     replay_thread: Option<thread::JoinHandle<()>>,
     sender: Sender<EngineEvent>,
@@ -60,8 +264,10 @@ pub struct DpsApp {
     diagnostic: Option<String>,
     last_error: Option<String>,
     debug_open: bool,
+    debug_tab: DebugTab,
     debug_only_hits: bool,
     debug_search: String,
+    character_editor: CharacterEditorState,
     paused: bool,
     dark_mode: bool,
     always_on_top: bool,
@@ -78,12 +284,25 @@ impl DpsApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         install_fonts(&cc.egui_ctx);
         configure_style(&cc.egui_ctx, false);
-        let (hotkey, hotkey_receiver) = HotkeyHandle::start();
+        let (hotkey, hotkey_receiver) = HotkeyHandle::start(cc.egui_ctx.clone());
         let (sender, receiver) = unbounded();
         let data_root = data_root();
-        let characters =
-            load_characters(data_root.join("characters.json").as_path()).unwrap_or_default();
+        let characters_path = data_root.join("characters.json");
+        let characters = load_characters(characters_path.as_path()).unwrap_or_default();
         let avatar_textures = load_character_avatars(&cc.egui_ctx, &data_root, &characters);
+        let character_editor =
+            CharacterEditorState::load(&characters_path).unwrap_or_else(|error| {
+                CharacterEditorState {
+                    document: serde_json::json!({"version": 2, "characters": {}}),
+                    selected_id: None,
+                    form: CharacterEditForm::default(),
+                    search: String::new(),
+                    new_id: String::new(),
+                    dirty: false,
+                    message: error,
+                    cancel_selection: None,
+                }
+            });
         let (devices, device_error) = match list_devices() {
             Ok(devices) => (devices, None),
             Err(error) => (Vec::new(), Some(error)),
@@ -106,6 +325,7 @@ impl DpsApp {
             selected_abyss_half: AbyssHalf::First,
             abyss_compact_mode: false,
             hit_detail_char_id: None,
+            hit_detail_filter: HitDetailFilter::All,
             devices,
             selected_device,
             local_ip,
@@ -113,6 +333,7 @@ impl DpsApp {
             filter: "udp".to_owned(),
             include_incoming: true,
             capture: None,
+            raw_capture_path: None,
             replay_stop: None,
             replay_thread: None,
             sender,
@@ -121,8 +342,10 @@ impl DpsApp {
             diagnostic,
             last_error: None,
             debug_open: false,
+            debug_tab: DebugTab::Packets,
             debug_only_hits: false,
             debug_search: String::new(),
+            character_editor,
             paused: false,
             dark_mode: false,
             always_on_top: true,
@@ -138,6 +361,7 @@ impl DpsApp {
 
     fn stop_engine(&mut self) {
         if let Some(mut capture) = self.capture.take() {
+            self.raw_capture_path = Some(capture.raw_capture_path().to_path_buf());
             capture.stop();
         }
         if let Some(stop) = self.replay_stop.take() {
@@ -149,6 +373,16 @@ impl DpsApp {
     }
 
     fn drain_hotkeys(&mut self, ctx: &egui::Context) {
+        let home_pressed = ctx.input(|input| input.key_pressed(egui::Key::Home));
+        #[cfg(not(feature = "no_debug"))]
+        let f12_pressed = ctx.input(|input| input.key_pressed(egui::Key::F12));
+        if home_pressed {
+            self.toggle_mouse_passthrough(ctx);
+        }
+        #[cfg(not(feature = "no_debug"))]
+        if f12_pressed {
+            self.debug_open = !self.debug_open;
+        }
         while let Ok(event) = self.hotkey_receiver.try_recv() {
             match event {
                 HotkeyEvent::TogglePassthrough => {
@@ -299,6 +533,8 @@ impl DpsApp {
             return;
         };
         let local_ip = self.game_network.as_ref().map(|network| network.local_ip);
+        let raw_capture_path = default_raw_capture_path();
+        self.raw_capture_path = Some(raw_capture_path.clone());
         self.capture = Some(start_capture(
             device,
             local_ip,
@@ -306,6 +542,7 @@ impl DpsApp {
             self.include_incoming,
             self.characters.clone(),
             self.sender.clone(),
+            raw_capture_path,
         ));
         self.status = "正在启动实时抓包...".to_owned();
     }
@@ -323,18 +560,6 @@ impl DpsApp {
         self.diagnostic = None;
         self.game_network = Some(network);
         Ok(())
-    }
-
-    fn start_replay(&mut self, path: PathBuf) {
-        self.stop_engine();
-        self.state.clear();
-        self.selected_abyss_half = AbyssHalf::First;
-        self.abyss_compact_mode = false;
-        self.hit_detail_char_id = None;
-        let stop = Arc::new(AtomicBool::new(false));
-        self.replay_thread = Some(replay_hits(path, self.sender.clone(), stop.clone()));
-        self.replay_stop = Some(stop);
-        self.status = "正在回放命中日志...".to_owned();
     }
 
     fn start_pcapng_import(&mut self, path: PathBuf) {
@@ -444,12 +669,25 @@ impl DpsApp {
                     self.last_error = Some(error);
                 }
                 EngineEvent::CaptureStopped => {
-                    self.capture = None;
+                    let stopped_live_capture = if let Some(capture) = self.capture.take() {
+                        self.raw_capture_path = Some(capture.raw_capture_path().to_path_buf());
+                        true
+                    } else {
+                        false
+                    };
                     self.replay_stop = None;
                     if let Some(thread) = self.replay_thread.take() {
                         let _ = thread.join();
                     }
-                    self.status = "已停止".to_owned();
+                    self.status = if stopped_live_capture {
+                        self.raw_capture_path
+                            .as_ref()
+                            .filter(|path| path.is_file())
+                            .map(|path| format!("已停止，完整抓包已保存至 {}", path.display()))
+                            .unwrap_or_else(|| "已停止".to_owned())
+                    } else {
+                        "已停止".to_owned()
+                    };
                 }
             }
         }
@@ -481,6 +719,47 @@ impl DpsApp {
             }
             Err(error) => {
                 self.last_error = Some(format!("导出抓包信息失败：{error}"));
+            }
+        }
+    }
+
+    fn export_raw_capture(&mut self) {
+        if self.capture.is_some() {
+            self.last_error = Some("请先停止抓包，再另存完整 PCAPNG".to_owned());
+            return;
+        }
+        let Some(source) = self
+            .raw_capture_path
+            .as_ref()
+            .filter(|path| path.is_file())
+            .cloned()
+        else {
+            self.last_error = Some("当前没有可另存的完整 PCAPNG".to_owned());
+            return;
+        };
+        let file_name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("nte_raw_capture.pcapng");
+        let Some(destination) = rfd::FileDialog::new()
+            .add_filter("完整原始抓包", &["pcapng"])
+            .set_file_name(file_name)
+            .save_file()
+        else {
+            return;
+        };
+        if destination == source {
+            self.status = format!("完整抓包位于 {}", source.display());
+            self.last_error = None;
+            return;
+        }
+        match std::fs::copy(&source, &destination) {
+            Ok(_) => {
+                self.status = format!("已另存完整抓包至 {}", destination.display());
+                self.last_error = None;
+            }
+            Err(error) => {
+                self.last_error = Some(format!("另存完整抓包失败：{error}"));
             }
         }
     }
@@ -942,9 +1221,18 @@ impl DpsApp {
                     self.start_live();
                 }
             } else if ui.button("停止").clicked() {
+                let was_live_capture = self.capture.is_some();
                 self.stop_engine();
                 self.drain_pending_events();
-                self.status = "已停止".to_owned();
+                self.status = if was_live_capture {
+                    self.raw_capture_path
+                        .as_ref()
+                        .filter(|path| path.is_file())
+                        .map(|path| format!("已停止，完整抓包已保存至 {}", path.display()))
+                        .unwrap_or_else(|| "已停止".to_owned())
+                } else {
+                    "已停止".to_owned()
+                };
             }
             if ui.button("重置").clicked() {
                 self.state.clear();
@@ -1115,6 +1403,7 @@ impl DpsApp {
                     );
                     if response.on_hover_text("在独立窗口查看完整命中").clicked() {
                         self.hit_detail_char_id = Some(row.char_id);
+                        self.hit_detail_filter = HitDetailFilter::All;
                     }
                     ui.add_space(3.0);
                 }
@@ -1132,25 +1421,47 @@ impl DpsApp {
             });
     }
 
-    fn character_hits(&self, ui: &mut egui::Ui, char_id: u32) {
-        let layout = CharacterHitLayout::new(ui.available_width());
+    fn character_hits(&self, ui: &mut egui::Ui, char_id: u32, filter: HitDetailFilter) {
+        let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
+        let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
+        let layout = CharacterHitLayout::new(content_width);
         draw_character_hit_header(ui, layout);
         let hits = if let Some(party) = self.selected_party_state() {
             &party.hits
         } else {
             &self.state.hits
         };
-        let mut character_hits: Vec<_> = hits.iter().filter(|hit| hit.char_id == char_id).collect();
+        let mut character_hits: Vec<_> = hits
+            .iter()
+            .filter(|hit| hit.char_id == char_id && filter.matches(hit))
+            .collect();
         character_hits.sort_by(|left, right| compare_hit_display_order(left, right));
         let hit_count = character_hits.len();
+        if hit_count == 0 {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 72.0),
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.label(
+                        RichText::new("当前筛选条件下暂无命中记录")
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                },
+            );
+            return;
+        }
+        let max_damage = character_hits
+            .iter()
+            .map(|hit| hit.damage)
+            .fold(1.0_f64, f64::max);
         egui::ScrollArea::vertical()
             .id_salt(("character_hits", char_id))
             .max_height(ui.available_height())
             .stick_to_bottom(true)
-            .show_rows(ui, 22.0, hit_count, |ui, visible_rows| {
+            .show_rows(ui, 30.0, hit_count, |ui, visible_rows| {
                 let visible_count = visible_rows.end.saturating_sub(visible_rows.start);
                 for hit in character_hits[visible_rows].iter().take(visible_count) {
-                    draw_character_hit_row(ui, layout, hit);
+                    draw_character_hit_row(ui, layout, hit, max_damage);
                 }
             });
     }
@@ -1165,6 +1476,26 @@ impl DpsApp {
             self.hit_detail_char_id = None;
             return;
         };
+        let hits = if let Some(party) = self.selected_party_state() {
+            &party.hits
+        } else {
+            &self.state.hits
+        };
+        let outgoing_count = hits
+            .iter()
+            .filter(|hit| hit.char_id == char_id && hit.direction != "incoming")
+            .count();
+        let incoming_count = hits
+            .iter()
+            .filter(|hit| hit.char_id == char_id && hit.direction == "incoming")
+            .count();
+        let avatar_texture = self
+            .characters
+            .get(&char_id)
+            .and_then(|character| character.avatar.as_deref())
+            .and_then(|avatar| self.avatar_textures.get(avatar))
+            .cloned();
+        let character_color = character_color(char_id, &self.characters, 0);
         let title = format!("{} - 命中详情", stats.name);
         let close_requested = ctx.show_viewport_immediate(
             hit_detail_viewport_id(),
@@ -1190,26 +1521,110 @@ impl DpsApp {
                         close_clicked = secondary_title_bar(ui, &title);
                     });
                 egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::Frame::new()
+                        .fill(if self.dark_mode {
+                            Color32::from_rgb(35, 38, 44)
+                        } else {
+                            Color32::from_rgb(246, 247, 249)
+                        })
+                        .corner_radius(10)
+                        .inner_margin(egui::Margin::same(12))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let avatar_rect = pixel_aligned_rect(
+                                    ui.cursor().min,
+                                    62.0,
+                                    ui.ctx().pixels_per_point(),
+                                );
+                                ui.allocate_rect(avatar_rect, egui::Sense::hover());
+                                ui.painter().rect_filled(
+                                    avatar_rect,
+                                    10.0,
+                                    character_color.gamma_multiply(0.8),
+                                );
+                                if let Some(texture) = &avatar_texture {
+                                    ui.put(
+                                        avatar_rect,
+                                        egui::Image::new((texture.id(), avatar_rect.size()))
+                                            .corner_radius(10),
+                                    );
+                                } else {
+                                    ui.painter().text(
+                                        avatar_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        stats.name.chars().next().unwrap_or('?').to_string(),
+                                        egui::FontId::proportional(25.0),
+                                        Color32::WHITE,
+                                    );
+                                }
+                                ui.add_space(4.0);
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(&stats.name).size(20.0).strong());
+                                    ui.label(
+                                        RichText::new(format!("角色 ID {char_id}"))
+                                            .size(11.0)
+                                            .color(ui.visuals().weak_text_color()),
+                                    );
+                                });
+                                ui.add_space(12.0);
+                                hit_metric_card(
+                                    ui,
+                                    "总输出",
+                                    format_number(stats.damage),
+                                    theme_accent(self.dark_mode),
+                                );
+                                hit_metric_card(
+                                    ui,
+                                    "DPS",
+                                    format_number(stats.dps()),
+                                    theme_accent(self.dark_mode),
+                                );
+                                hit_metric_card(
+                                    ui,
+                                    "输出次数",
+                                    outgoing_count.to_string(),
+                                    ui.visuals().text_color(),
+                                );
+                                hit_metric_card(
+                                    ui,
+                                    "总受击",
+                                    format_number(stats.damage_taken),
+                                    Color32::from_rgb(211, 79, 79),
+                                );
+                                hit_metric_card(
+                                    ui,
+                                    "战斗时间",
+                                    format!("{:.1}s", stats.duration()),
+                                    ui.visuals().text_color(),
+                                );
+                            });
+                        });
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&stats.name).size(18.0).strong());
-                        ui.separator();
-                        ui.monospace(format!("{} 次命中", stats.hits));
-                        ui.separator();
-                        ui.monospace(format!("{:.1}s", stats.duration()));
-                        ui.separator();
                         ui.label(
-                            RichText::new(format!("{} DPS", format_number(stats.dps())))
-                                .color(theme_accent(self.dark_mode))
-                                .strong(),
+                            RichText::new("伤害类型")
+                                .strong()
+                                .color(ui.visuals().weak_text_color()),
                         );
-                        ui.separator();
-                        ui.monospace(format!("总伤害 {}", format_number(stats.damage)));
-                        ui.separator();
-                        ui.monospace(format!("总受击 {}", format_number(stats.damage_taken)));
+                        ui.selectable_value(
+                            &mut self.hit_detail_filter,
+                            HitDetailFilter::All,
+                            format!("全部 {}", outgoing_count + incoming_count),
+                        );
+                        ui.selectable_value(
+                            &mut self.hit_detail_filter,
+                            HitDetailFilter::Outgoing,
+                            format!("输出 {outgoing_count}"),
+                        );
+                        ui.selectable_value(
+                            &mut self.hit_detail_filter,
+                            HitDetailFilter::Incoming,
+                            format!("受击 {incoming_count}"),
+                        );
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     ui.separator();
-                    self.character_hits(ui, char_id);
+                    self.character_hits(ui, char_id, self.hit_detail_filter);
                 });
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
@@ -1255,6 +1670,20 @@ impl DpsApp {
     }
 
     fn debug_contents(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.debug_tab, DebugTab::Packets, "封包");
+            ui.selectable_value(&mut self.debug_tab, DebugTab::Characters, "角色数据");
+            ui.selectable_value(&mut self.debug_tab, DebugTab::Environment, "环境");
+        });
+        ui.separator();
+        match self.debug_tab {
+            DebugTab::Packets => self.debug_packets_contents(ui),
+            DebugTab::Characters => self.debug_characters_contents(ui),
+            DebugTab::Environment => self.debug_environment_contents(ui),
+        }
+    }
+
+    fn debug_environment_contents(&mut self, ui: &mut egui::Ui) {
         egui::CollapsingHeader::new("采集设置与环境")
             .default_open(true)
             .show(ui, |ui| {
@@ -1302,6 +1731,14 @@ impl DpsApp {
                         ui.label("BPF");
                         ui.add(egui::TextEdit::singleline(&mut self.filter).desired_width(220.0));
                         ui.end_row();
+                        ui.label("原始抓包");
+                        let raw_capture_label = self
+                            .raw_capture_path
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "开始实时抓包后自动生成".to_owned());
+                        ui.monospace(raw_capture_label);
+                        ui.end_row();
                     });
                 ui.horizontal(|ui| {
                     if ui.button("重新检测").clicked()
@@ -1310,29 +1747,25 @@ impl DpsApp {
                         self.last_error = Some(error);
                     }
                     ui.label("受击记录已启用");
-                    let can_export = self.capture.is_none()
+                    let can_export_json = self.capture.is_none()
                         && self.replay_thread.is_none()
                         && (!self.state.hits.is_empty() || !self.state.packets.is_empty());
                     if ui
-                        .add_enabled(can_export, egui::Button::new("导出完整抓包 JSON"))
+                        .add_enabled(can_export_json, egui::Button::new("导出解析 JSON"))
                         .clicked()
                     {
                         self.export_capture_info();
                     }
-                    if ui.button("回放 JSONL").clicked()
-                        && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("NTE 命中日志", &["jsonl"])
-                            .pick_file()
+                    let can_export_raw = self.capture.is_none()
+                        && self
+                            .raw_capture_path
+                            .as_ref()
+                            .is_some_and(|path| path.is_file());
+                    if ui
+                        .add_enabled(can_export_raw, egui::Button::new("另存完整 PCAPNG"))
+                        .clicked()
                     {
-                        self.start_replay(path);
-                    }
-                    if ui.button("回放最新日志").clicked() {
-                        match latest_hit_log() {
-                            Some(path) => self.start_replay(path),
-                            None => {
-                                self.last_error = Some("logs 目录中没有命中 JSONL 日志".to_owned());
-                            }
-                        }
+                        self.export_raw_capture();
                     }
                 });
                 ui.horizontal(|ui| {
@@ -1345,6 +1778,9 @@ impl DpsApp {
                     ui.small("导入会清空当前统计，并使用与实时抓包相同的解析流程");
                 });
             });
+    }
+
+    fn debug_packets_contents(&mut self, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.debug_only_hits, "仅显示命中包");
@@ -1363,10 +1799,17 @@ impl DpsApp {
             ));
         });
         ui.separator();
+        let scroll_width = ui.available_width();
         egui::ScrollArea::vertical()
+            .max_width(scroll_width)
+            .auto_shrink([false, false])
             .stick_to_bottom(true)
             .show(ui, |ui| {
-                for packet in self.state.packets.iter().rev().take(500).rev() {
+                ui.set_min_width(ui.available_width());
+                ui.set_max_width(ui.available_width());
+                for (packet_index, packet) in
+                    self.state.packets.iter().rev().take(500).rev().enumerate()
+                {
                     if self.debug_only_hits && packet.parsed_hits == 0 {
                         continue;
                     }
@@ -1385,7 +1828,7 @@ impl DpsApp {
                     {
                         continue;
                     }
-                    egui::CollapsingHeader::new(format!(
+                    let title = format!(
                         "{}  {}  {} -> {}  {} B  ids={:?}  hits={}",
                         format_time(packet.timestamp),
                         packet.direction,
@@ -1394,8 +1837,27 @@ impl DpsApp {
                         packet.payload_len,
                         packet.declared_ids,
                         packet.parsed_hits
-                    ))
-                    .show(ui, |ui| {
+                    );
+                    let id = ui.make_persistent_id((
+                        "debug_packet",
+                        packet_index,
+                        packet.timestamp.to_bits(),
+                        &packet.source,
+                        &packet.destination,
+                    ));
+                    egui::collapsing_header::CollapsingState::load_with_default_open(
+                        ui.ctx(),
+                        id,
+                        false,
+                    )
+                    .show_header(ui, |ui| {
+                        ui.add(
+                            egui::Label::new(title)
+                                .truncate()
+                                .sense(egui::Sense::click()),
+                        );
+                    })
+                    .body(|ui| {
                         if !packet.note.is_empty() {
                             ui.label(
                                 RichText::new(&packet.note).color(Color32::from_rgb(235, 188, 95)),
@@ -1416,6 +1878,218 @@ impl DpsApp {
                     });
                 }
             });
+    }
+
+    fn debug_characters_contents(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("新增 ID");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.character_editor.new_id)
+                    .desired_width(100.0)
+                    .hint_text("例如 1080"),
+            );
+            if ui.button("新增").clicked()
+                && let Err(error) = self.character_editor.start_new()
+            {
+                self.character_editor.message = error;
+            }
+            if ui.button("重新载入").clicked() {
+                let path = data_root().join("characters.json");
+                match CharacterEditorState::load(&path) {
+                    Ok(editor) => {
+                        self.character_editor = editor;
+                        self.status = "已重新载入 characters.json".to_owned();
+                    }
+                    Err(error) => self.character_editor.message = error,
+                }
+            }
+            ui.separator();
+            ui.label(format!(
+                "共 {} 条",
+                self.character_editor.character_ids().len()
+            ));
+        });
+        if !self.character_editor.message.is_empty() {
+            ui.label(
+                RichText::new(&self.character_editor.message)
+                    .color(Color32::from_rgb(235, 188, 95)),
+            );
+        }
+        ui.separator();
+
+        let ids = self.character_editor.character_ids();
+        let search = self.character_editor.search.to_lowercase();
+        ui.columns(2, |columns| {
+            columns[0].set_min_width(240.0);
+            columns[0].set_max_width(320.0);
+            columns[0].horizontal(|ui| {
+                ui.label("搜索");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.character_editor.search)
+                        .desired_width(180.0)
+                        .hint_text("ID / 中文名 / 英文名"),
+                );
+            });
+            columns[0].separator();
+            egui::ScrollArea::vertical()
+                .id_salt("character_editor_list")
+                .auto_shrink([false, false])
+                .show(&mut columns[0], |ui| {
+                    for id in ids {
+                        let row = self
+                            .character_editor
+                            .document
+                            .get("characters")
+                            .and_then(serde_json::Value::as_object)
+                            .and_then(|characters| characters.get(&id))
+                            .and_then(serde_json::Value::as_object);
+                        let name_zh =
+                            row.map_or_else(String::new, |row| json_string_field(row, "name_zh"));
+                        let name_en =
+                            row.map_or_else(String::new, |row| json_string_field(row, "name_en"));
+                        let searchable = format!("{id} {name_zh} {name_en}").to_lowercase();
+                        if !search.is_empty() && !searchable.contains(&search) {
+                            continue;
+                        }
+                        let selected =
+                            self.character_editor.selected_id.as_deref() == Some(id.as_str());
+                        let label = if name_zh.is_empty() {
+                            format!("{id}  {name_en}")
+                        } else {
+                            format!("{id}  {name_zh}  {name_en}")
+                        };
+                        if ui.selectable_label(selected, label).clicked() {
+                            if self.character_editor.dirty {
+                                self.character_editor.message =
+                                    "请先保存当前修改，再切换角色".to_owned();
+                            } else {
+                                self.character_editor.select(&id);
+                            }
+                        }
+                    }
+                });
+
+            columns[1].heading(if self.character_editor.selected_id.is_some() {
+                "编辑角色"
+            } else if self.character_editor.form.id.is_empty() {
+                "选择或新增角色"
+            } else {
+                "新增角色"
+            });
+            columns[1].separator();
+            if self.character_editor.form.id.is_empty() {
+                columns[1].label("从左侧选择一条记录，或输入新 ID 后点击“新增”。");
+                return;
+            }
+            egui::Grid::new("character_editor_form")
+                .num_columns(2)
+                .spacing([12.0, 7.0])
+                .show(&mut columns[1], |ui| {
+                    ui.label("角色 ID");
+                    ui.add_enabled(
+                        self.character_editor.selected_id.is_none(),
+                        egui::TextEdit::singleline(&mut self.character_editor.form.id),
+                    );
+                    ui.end_row();
+                    character_text_field(
+                        ui,
+                        "中文名",
+                        &mut self.character_editor.form.name_zh,
+                        &mut self.character_editor.dirty,
+                    );
+                    character_text_field(
+                        ui,
+                        "英文名",
+                        &mut self.character_editor.form.name_en,
+                        &mut self.character_editor.dirty,
+                    );
+                    character_text_field(
+                        ui,
+                        "Codename",
+                        &mut self.character_editor.form.codename,
+                        &mut self.character_editor.dirty,
+                    );
+                    ui.label("已验证");
+                    if ui
+                        .checkbox(&mut self.character_editor.form.verified, "")
+                        .changed()
+                    {
+                        self.character_editor.dirty = true;
+                    }
+                    ui.end_row();
+                    character_text_field(
+                        ui,
+                        "颜色",
+                        &mut self.character_editor.form.color,
+                        &mut self.character_editor.dirty,
+                    );
+                    character_text_field(
+                        ui,
+                        "头像路径",
+                        &mut self.character_editor.form.avatar,
+                        &mut self.character_editor.dirty,
+                    );
+                });
+            columns[1].add_space(8.0);
+            columns[1].horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        self.character_editor.dirty,
+                        egui::Button::new("保存到 characters.json"),
+                    )
+                    .clicked()
+                {
+                    self.save_character_editor(ui.ctx());
+                }
+                if ui
+                    .add_enabled(self.character_editor.dirty, egui::Button::new("取消修改"))
+                    .clicked()
+                {
+                    self.character_editor.cancel_edit();
+                }
+                if self.character_editor.dirty {
+                    ui.label("有未保存修改");
+                }
+            });
+        });
+    }
+
+    fn save_character_editor(&mut self, ctx: &egui::Context) {
+        let id = match self.character_editor.apply_form() {
+            Ok(id) => id,
+            Err(error) => {
+                self.character_editor.message = error;
+                return;
+            }
+        };
+        let path = data_root().join("characters.json");
+        let text = match serde_json::to_string_pretty(&self.character_editor.document) {
+            Ok(text) => format!("{text}\n"),
+            Err(error) => {
+                self.character_editor.message = format!("角色表序列化失败: {error}");
+                self.character_editor.dirty = true;
+                return;
+            }
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            self.character_editor.message = format!("保存 {} 失败: {error}", path.display());
+            self.character_editor.dirty = true;
+            return;
+        }
+        match load_characters(&path) {
+            Ok(characters) => {
+                self.avatar_textures = load_character_avatars(ctx, &data_root(), &characters);
+                self.characters = Arc::new(characters);
+                self.character_editor.message =
+                    format!("ID {id} 已保存并重新加载；实时抓包中的映射将在下次启动时更新");
+                self.status = "characters.json 已保存".to_owned();
+                self.last_error = None;
+            }
+            Err(error) => {
+                self.character_editor.message = format!("文件已写入，但重新加载失败: {error}");
+                self.character_editor.dirty = true;
+            }
+        }
     }
 }
 
@@ -1695,7 +2369,7 @@ fn apply_rounding_to_process_windows() {
 struct CharacterHitLayout {
     row_width: f32,
     time_x: f32,
-    target_x: f32,
+    type_x: f32,
     damage_x: f32,
     hp_x: f32,
     separators: [f32; 3],
@@ -1704,15 +2378,15 @@ struct CharacterHitLayout {
 impl CharacterHitLayout {
     fn new(available_width: f32) -> Self {
         const LEFT_INSET: f32 = 4.0;
-        const TIME_WIDTH: f32 = 104.0;
-        const TARGET_WIDTH: f32 = 190.0;
-        const DAMAGE_WIDTH: f32 = 120.0;
+        const TIME_WIDTH: f32 = 92.0;
+        const TYPE_WIDTH: f32 = 84.0;
+        const DAMAGE_WIDTH: f32 = 150.0;
         const CELL_PADDING: f32 = 10.0;
 
         let time_x = LEFT_INSET + CELL_PADDING;
-        let target_separator = LEFT_INSET + TIME_WIDTH;
-        let target_x = target_separator + CELL_PADDING;
-        let damage_separator = target_separator + TARGET_WIDTH;
+        let type_separator = LEFT_INSET + TIME_WIDTH;
+        let type_x = type_separator + CELL_PADDING;
+        let damage_separator = type_separator + TYPE_WIDTH;
         let damage_x = damage_separator + CELL_PADDING;
         let hp_separator = damage_separator + DAMAGE_WIDTH;
         let hp_x = hp_separator + CELL_PADDING;
@@ -1720,10 +2394,10 @@ impl CharacterHitLayout {
         Self {
             row_width: available_width,
             time_x,
-            target_x,
+            type_x,
             damage_x,
             hp_x,
-            separators: [target_separator, damage_separator, hp_separator],
+            separators: [type_separator, damage_separator, hp_separator],
         }
     }
 }
@@ -1746,7 +2420,7 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
         color,
     );
     painter.text(
-        egui::pos2(x + layout.target_x, y),
+        egui::pos2(x + layout.type_x, y),
         egui::Align2::LEFT_CENTER,
         "类型",
         font.clone(),
@@ -1768,30 +2442,46 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
     );
 }
 
-fn draw_character_hit_row(ui: &mut egui::Ui, layout: CharacterHitLayout, hit: &crate::model::Hit) {
+fn draw_character_hit_row(
+    ui: &mut egui::Ui,
+    layout: CharacterHitLayout,
+    hit: &crate::model::Hit,
+    max_damage: f64,
+) {
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(layout.row_width, 22.0), egui::Sense::hover());
+        ui.allocate_exact_size(egui::vec2(layout.row_width, 30.0), egui::Sense::hover());
+    let incoming = hit.direction == "incoming";
+    let type_color = if incoming {
+        Color32::from_rgb(211, 79, 79)
+    } else {
+        theme_accent(ui.visuals().dark_mode)
+    };
     ui.painter().rect_filled(
         rect,
-        3.0,
+        5.0,
         if ui.visuals().dark_mode {
             Color32::from_rgba_unmultiplied(255, 255, 255, 8)
         } else {
             Color32::from_rgba_unmultiplied(0, 0, 0, 5)
         },
     );
+    let damage_fraction = (hit.damage / max_damage).clamp(0.0, 1.0) as f32;
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(
+            rect.min,
+            egui::vec2(rect.width() * damage_fraction, rect.height()),
+        ),
+        5.0,
+        type_color.gamma_multiply(if ui.visuals().dark_mode { 0.12 } else { 0.08 }),
+    );
     let y = rect.center().y;
     let x = rect.left();
     let painter = ui.painter();
     let text_color = ui.visuals().text_color();
-    let damage_color = theme_accent(ui.visuals().dark_mode);
+    let damage_color = type_color;
     let mono = egui::FontId::monospace(12.0);
     draw_hit_column_separators(painter, rect, layout);
-    let hit_type = if hit.direction == "incoming" {
-        "受击"
-    } else {
-        "输出"
-    };
+    let hit_type = if incoming { "受击" } else { "输出" };
     let time = format_short_time(hit.timestamp);
     let damage = format_number(hit.damage);
     let target_hp = format!(
@@ -1808,34 +2498,101 @@ fn draw_character_hit_row(ui: &mut egui::Ui, layout: CharacterHitLayout, hit: &c
         mono.clone(),
         text_color,
     );
+    painter.rect_filled(
+        egui::Rect::from_center_size(
+            egui::pos2(x + layout.type_x + 26.0, y),
+            egui::vec2(48.0, 20.0),
+        ),
+        10.0,
+        type_color,
+    );
     painter.text(
-        egui::pos2(x + layout.target_x, y),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(x + layout.type_x + 26.0, y),
+        egui::Align2::CENTER_CENTER,
         hit_type,
-        mono.clone(),
-        text_color,
+        egui::FontId::proportional(11.0),
+        Color32::WHITE,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
         egui::Align2::LEFT_CENTER,
         &damage,
-        mono.clone(),
+        egui::FontId::monospace(14.0),
         damage_color,
     );
+    let hp_fraction = (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32;
+    let hp_bar_left = x + layout.hp_x;
+    let hp_bar_right = (rect.right() - 10.0).min(ui.clip_rect().right() - 10.0);
+    let hp_bar_rect = egui::Rect::from_min_max(
+        egui::pos2(hp_bar_left, rect.bottom() - 7.0),
+        egui::pos2(hp_bar_right.max(hp_bar_left), rect.bottom() - 4.0),
+    );
+    painter.rect_filled(hp_bar_rect, 1.5, ui.visuals().faint_bg_color);
+    painter.rect_filled(
+        egui::Rect::from_min_size(
+            hp_bar_rect.min,
+            egui::vec2(hp_bar_rect.width() * hp_fraction, hp_bar_rect.height()),
+        ),
+        1.5,
+        if hp_fraction > 0.5 {
+            Color32::from_rgb(75, 168, 105)
+        } else if hp_fraction > 0.2 {
+            Color32::from_rgb(218, 154, 55)
+        } else {
+            Color32::from_rgb(211, 79, 79)
+        },
+    );
     painter.text(
-        egui::pos2(x + layout.hp_x, y),
+        egui::pos2(x + layout.hp_x, y - 3.0),
         egui::Align2::LEFT_CENTER,
         &target_hp,
-        mono,
+        mono.clone(),
         text_color,
     );
+    if let Some(target_name) = hit.target_name.as_deref() {
+        painter.text(
+            egui::pos2(rect.right() - 10.0, y - 3.0),
+            egui::Align2::RIGHT_CENTER,
+            target_name,
+            egui::FontId::proportional(10.0),
+            ui.visuals().weak_text_color(),
+        );
+    }
     if response.hovered() {
-        response.on_hover_text(if hit.direction == "incoming" {
+        response.on_hover_text(if incoming {
             "角色受到的伤害"
         } else {
             "角色造成的伤害"
         });
     }
+}
+
+fn hit_metric_card(ui: &mut egui::Ui, label: &str, value: String, color: Color32) {
+    egui::Frame::new()
+        .fill(if ui.visuals().dark_mode {
+            Color32::from_rgba_unmultiplied(255, 255, 255, 8)
+        } else {
+            Color32::WHITE
+        })
+        .corner_radius(6)
+        .inner_margin(egui::Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.set_min_width(92.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    RichText::new(value)
+                        .monospace()
+                        .size(15.0)
+                        .strong()
+                        .color(color),
+                );
+                ui.label(
+                    RichText::new(label)
+                        .size(10.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            });
+        });
 }
 
 fn draw_hit_column_separators(
@@ -1859,6 +2616,13 @@ fn draw_hit_column_separators(
 
 fn default_export_filename() -> String {
     format!("nte_capture_{}.json", Local::now().format("%Y%m%d_%H%M%S"))
+}
+
+fn default_raw_capture_path() -> PathBuf {
+    data_root().join("logs").join(format!(
+        "nte_raw_{}.pcapng",
+        Local::now().format("%Y%m%d_%H%M%S_%3f")
+    ))
 }
 
 fn json_option_time(value: Option<f64>) -> String {
@@ -1899,6 +2663,40 @@ fn json_string(value: &str) -> String {
     }
     escaped.push('"');
     escaped
+}
+
+fn json_string_field(row: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
+    row.get(key)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn set_json_string(row: &mut serde_json::Map<String, serde_json::Value>, key: &str, value: &str) {
+    row.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
+}
+
+fn set_optional_json_string(
+    row: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: &str,
+) {
+    if value.is_empty() {
+        row.remove(key);
+    } else {
+        set_json_string(row, key, value);
+    }
+}
+
+fn character_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, dirty: &mut bool) {
+    ui.label(label);
+    if ui
+        .add(egui::TextEdit::singleline(value).desired_width(f32::INFINITY))
+        .changed()
+    {
+        *dirty = true;
+    }
+    ui.end_row();
 }
 
 fn write_abyss_half_json(
@@ -2084,19 +2882,6 @@ fn parse_hex_color(value: &str) -> Option<Color32> {
     ))
 }
 
-fn latest_hit_log() -> Option<PathBuf> {
-    std::fs::read_dir(data_root().join("logs"))
-        .ok()?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("nte_hits_") && name.ends_with(".jsonl"))
-        })
-        .max()
-}
-
 fn data_root() -> PathBuf {
     if PathBuf::from("characters.json").is_file() {
         return PathBuf::from(".");
@@ -2112,6 +2897,126 @@ fn data_root() -> PathBuf {
 #[cfg(test)]
 mod avatar_tests {
     use super::*;
+
+    #[test]
+    fn character_editor_preserves_unknown_fields_and_adds_rows() {
+        let mut editor = CharacterEditorState {
+            document: serde_json::json!({
+                "version": 2,
+                "description": "keep me",
+                "characters": {
+                    "1010": {
+                        "name_zh": "旧名称",
+                        "name_en": "Nanally",
+                        "codename": "Nanally",
+                        "verified": true,
+                        "custom_field": 42
+                    }
+                }
+            }),
+            selected_id: None,
+            form: CharacterEditForm::default(),
+            search: String::new(),
+            new_id: "1080".to_owned(),
+            dirty: false,
+            message: String::new(),
+            cancel_selection: None,
+        };
+
+        editor.start_new().unwrap();
+        editor.form.name_zh = "测试角色".to_owned();
+        editor.form.name_en = "Test Character".to_owned();
+        editor.form.codename = "Test".to_owned();
+        editor.form.color = "#123456".to_owned();
+        assert_eq!(editor.apply_form().unwrap(), "1080");
+
+        assert_eq!(editor.document["description"], "keep me");
+        assert_eq!(editor.document["characters"]["1010"]["custom_field"], 42);
+        assert_eq!(editor.document["characters"]["1080"]["name_zh"], "测试角色");
+        assert_eq!(editor.document["characters"]["1080"]["color"], "#123456");
+    }
+
+    #[test]
+    fn character_editor_rejects_invalid_color() {
+        let mut editor = CharacterEditorState {
+            document: serde_json::json!({"characters": {}}),
+            selected_id: None,
+            form: CharacterEditForm {
+                id: "1080".to_owned(),
+                name_zh: "测试".to_owned(),
+                color: "red".to_owned(),
+                ..Default::default()
+            },
+            search: String::new(),
+            new_id: String::new(),
+            dirty: true,
+            message: String::new(),
+            cancel_selection: None,
+        };
+
+        assert_eq!(editor.apply_form().unwrap_err(), "颜色必须是 #RRGGBB 格式");
+    }
+
+    #[test]
+    fn character_editor_cancels_new_row_and_returns_to_previous_selection() {
+        let mut editor = CharacterEditorState {
+            document: serde_json::json!({
+                "characters": {
+                    "1010": {
+                        "name_zh": "娜娜莉",
+                        "name_en": "Nanally"
+                    }
+                }
+            }),
+            selected_id: None,
+            form: CharacterEditForm::default(),
+            search: String::new(),
+            new_id: String::new(),
+            dirty: false,
+            message: String::new(),
+            cancel_selection: None,
+        };
+
+        editor.select("1010");
+        editor.new_id = "1080".to_owned();
+        editor.start_new().unwrap();
+        editor.form.name_zh = "未保存角色".to_owned();
+        editor.cancel_edit();
+
+        assert_eq!(editor.selected_id.as_deref(), Some("1010"));
+        assert_eq!(editor.form.name_zh, "娜娜莉");
+        assert!(!editor.dirty);
+        assert!(editor.document["characters"].get("1080").is_none());
+    }
+
+    #[test]
+    fn character_editor_cancels_changes_to_existing_row() {
+        let mut editor = CharacterEditorState {
+            document: serde_json::json!({
+                "characters": {
+                    "1010": {
+                        "name_zh": "娜娜莉",
+                        "name_en": "Nanally"
+                    }
+                }
+            }),
+            selected_id: None,
+            form: CharacterEditForm::default(),
+            search: String::new(),
+            new_id: String::new(),
+            dirty: false,
+            message: String::new(),
+            cancel_selection: None,
+        };
+
+        editor.select("1010");
+        editor.form.name_zh = "临时修改".to_owned();
+        editor.dirty = true;
+        editor.cancel_edit();
+
+        assert_eq!(editor.form.name_zh, "娜娜莉");
+        assert!(!editor.dirty);
+    }
 
     #[test]
     fn loads_avatar_from_character_json_relative_path() {

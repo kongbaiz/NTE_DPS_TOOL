@@ -6,16 +6,19 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
+use eframe::egui;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(not(feature = "no_debug"))]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F12;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, KBDLLHOOKSTRUCT, MSG, PM_REMOVE, PeekMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, GetForegroundWindow, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, MSG, PM_REMOVE,
+    PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+    WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 static HOTKEY_SENDER: OnceLock<Sender<HotkeyEvent>> = OnceLock::new();
+static HOTKEY_CONTEXT: OnceLock<egui::Context> = OnceLock::new();
 static HOME_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(not(feature = "no_debug"))]
 static F12_DOWN: AtomicBool = AtomicBool::new(false);
@@ -28,21 +31,36 @@ pub enum HotkeyEvent {
     RegistrationFailed(&'static str),
 }
 
+fn send_hotkey(event: HotkeyEvent) {
+    if let Some(sender) = HOTKEY_SENDER.get() {
+        let _ = sender.send(event);
+    }
+    if let Some(context) = HOTKEY_CONTEXT.get() {
+        context.request_repaint();
+    }
+}
+
 unsafe extern "system" fn low_level_keyboard_proc(
     code: i32,
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
     if code >= 0 {
+        let foreground = unsafe { GetForegroundWindow() };
+        let mut foreground_process_id = 0_u32;
+        if !foreground.is_null() {
+            unsafe {
+                GetWindowThreadProcessId(foreground, &mut foreground_process_id);
+            }
+        }
+        if foreground_process_id == std::process::id() {
+            return unsafe { CallNextHookEx(std::ptr::null_mut(), code, w_param, l_param) };
+        }
         let keyboard = unsafe { &*(l_param as *const KBDLLHOOKSTRUCT) };
         if keyboard.vkCode == VK_HOME as u32 {
             match w_param as u32 {
-                WM_KEYDOWN | WM_SYSKEYDOWN => {
-                    if !HOME_DOWN.swap(true, Ordering::Relaxed)
-                        && let Some(sender) = HOTKEY_SENDER.get()
-                    {
-                        let _ = sender.send(HotkeyEvent::TogglePassthrough);
-                    }
+                WM_KEYDOWN | WM_SYSKEYDOWN if !HOME_DOWN.swap(true, Ordering::Relaxed) => {
+                    send_hotkey(HotkeyEvent::TogglePassthrough);
                 }
                 WM_KEYUP | WM_SYSKEYUP => {
                     HOME_DOWN.store(false, Ordering::Relaxed);
@@ -53,12 +71,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
         #[cfg(not(feature = "no_debug"))]
         if keyboard.vkCode == VK_F12 as u32 {
             match w_param as u32 {
-                WM_KEYDOWN | WM_SYSKEYDOWN => {
-                    if !F12_DOWN.swap(true, Ordering::Relaxed)
-                        && let Some(sender) = HOTKEY_SENDER.get()
-                    {
-                        let _ = sender.send(HotkeyEvent::ToggleDebug);
-                    }
+                WM_KEYDOWN | WM_SYSKEYDOWN if !F12_DOWN.swap(true, Ordering::Relaxed) => {
+                    send_hotkey(HotkeyEvent::ToggleDebug);
                 }
                 WM_KEYUP | WM_SYSKEYUP => {
                     F12_DOWN.store(false, Ordering::Relaxed);
@@ -76,9 +90,10 @@ pub struct HotkeyHandle {
 }
 
 impl HotkeyHandle {
-    pub fn start() -> (Self, Receiver<HotkeyEvent>) {
+    pub fn start(context: egui::Context) -> (Self, Receiver<HotkeyEvent>) {
         let (sender, receiver) = unbounded();
         let _ = HOTKEY_SENDER.set(sender.clone());
+        let _ = HOTKEY_CONTEXT.set(context);
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
         let thread = thread::spawn(move || {
@@ -91,7 +106,9 @@ impl HotkeyHandle {
                 )
             };
             if hook.is_null() {
-                let _ = sender.send(HotkeyEvent::RegistrationFailed("Home (低级键盘钩子)"));
+                let _ = sender.send(HotkeyEvent::RegistrationFailed(
+                    "Home / F12（低级键盘钩子）",
+                ));
                 return;
             }
 

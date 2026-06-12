@@ -239,17 +239,7 @@ impl AbyssRunState {
     pub fn apply_event(&mut self, event: AbyssEvent) {
         match event {
             AbyssEvent::RestartDetected { timestamp } => {
-                let switched_immediately_before = self.active_half.is_some()
-                    && self.last_half_switch_at.is_some_and(|switch_at| {
-                        timestamp >= switch_at
-                            && timestamp - switch_at <= ABYSS_RESTART_STAGE_WINDOW_SECONDS
-                    })
-                    && self.last_half_switch_from.is_some();
-                if switched_immediately_before {
-                    self.clear_restarted_floor();
-                    self.pending_restart_at = None;
-                    self.pending_restart_half = None;
-                } else if let Some(half) = self.active_half {
+                if let Some(half) = self.active_half {
                     self.clear_restarted_half(half, timestamp);
                     self.pending_restart_at = Some(timestamp);
                     self.pending_restart_half = Some(half);
@@ -574,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn clears_both_halves_when_half_switch_arrives_before_restart_marker() {
+    fn restart_after_half_switch_only_clears_the_active_half() {
         let mut state = CombatState::default();
         state.apply_abyss_event(AbyssEvent::Stage {
             timestamp: 1.0,
@@ -597,7 +587,7 @@ mod tests {
         state.apply_abyss_event(AbyssEvent::RestartDetected { timestamp: 6.0 });
 
         assert!(state.abyss.first_half.hits.is_empty());
-        assert!(state.abyss.second_half.hits.is_empty());
+        assert_eq!(state.abyss.second_half.hits.len(), 1);
         assert_eq!(state.abyss.active_half, Some(AbyssHalf::First));
     }
 

@@ -1,335 +1,335 @@
 {
-  "version": 2,
-  "description": "NTE char_id → character name mapping. verified=訓練模式手動驗證, unverified=1000+ID推測(未驗證)",
-  "note": "char_id = 1000 + datamined_ID (未驗證規律, 來源: github.com/donutman07/Neverness-To-Everness-NTE-Character-IDs)",
   "characters": {
-    "1033": {
-      "name_zh": "阿德勒",
-      "name_en": "Adler",
-      "codename": "Adler",
-      "verified": true,
-      "color": "#870803",
-      "avatar": "Character_Adler.png"
-    },
-    "1015": {
-      "name_zh": "阿德勒",
-      "name_en": "Adler",
-      "codename": "Adler",
-      "verified": false,
-      "color": "#870803",
-      "avatar": "Character_Adler.png"
-    },
-    "1035": {
-      "name_zh": "Adonis",
-      "name_en": "Adonis",
-      "codename": "Adonis",
-      "verified": false
-    },
-    "1057": {
-      "name_zh": "Akane Rin",
-      "name_en": "Akane Rin",
-      "codename": "Akane",
-      "verified": false
-    },
-    "1018": {
-      "name_zh": "Alphard",
-      "name_en": "Alphard",
-      "codename": "Alphard",
-      "verified": false
-    },
-    "1032": {
-      "name_zh": "Aniela",
-      "name_en": "Aniela",
-      "codename": "Aniela",
-      "verified": false
-    },
-    "1056": {
-      "name_zh": "Bat",
-      "name_en": "Bat",
-      "codename": "Bat",
-      "verified": false
-    },
-    "1042": {
-      "name_zh": "Raven",
-      "name_en": "Raven",
-      "codename": "Blackbird",
-      "verified": false
-    },
-    "1023": {
-      "name_zh": "白藏",
-      "name_en": "Baicang",
-      "codename": "Cang",
-      "verified": false,
-      "color": "#95a2b0",
-      "avatar": "Character_cang.png"
-    },
-    "1071": {
-      "name_zh": "Chaos",
-      "name_en": "Chaos",
-      "codename": "Chaos",
-      "verified": false
-    },
-    "1005": {
-      "name_zh": "達芙蒂爾",
-      "name_en": "Daffodill",
-      "codename": "Daffodill",
-      "verified": false,
-      "color": "#346295",
-      "avatar": "Character_daffodill.png"
-    },
-    "1054": {
-      "name_zh": "達芙蒂爾",
-      "name_en": "Daffodill",
-      "codename": "Daffodill",
-      "verified": false,
-      "color": "#346295",
-      "avatar": "Character_daffodill.png"
-    },
-    "1021": {
-      "name_zh": "埃德嘉",
-      "name_en": "Edgar",
-      "codename": "Edgar",
-      "verified": true,
-      "color": "#84a8d0",
-      "avatar": "Character_edgar.png"
-    },
     "1002": {
-      "name_zh": "埃德嘉",
-      "name_en": "Edgar",
+      "avatar": "Character_edgar.png",
       "codename": "Edgar",
-      "verified": false,
       "color": "#84a8d0",
-      "avatar": "Character_edgar.png"
-    },
-    "1038": {
-      "name_zh": "Jerma",
-      "name_en": "Jerma",
-      "codename": "Elms",
-      "verified": false
-    },
-    "1034": {
-      "name_zh": "Ellie",
-      "name_en": "Ellie",
-      "codename": "Eri",
-      "verified": false
-    },
-    "1041": {
-      "name_zh": "Exe",
-      "name_en": "Exe",
-      "codename": "Exe",
-      "verified": false
-    },
-    "1022": {
-      "name_zh": "法帝婭",
-      "name_en": "Fadia",
-      "codename": "Fadia",
-      "verified": false,
-      "color": "#8903c6",
-      "avatar": "Character_fadia.png"
-    },
-    "1039": {
-      "name_zh": "法帝婭",
-      "name_en": "Fadia",
-      "codename": "Fadia",
-      "verified": false,
-      "color": "#8903c6",
-      "avatar": "Character_fadia.png"
-    },
-    "1051": {
-      "name_zh": "零(女)",
-      "name_en": "Zero F",
-      "codename": "Female",
-      "verified": true,
-      "color": "#ffffff",
-      "avatar": "Character_player_F.png"
-    },
-    "1009": {
-      "name_zh": "零(女)",
-      "name_en": "Zero F",
-      "codename": "Female",
-      "verified": false,
-      "color": "#ffffff",
-      "avatar": "Character_player_F.png"
-    },
-    "1017": {
-      "name_zh": "哈尼婭",
-      "name_en": "Haniel",
-      "codename": "Haniel",
-      "verified": false,
-      "color": "#a83c78",
-      "avatar": "Character_Haniel.png"
-    },
-    "1020": {
-      "name_zh": "哈尼亚",
-      "name_en": "Haniel",
-      "codename": "Haniel",
-      "verified": false,
-      "color": "#a83c78",
-      "avatar": "res/player_020_256.png"
-    },
-    "1025": {
-      "name_zh": "哈索爾",
-      "name_en": "Hathor",
-      "codename": "Hathor",
-      "verified": false,
-      "color": "#737374",
-      "avatar": "Character_Hathor.png"
-    },
-    "1026": {
-      "name_zh": "Illica",
-      "name_en": "Illica",
-      "codename": "Illica",
-      "verified": false
-    },
-    "1030": {
-      "name_zh": "Iskra",
-      "name_en": "Iskra",
-      "codename": "Iskra",
-      "verified": false
-    },
-    "1024": {
-      "name_zh": "Jenson",
-      "name_en": "Jenson",
-      "codename": "Jenson",
-      "verified": false
-    },
-    "1013": {
-      "name_zh": "浔",
-      "name_en": "Hotori",
-      "codename": "Jin",
-      "verified": false,
-      "color": "#950742",
-      "avatar": "res/player_052_256.png"
-    },
-      "1052": {
-      "name_zh": "浔",
-      "name_en": "Hotori",
-      "codename": "Jin",
-      "verified": false,
-      "color": "#950742",
-      "avatar": "res/player_052_256.png"
-    },
-    "1055": {
-      "name_zh": "九原",
-      "name_en": "Jiuyuan",
-      "codename": "Kuhara",
-      "verified": true,
-      "color": "#6d5590",
-      "avatar": "Character_Kuhara.png"
-    },
-    "1014": {
-      "name_zh": "九原",
-      "name_en": "Jiuyuan",
-      "codename": "Kuhara",
-      "verified": false,
-      "color": "#6d5590",
-      "avatar": "Character_Kuhara.png"
-    },
-    "1004": {
-      "name_zh": "安魂曲",
-      "name_en": "Lacrimosa",
-      "codename": "Lacrimosa",
-      "verified": false,
-      "color": "#c3c3c5",
-      "avatar": "res/player_004_256.png"
-    },
-    "1046": {
-      "name_zh": "零(男)",
-      "name_en": "Zero M",
-      "codename": "Male",
-      "verified": false,
-      "color": "#ffffff",
-      "avatar": "Character_player_M.png"
-    },
-    "1019": {
-      "name_zh": "薄荷",
-      "name_en": "Mint",
-      "codename": "Mint",
-      "verified": true,
-      "color": "#2aacba",
-      "avatar": "Character_Mint.png"
-    },
-    "1027": {
-      "name_zh": "Mismo",
-      "name_en": "Mismo",
-      "codename": "Mismo",
-      "verified": false
-    },
-    "1070": {
-      "name_zh": "海月",
-      "name_en": "Mitsuki",
-      "codename": "mitsuki",
-      "verified": false,
-      "color": "#7ea1c8",
-      "avatar": "Character_misuki.png"
-    },
-    "1010": {
-      "name_zh": "娜娜莉",
-      "name_en": "Nanally",
-      "codename": "Nanally",
-      "verified": true,
-      "color": "#f52859",
-      "avatar": "res/player_010_256.png"
-    },
-    "1075": {
-      "name_zh": "Iroi",
-      "name_en": "Iroi",
-      "codename": "oneiroi",
-      "verified": false
-    },
-    "1028": {
-      "name_zh": "Otro",
-      "name_en": "Otro",
-      "codename": "Otro",
-      "verified": false
-    },
-    "1031": {
-      "name_zh": "Palomino",
-      "name_en": "Palomino",
-      "codename": "Palomino",
-      "verified": false
-    },
-    "1073": {
-      "name_zh": "小吱",
-      "name_en": "Chiz",
-      "codename": "chiichan",
-      "verified": false,
-      "color": "#f9b5b5",
-      "avatar": "Character_chiichan.png"
-    },
-    "1072": {
-      "name_zh": "Linko",
-      "name_en": "Linko",
-      "codename": "Radio",
+      "name_en": "Edgar",
+      "name_zh": "埃德嘉",
       "verified": false
     },
     "1003": {
-      "name_zh": "早雾",
-      "name_en": "Sagiri",
+      "avatar": "res/player_003_256.png",
       "codename": "Sagiri",
-      "verified": true,
       "color": "#c34804",
-      "avatar": "res/player_003_256.png"
+      "name_en": "Sagiri",
+      "name_zh": "早雾",
+      "verified": true
     },
-    "1076": {
-      "name_zh": "Shinku",
-      "name_en": "Shinku",
-      "codename": "Shinku",
+    "1004": {
+      "avatar": "res/player_004_256.png",
+      "codename": "Lacrimosa",
+      "color": "#c3c3c5",
+      "name_en": "Lacrimosa",
+      "name_zh": "安魂曲",
+      "verified": true
+    },
+    "1005": {
+      "avatar": "Character_daffodill.png",
+      "codename": "Daffodill",
+      "color": "#346295",
+      "name_en": "Daffodill",
+      "name_zh": "達芙蒂爾",
       "verified": false
     },
     "1008": {
-      "name_zh": "翳",
-      "name_en": "Skia",
+      "avatar": "Character_skia.png",
       "codename": "Skia",
-      "verified": true,
       "color": "#893e4e",
-      "avatar": "Character_skia.png"
+      "name_en": "Skia",
+      "name_zh": "翳",
+      "verified": true
+    },
+    "1009": {
+      "avatar": "Character_player_F.png",
+      "codename": "Female",
+      "color": "#ffffff",
+      "name_en": "Zero F",
+      "name_zh": "零(女)",
+      "verified": false
+    },
+    "1010": {
+      "avatar": "res/player_010_256.png",
+      "codename": "Nanally",
+      "color": "#f52859",
+      "name_en": "Nanally",
+      "name_zh": "娜娜莉",
+      "verified": true
+    },
+    "1013": {
+      "avatar": "res/player_052_256.png",
+      "codename": "Jin",
+      "color": "#950742",
+      "name_en": "Hotori",
+      "name_zh": "浔",
+      "verified": false
+    },
+    "1014": {
+      "avatar": "Character_Kuhara.png",
+      "codename": "Kuhara",
+      "color": "#6d5590",
+      "name_en": "Jiuyuan",
+      "name_zh": "九原",
+      "verified": false
+    },
+    "1015": {
+      "avatar": "Character_Adler.png",
+      "codename": "Adler",
+      "color": "#870803",
+      "name_en": "Adler",
+      "name_zh": "阿德勒",
+      "verified": false
+    },
+    "1017": {
+      "avatar": "Character_Haniel.png",
+      "codename": "Haniel",
+      "color": "#a83c78",
+      "name_en": "Haniel",
+      "name_zh": "哈尼婭",
+      "verified": false
+    },
+    "1018": {
+      "codename": "Alphard",
+      "name_en": "Alphard",
+      "name_zh": "Alphard",
+      "verified": false
+    },
+    "1019": {
+      "avatar": "Character_Mint.png",
+      "codename": "Mint",
+      "color": "#2aacba",
+      "name_en": "Mint",
+      "name_zh": "薄荷",
+      "verified": true
+    },
+    "1020": {
+      "avatar": "res/player_020_256.png",
+      "codename": "Haniel",
+      "color": "#a83c78",
+      "name_en": "Haniel",
+      "name_zh": "哈尼亚",
+      "verified": false
+    },
+    "1021": {
+      "avatar": "Character_edgar.png",
+      "codename": "Edgar",
+      "color": "#84a8d0",
+      "name_en": "Edgar",
+      "name_zh": "埃德嘉",
+      "verified": true
+    },
+    "1022": {
+      "avatar": "Character_fadia.png",
+      "codename": "Fadia",
+      "color": "#8903c6",
+      "name_en": "Fadia",
+      "name_zh": "法帝婭",
+      "verified": false
+    },
+    "1023": {
+      "avatar": "Character_cang.png",
+      "codename": "Cang",
+      "color": "#95a2b0",
+      "name_en": "Baicang",
+      "name_zh": "白藏",
+      "verified": false
+    },
+    "1024": {
+      "codename": "Jenson",
+      "name_en": "Jenson",
+      "name_zh": "Jenson",
+      "verified": false
+    },
+    "1025": {
+      "avatar": "Character_Hathor.png",
+      "codename": "Hathor",
+      "color": "#737374",
+      "name_en": "Hathor",
+      "name_zh": "哈索爾",
+      "verified": false
+    },
+    "1026": {
+      "codename": "Illica",
+      "name_en": "Illica",
+      "name_zh": "Illica",
+      "verified": false
+    },
+    "1027": {
+      "codename": "Mismo",
+      "name_en": "Mismo",
+      "name_zh": "Mismo",
+      "verified": false
+    },
+    "1028": {
+      "codename": "Otro",
+      "name_en": "Otro",
+      "name_zh": "Otro",
+      "verified": false
+    },
+    "1030": {
+      "codename": "Iskra",
+      "name_en": "Iskra",
+      "name_zh": "Iskra",
+      "verified": false
+    },
+    "1031": {
+      "codename": "Palomino",
+      "name_en": "Palomino",
+      "name_zh": "Palomino",
+      "verified": false
+    },
+    "1032": {
+      "codename": "Aniela",
+      "name_en": "Aniela",
+      "name_zh": "Aniela",
+      "verified": false
+    },
+    "1033": {
+      "avatar": "Character_Adler.png",
+      "codename": "Adler",
+      "color": "#870803",
+      "name_en": "Adler",
+      "name_zh": "阿德勒",
+      "verified": true
+    },
+    "1034": {
+      "codename": "Eri",
+      "name_en": "Ellie",
+      "name_zh": "Ellie",
+      "verified": false
+    },
+    "1035": {
+      "codename": "Adonis",
+      "name_en": "Adonis",
+      "name_zh": "Adonis",
+      "verified": false
     },
     "1036": {
-      "name_zh": "Zankou",
-      "name_en": "Zankou",
       "codename": "Zankou",
+      "name_en": "Zankou",
+      "name_zh": "Zankou",
+      "verified": false
+    },
+    "1038": {
+      "codename": "Elms",
+      "name_en": "Jerma",
+      "name_zh": "Jerma",
+      "verified": false
+    },
+    "1039": {
+      "avatar": "Character_fadia.png",
+      "codename": "Fadia",
+      "color": "#8903c6",
+      "name_en": "Fadia",
+      "name_zh": "法帝婭",
+      "verified": false
+    },
+    "1041": {
+      "codename": "Exe",
+      "name_en": "Exe",
+      "name_zh": "Exe",
+      "verified": false
+    },
+    "1042": {
+      "codename": "Blackbird",
+      "name_en": "Raven",
+      "name_zh": "Raven",
+      "verified": false
+    },
+    "1046": {
+      "avatar": "Character_player_M.png",
+      "codename": "Male",
+      "color": "#ffffff",
+      "name_en": "Zero M",
+      "name_zh": "零(男)",
+      "verified": false
+    },
+    "1051": {
+      "avatar": "Character_player_F.png",
+      "codename": "Female",
+      "color": "#ffffff",
+      "name_en": "Zero F",
+      "name_zh": "零(女)",
+      "verified": true
+    },
+    "1052": {
+      "avatar": "res/player_052_256.png",
+      "codename": "Jin",
+      "color": "#950742",
+      "name_en": "Hotori",
+      "name_zh": "浔",
+      "verified": false
+    },
+    "1054": {
+      "avatar": "Character_daffodill.png",
+      "codename": "Daffodill",
+      "color": "#346295",
+      "name_en": "Daffodill",
+      "name_zh": "達芙蒂爾",
+      "verified": false
+    },
+    "1055": {
+      "avatar": "Character_Kuhara.png",
+      "codename": "Kuhara",
+      "color": "#6d5590",
+      "name_en": "Jiuyuan",
+      "name_zh": "九原",
+      "verified": true
+    },
+    "1056": {
+      "codename": "Bat",
+      "name_en": "Bat",
+      "name_zh": "Bat",
+      "verified": false
+    },
+    "1057": {
+      "codename": "Akane",
+      "name_en": "Akane Rin",
+      "name_zh": "Akane Rin",
+      "verified": false
+    },
+    "1070": {
+      "avatar": "Character_misuki.png",
+      "codename": "mitsuki",
+      "color": "#7ea1c8",
+      "name_en": "Mitsuki",
+      "name_zh": "海月",
+      "verified": false
+    },
+    "1071": {
+      "codename": "Chaos",
+      "name_en": "Chaos",
+      "name_zh": "Chaos",
+      "verified": false
+    },
+    "1072": {
+      "codename": "Radio",
+      "name_en": "Linko",
+      "name_zh": "Linko",
+      "verified": false
+    },
+    "1073": {
+      "avatar": "Character_chiichan.png",
+      "codename": "chiichan",
+      "color": "#f9b5b5",
+      "name_en": "Chiz",
+      "name_zh": "小吱",
+      "verified": false
+    },
+    "1075": {
+      "codename": "oneiroi",
+      "name_en": "Iroi",
+      "name_zh": "Iroi",
+      "verified": false
+    },
+    "1076": {
+      "codename": "Shinku",
+      "name_en": "Shinku",
+      "name_zh": "Shinku",
       "verified": false
     }
-  }
+  },
+  "description": "NTE char_id → character name mapping. verified=訓練模式手動驗證, unverified=1000+ID推測(未驗證)",
+  "note": "char_id = 1000 + datamined_ID (未驗證規律, 來源: github.com/donutman07/Neverness-To-Everness-NTE-Character-IDs)",
+  "version": 2
 }
