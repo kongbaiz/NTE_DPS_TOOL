@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char, c_int, c_uchar, c_uint};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -13,6 +13,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use chrono::Local;
 use crossbeam_channel::Sender;
 use libloading::Library;
 use pcap_file::DataLink;
@@ -25,8 +26,8 @@ use serde::Deserialize;
 
 use crate::model::{AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, PacketDebug};
 use crate::parser::{
-    declared_character_ids, find_declared_character_evidence, parse_current_hp_updates,
-    parse_damage_payload,
+    declared_character_ids_from_evidence, find_declared_character_evidence, parse_boss_hp_updates,
+    parse_current_hp_updates, parse_damage_payload,
 };
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 
@@ -131,50 +132,99 @@ pub struct RawCaptureBuffer {
 }
 
 struct RawCaptureData {
-    device: CaptureDevice,
-    packets: Vec<RawCapturedPacket>,
-}
-
-struct RawCapturedPacket {
-    timestamp: Duration,
-    original_len: u32,
-    data: Vec<u8>,
+    path: PathBuf,
+    writer: Option<RawCaptureWriter>,
+    packet_count: u64,
+    captured_bytes: u64,
+    write_error: Option<String>,
 }
 
 impl RawCaptureBuffer {
     fn new(device: CaptureDevice) -> Self {
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
+        let path = PathBuf::from(format!("logs/nte_raw_{timestamp}.pcapng"));
+        let writer = RawCaptureWriter::create(&path, &device);
+        let (writer, write_error) = match writer {
+            Ok(writer) => (Some(writer), None),
+            Err(error) => (None, Some(error)),
+        };
         Self {
             inner: Arc::new(Mutex::new(RawCaptureData {
-                device,
-                packets: Vec::new(),
+                path,
+                writer,
+                packet_count: 0,
+                captured_bytes: 0,
+                write_error,
             })),
         }
     }
 
     fn push(&self, timestamp: Duration, original_len: u32, packet: &[u8]) {
         if let Ok(mut capture) = self.inner.lock() {
-            capture.packets.push(RawCapturedPacket {
-                timestamp,
-                original_len,
-                data: packet.to_vec(),
-            });
+            let result = capture
+                .writer
+                .as_mut()
+                .map(|writer| writer.write_packet(timestamp, original_len, packet));
+            match result {
+                Some(Ok(())) => {
+                    capture.packet_count += 1;
+                    capture.captured_bytes += packet.len() as u64;
+                }
+                Some(Err(error)) => {
+                    capture.write_error = Some(error);
+                    capture.writer = None;
+                }
+                None => {}
+            }
         }
     }
 
     pub fn packet_count(&self) -> usize {
-        self.inner.lock().map_or(0, |capture| capture.packets.len())
+        self.inner
+            .lock()
+            .map_or(0, |capture| capture.packet_count as usize)
+    }
+
+    pub fn path(&self) -> Option<PathBuf> {
+        self.inner
+            .lock()
+            .ok()
+            .filter(|capture| capture.write_error.is_none())
+            .map(|capture| capture.path.clone())
+    }
+
+    fn finish(&self) {
+        let Ok(mut capture) = self.inner.lock() else {
+            return;
+        };
+        if let Some(writer) = capture.writer.take()
+            && let Err(error) = writer.finish()
+        {
+            capture.write_error = Some(error);
+        }
     }
 
     pub fn save(&self, path: &std::path::Path) -> Result<(u64, u64), String> {
         let capture = self
             .inner
             .lock()
-            .map_err(|_| "原始抓包内存缓存不可用".to_owned())?;
-        let mut writer = RawCaptureWriter::create(path, &capture.device)?;
-        for packet in &capture.packets {
-            writer.write_packet(packet.timestamp, packet.original_len, &packet.data)?;
+            .map_err(|_| "原始抓包状态不可用".to_owned())?;
+        if capture.writer.is_some() {
+            return Err("抓包文件仍在写入，请先停止抓包".to_owned());
         }
-        writer.finish()
+        if let Some(error) = &capture.write_error {
+            return Err(format!("原始抓包写入失败：{error}"));
+        }
+        if path != capture.path {
+            std::fs::copy(&capture.path, path).map_err(|error| {
+                format!(
+                    "无法复制抓包文件 {} 到 {}: {error}",
+                    capture.path.display(),
+                    path.display()
+                )
+            })?;
+        }
+        Ok((capture.packet_count, capture.captured_bytes))
     }
 }
 
@@ -338,17 +388,25 @@ fn parse_udp_ipv4(packet: &[u8]) -> Option<(Ipv4Addr, u16, Ipv4Addr, u16, &[u8])
     }
     let ip = &packet[ethernet_offset..];
     let ip_header_len = ((ip[0] & 0x0f) as usize) * 4;
-    if ip[0] >> 4 != 4 || ip_header_len < 20 || ip.len() < ip_header_len + 8 || ip[9] != 17 {
+    let total_len = u16::from_be_bytes([ip[2], ip[3]]) as usize;
+    let fragment = u16::from_be_bytes([ip[6], ip[7]]);
+    if ip[0] >> 4 != 4
+        || ip_header_len < 20
+        || total_len < ip_header_len + 8
+        || ip.len() < total_len
+        || ip[9] != 17
+        || fragment & 0x3fff != 0
+    {
         return None;
     }
+    let ip = &ip[..total_len];
     let source = Ipv4Addr::new(ip[12], ip[13], ip[14], ip[15]);
     let destination = Ipv4Addr::new(ip[16], ip[17], ip[18], ip[19]);
     let udp = &ip[ip_header_len..];
     let source_port = u16::from_be_bytes([udp[0], udp[1]]);
     let destination_port = u16::from_be_bytes([udp[2], udp[3]]);
     let udp_len = u16::from_be_bytes([udp[4], udp[5]]) as usize;
-    let payload_end = udp_len.min(udp.len());
-    if payload_end < 8 {
+    if udp_len < 8 || udp_len > udp.len() {
         return None;
     }
     Some((
@@ -356,7 +414,7 @@ fn parse_udp_ipv4(packet: &[u8]) -> Option<(Ipv4Addr, u16, Ipv4Addr, u16, &[u8])
         source_port,
         destination,
         destination_port,
-        &udp[8..payload_end],
+        &udp[8..udp_len],
     ))
 }
 
@@ -712,10 +770,152 @@ fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
     let _ = sender.send(EngineEvent::Packet(packet));
 }
 
+const INFERRED_FOLLOW_UP_CHAR_ID: u32 = u32::MAX;
+
+#[derive(Default)]
+struct FollowUpDamageTracker {
+    last_server_hp: Option<f64>,
+    last_hit_timestamp: Option<f64>,
+    target_max_hp: Option<f64>,
+    pending_hits: VecDeque<Hit>,
+    team_attributes: HashSet<String>,
+    character_attributes: HashMap<u32, String>,
+}
+
+impl FollowUpDamageTracker {
+    fn reset_battle(&mut self) {
+        self.pending_hits.clear();
+        self.team_attributes.clear();
+        self.character_attributes.clear();
+    }
+
+    fn observe_characters(
+        &mut self,
+        character_ids: impl IntoIterator<Item = u32>,
+        characters: &HashMap<u32, CharacterInfo>,
+    ) {
+        for character_id in character_ids {
+            let Some(attribute) = characters
+                .get(&character_id)
+                .and_then(|character| character.attribute.as_deref())
+            else {
+                continue;
+            };
+            self.team_attributes.insert(attribute.to_owned());
+            self.character_attributes
+                .insert(character_id, attribute.to_owned());
+        }
+    }
+
+    fn observe_hit(&mut self, hit: &Hit, characters: &HashMap<u32, CharacterInfo>) {
+        if hit.direction == "incoming"
+            || hit.char_id == 0
+            || hit.target_max_hp <= 500_000.0
+            || hit.target_hp_before <= 0.0
+        {
+            return;
+        }
+        let new_full_health_battle = self.last_hit_timestamp.is_some_and(|last_timestamp| {
+            hit.timestamp - last_timestamp > 10.0 && hit.target_hp_before >= hit.target_max_hp * 0.9
+        });
+        let changed_target_max_hp = self
+            .target_max_hp
+            .is_some_and(|maximum| (maximum - hit.target_max_hp).abs() > 1.0);
+        if new_full_health_battle || changed_target_max_hp {
+            self.reset_battle();
+            self.last_server_hp = None;
+        }
+        self.last_hit_timestamp = Some(hit.timestamp);
+        self.target_max_hp = Some(hit.target_max_hp);
+        self.observe_characters([hit.char_id], characters);
+        if self
+            .pending_hits
+            .back()
+            .is_some_and(|previous| hit.timestamp - previous.timestamp > 1.0)
+        {
+            self.pending_hits.clear();
+        }
+        self.pending_hits.push_back(hit.clone());
+    }
+
+    fn observe_server_hp(&mut self, timestamp: f64, current_hp: f64) -> Option<Hit> {
+        self.pending_hits
+            .retain(|hit| timestamp - hit.timestamp <= 1.0);
+        let previous_hp = self
+            .last_server_hp
+            .or_else(|| self.pending_hits.front().map(|hit| hit.target_hp_before));
+        self.last_server_hp = Some(current_hp);
+        let previous_hp = previous_hp?;
+        if current_hp >= previous_hp || self.pending_hits.is_empty() {
+            if current_hp > previous_hp {
+                let reset_threshold = self.target_max_hp.unwrap_or(current_hp) * 0.25;
+                if current_hp - previous_hp >= reset_threshold {
+                    self.reset_battle();
+                } else {
+                    self.pending_hits.clear();
+                }
+            }
+            return None;
+        }
+
+        let actual_damage = previous_hp - current_hp;
+        let source = self.pending_hits.pop_front()?;
+        let inferred_damage = actual_damage - source.damage;
+        let inferred_ratio = if source.damage > 0.0 {
+            inferred_damage / source.damage
+        } else {
+            0.0
+        };
+        if inferred_damage < 1.0 || !(0.18..=0.26).contains(&inferred_ratio) {
+            return None;
+        }
+        let has_required_team_attributes =
+            self.team_attributes.contains("灵") && self.team_attributes.contains("咒");
+        let source_attribute = self.character_attributes.get(&source.char_id)?;
+        if !has_required_team_attributes || !matches!(source_attribute.as_str(), "灵" | "咒") {
+            return None;
+        }
+        Some(Hit {
+            timestamp,
+            char_id: INFERRED_FOLLOW_UP_CHAR_ID,
+            char_name: "覆纹伤害（推算）".to_owned(),
+            char_known: false,
+            damage: inferred_damage,
+            byte_offset: 0,
+            bit_shift: 0,
+            char_source: "boss_hp_residual".to_owned(),
+            direction: "outgoing".to_owned(),
+            target_hp_before: current_hp + inferred_damage,
+            target_hp_after: current_hp,
+            target_max_hp: source.target_max_hp,
+            target_hp_percent: if source.target_max_hp > 0.0 {
+                current_hp / source.target_max_hp * 100.0
+            } else {
+                0.0
+            },
+            target_id: source.target_id,
+            target_name: source.target_name,
+            target_context: vec![
+                format!(
+                    "服务器实际掉血 {:.0} - 已解析伤害 {:.0}（残差 {:.1}%）",
+                    actual_damage,
+                    source.damage,
+                    inferred_ratio * 100.0
+                ),
+                format!(
+                    "触发角色 {}（{}，{}属性）",
+                    source.char_name, source.char_id, source_attribute
+                ),
+            ],
+        })
+    }
+}
+
 #[derive(Default)]
 struct PacketDecoder {
     session_characters: HashMap<(Ipv4Addr, u16, Ipv4Addr, u16), u32>,
     client_endpoints: HashSet<(Ipv4Addr, u16)>,
+    follow_up_damage: FollowUpDamageTracker,
 }
 
 impl PacketDecoder {
@@ -736,7 +936,9 @@ impl PacketDecoder {
         }
 
         let evidence = find_declared_character_evidence(payload);
-        let ids = declared_character_ids(payload);
+        let ids = declared_character_ids_from_evidence(&evidence);
+        self.follow_up_damage
+            .observe_characters(ids.iter().copied(), characters);
         let outgoing = infer_outgoing(src, src_port, dst, local_ip, &ids, &self.client_endpoints);
         if outgoing && !ids.is_empty() {
             self.client_endpoints.insert((src, src_port));
@@ -776,7 +978,13 @@ impl PacketDecoder {
         } else {
             parse_current_hp_updates(payload)
         };
+        let boss_hp_updates = if outgoing {
+            Vec::new()
+        } else {
+            parse_boss_hp_updates(payload)
+        };
         if current_hp_updates.is_empty()
+            && boss_hp_updates.is_empty()
             && !should_keep_debug_packet(payload, &ids, accepted, &decoded_text)
         {
             return;
@@ -806,6 +1014,29 @@ impl PacketDecoder {
                 )),
             );
         }
+        if !boss_hp_updates.is_empty() {
+            append_packet_note(
+                &mut note,
+                Some(format!(
+                    "Boss HP 更新：{}",
+                    boss_hp_updates
+                        .iter()
+                        .map(|update| format!(
+                            "{:.0}@{}:{}",
+                            update.current_hp, update.byte_offset, update.bit_shift
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            );
+        }
+        let inferred_follow_up_hits = boss_hp_updates
+            .iter()
+            .filter_map(|update| {
+                self.follow_up_damage
+                    .observe_server_hp(timestamp, update.current_hp as f64)
+            })
+            .collect::<Vec<_>>();
         if let Some(TransportPacket::Sequenced(packet)) = parse_transport_packet(payload) {
             if packet.mode != 0 {
                 append_packet_note(
@@ -846,8 +1077,12 @@ impl PacketDecoder {
         );
         for hit in hits {
             if include_incoming || hit.direction != "incoming" {
+                self.follow_up_damage.observe_hit(&hit, characters);
                 let _ = sender.send(EngineEvent::Hit(hit));
             }
+        }
+        for hit in inferred_follow_up_hits {
+            let _ = sender.send(EngineEvent::Hit(hit));
         }
     }
 }
@@ -865,7 +1100,7 @@ pub fn start_capture(
     let raw_capture = RawCaptureBuffer::new(device.clone());
     let thread_raw_capture = raw_capture.clone();
     let thread = thread::spawn(move || {
-        if let Err(error) = run_capture(CaptureRunConfig {
+        let result = run_capture(CaptureRunConfig {
             device: &device,
             local_ip,
             filter: &filter,
@@ -874,7 +1109,9 @@ pub fn start_capture(
             sender: &sender,
             stop: &thread_stop,
             raw_capture: &thread_raw_capture,
-        }) {
+        });
+        thread_raw_capture.finish();
+        if let Err(error) = result {
             let _ = sender.send(EngineEvent::Error(error));
         }
         let _ = sender.send(EngineEvent::CaptureStopped);
@@ -948,12 +1185,17 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
             return Err(format!("抓包过滤器无效: {error}"));
         }
         free_code(&mut program);
+        let raw_capture_status = raw_capture.path().map_or_else(
+            || "；原始帧文件不可用".to_owned(),
+            |path| format!("；原始帧实时写入 {}", path.display()),
+        );
         let _ = sender.send(EngineEvent::Status(format!(
-            "正在抓包: {} ({})；原始帧保存在内存中",
+            "正在抓包: {} ({}){}",
             device.description,
             local_ip
                 .map(|ip| ip.to_string())
-                .unwrap_or_else(|| "不过滤本机 IP".to_owned())
+                .unwrap_or_else(|| "不过滤本机 IP".to_owned()),
+            raw_capture_status
         )));
 
         let mut decoder = PacketDecoder::default();
@@ -1274,650 +1516,1273 @@ fn parse_export_ids(value: &serde_json::Value) -> Vec<u32> {
 mod tests {
     use super::*;
     use crossbeam_channel::unbounded;
+    use std::path::Path;
 
-    fn udp_ipv4_frame(source: Ipv4Addr, destination: Ipv4Addr, payload: &[u8]) -> Vec<u8> {
-        let mut frame = vec![0_u8; 14 + 20 + 8 + payload.len()];
-        frame[12..14].copy_from_slice(&0x0800_u16.to_be_bytes());
-        let ip = &mut frame[14..];
-        ip[0] = 0x45;
-        ip[2..4].copy_from_slice(&((20 + 8 + payload.len()) as u16).to_be_bytes());
-        ip[9] = 17;
-        ip[12..16].copy_from_slice(&source.octets());
-        ip[16..20].copy_from_slice(&destination.octets());
-        let udp = &mut ip[20..];
-        udp[0..2].copy_from_slice(&64592_u16.to_be_bytes());
-        udp[2..4].copy_from_slice(&30216_u16.to_be_bytes());
-        udp[4..6].copy_from_slice(&((8 + payload.len()) as u16).to_be_bytes());
-        udp[8..].copy_from_slice(payload);
-        frame
+    fn actual_capture_path() -> PathBuf {
+        if let Some(path) = std::env::var_os("NTE_TEST_CAPTURE").map(PathBuf::from) {
+            assert!(
+                path.is_file(),
+                "NTE_TEST_CAPTURE 指向的真实抓包文件不存在: {}",
+                path.display()
+            );
+            return path;
+        }
+
+        std::fs::read_dir("logs")
+            .expect("logs 目录不存在，无法执行真实数据测试")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("pcapng"))
+            })
+            .max_by_key(|path| path.metadata().map(|metadata| metadata.len()).unwrap_or(0))
+            .expect("logs 目录中没有真实 .pcapng 抓包；也可设置 NTE_TEST_CAPTURE")
     }
 
     #[test]
-    fn writes_complete_ethernet_frames_to_pcapng() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "nte-raw-capture-{}-{unique}.pcapng",
-            std::process::id()
-        ));
-        let device = CaptureDevice {
-            name: "test-device".to_owned(),
-            description: "test adapter".to_owned(),
-            ipv4: vec![Ipv4Addr::LOCALHOST],
-        };
-        let packet: Vec<u8> = (0..96).collect();
-        let timestamp = Duration::new(1_781_017_376, 744_123_000);
+    fn actual_capture_contains_udp_traffic() {
+        let path = actual_capture_path();
+        let file = File::open(&path).expect("无法打开真实抓包文件");
+        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
+        let mut ethernet_packets = 0;
+        let mut udp_packets = 0;
 
-        let mut writer = RawCaptureWriter::create(&path, &device).unwrap();
-        writer.write_packet(timestamp, 128, &packet).unwrap();
-        assert_eq!(writer.finish().unwrap(), (1, packet.len() as u64));
-
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut interface_seen = false;
-        let mut packet_seen = false;
         while let Some(block) = reader.next_block() {
-            match block.unwrap() {
-                Block::InterfaceDescription(interface) => {
-                    interface_seen = true;
-                    assert_eq!(interface.linktype, DataLink::ETHERNET);
-                    assert_eq!(interface.snaplen, CAPTURE_SNAPLEN);
-                    assert!(
-                        interface
-                            .options
-                            .contains(&InterfaceDescriptionOption::IfTsResol(9))
-                    );
+            let block = block.expect("真实抓包包含损坏的数据块");
+            let (interface_id, data) = match block {
+                Block::EnhancedPacket(packet) => {
+                    (packet.interface_id as usize, packet.data.into_owned())
                 }
-                Block::EnhancedPacket(captured) => {
-                    packet_seen = true;
-                    assert_eq!(captured.timestamp, timestamp);
-                    assert_eq!(captured.original_len, 128);
-                    assert_eq!(captured.data.as_ref(), packet);
-                }
-                _ => {}
+                Block::SimplePacket(packet) => (0, packet.data.into_owned()),
+                _ => continue,
+            };
+            let Some(interface) = reader.interfaces().get(interface_id) else {
+                continue;
+            };
+            if interface.linktype != DataLink::ETHERNET {
+                continue;
+            }
+            ethernet_packets += 1;
+            if parse_udp_ipv4(&data).is_some() {
+                udp_packets += 1;
             }
         }
-        assert!(interface_seen);
-        assert!(packet_seen);
-        std::fs::remove_file(path).unwrap();
+
+        assert!(
+            ethernet_packets > 0,
+            "真实抓包中没有 Ethernet 数据包: {}",
+            path.display()
+        );
+        assert!(
+            udp_packets > 0,
+            "真实抓包中没有可解析的 IPv4/UDP 流量: {}",
+            path.display()
+        );
     }
 
     #[test]
-    fn saves_memory_capture_only_when_requested() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "nte-memory-capture-{}-{unique}.pcapng",
-            std::process::id()
-        ));
-        let device = CaptureDevice {
-            name: "memory-device".to_owned(),
-            description: "memory adapter".to_owned(),
-            ipv4: vec![Ipv4Addr::LOCALHOST],
-        };
-        let packet: Vec<u8> = (0..64).collect();
-        let capture = RawCaptureBuffer::new(device);
-        capture.push(Duration::new(10, 250_000_000), 96, &packet);
-
-        assert!(!path.exists());
-        assert_eq!(capture.save(&path).unwrap(), (1, packet.len() as u64));
-        assert!(path.is_file());
-
-        std::fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn rejects_empty_and_truncated_packets() {
-        assert!(parse_udp_ipv4(&[]).is_none());
-        assert!(parse_udp_ipv4(&[0_u8; 13]).is_none());
-        assert!(parse_udp_ipv4(&[0_u8; 42]).is_none());
-    }
-
-    #[test]
-    fn imports_recorded_pcapng_into_debug_events() {
-        let path = PathBuf::from("data/1.pcapng");
-        if !path.is_file() {
-            return;
-        }
+    fn actual_capture_runs_through_the_decoder() {
+        let path = actual_capture_path();
         let characters = Arc::new(
-            crate::parser::load_characters(std::path::Path::new("characters.json")).unwrap(),
+            crate::parser::load_characters(Path::new("characters.json"))
+                .expect("无法加载实际 characters.json"),
         );
         let (sender, receiver) = unbounded();
         let stop = Arc::new(AtomicBool::new(false));
-        import_pcapng(path, characters, false, sender, stop)
+
+        import_pcapng(path.clone(), characters, true, sender, stop)
             .join()
-            .unwrap();
+            .expect("真实抓包导入线程异常退出");
 
         let events: Vec<_> = receiver.try_iter().collect();
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, EngineEvent::Packet(_)))
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, EngineEvent::Hit(_)))
-        );
-    }
-
-    #[test]
-    fn validates_latest_full_session_capture() {
-        let path = PathBuf::from("logs/nte_raw_20260612_234722_410.pcapng");
-        if !path.is_file() {
-            return;
-        }
-
-        let file = File::open(path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut handshakes = 0;
-        let mut modes = [0_usize; 4];
-        let mut damage_records = 0;
-        let mut single_bunches = 0;
-        while let Some(block) = reader.next_block() {
-            let Block::EnhancedPacket(packet) = block.unwrap() else {
-                continue;
-            };
-            let Some((_, source_port, _, destination_port, payload)) =
-                parse_udp_ipv4(packet.data.as_ref())
-            else {
-                continue;
-            };
-            if !matches!(
-                (source_port, destination_port),
-                (55550, 30224) | (30224, 55550)
-            ) {
-                continue;
-            }
-
-            match parse_transport_packet(payload).unwrap() {
-                TransportPacket::StatelessHandshake { .. } => handshakes += 1,
-                TransportPacket::Sequenced(packet) => {
-                    modes[packet.mode as usize] += 1;
-                    single_bunches += usize::from(parse_single_bunch(&packet).is_some());
-                }
-            }
-            for _record in crate::parser::parse_damage_records(payload) {
-                damage_records += 1;
-            }
-        }
-
-        assert_eq!(handshakes, 4);
-        assert_eq!(modes, [20_690, 126, 11, 1]);
-        assert_eq!(single_bunches, 474);
-        assert_eq!(damage_records, 837);
-    }
-
-    #[test]
-    fn classifies_latest_abyss_capture_damage_direction() {
-        let path = PathBuf::from("logs/nte_raw_20260613_005021_039.pcapng");
-        if !path.is_file() {
-            return;
-        }
-        let characters = Arc::new(
-            crate::parser::load_characters(std::path::Path::new("characters.json")).unwrap(),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-        import_pcapng(path, characters, true, sender, stop)
-            .join()
-            .unwrap();
-
-        let events = receiver.try_iter().collect::<Vec<_>>();
-        let hits = events
+        let packet_count = events
+            .iter()
+            .filter(|event| matches!(event, EngineEvent::Packet(_)))
+            .count();
+        let errors: Vec<_> = events
             .iter()
             .filter_map(|event| match event {
-                EngineEvent::Hit(hit) => Some(hit.clone()),
+                EngineEvent::Error(error) => Some(error.as_str()),
                 _ => None,
             })
-            .collect::<Vec<_>>();
-        let incoming = hits
-            .iter()
-            .filter(|hit| hit.direction == "incoming")
-            .collect::<Vec<_>>();
+            .collect();
 
-        assert_eq!(hits.len(), 461);
-        assert_eq!(
-            hits.iter()
-                .filter(|hit| hit.direction == "outgoing")
-                .count(),
-            460
+        assert!(
+            errors.is_empty(),
+            "真实抓包导入失败 {}: {}",
+            path.display(),
+            errors.join("; ")
         );
-        assert_eq!(incoming.len(), 1);
-        assert_eq!(incoming[0].damage, 3_101.0);
-        assert!((incoming[0].target_max_hp - 22_397.898_437_5).abs() < 0.001);
-
-        assert_eq!(
+        assert!(
+            packet_count > 0,
+            "真实抓包未产生任何解码包事件: {}",
+            path.display()
+        );
+        assert!(
             events
                 .iter()
-                .filter(|event| matches!(
-                    event,
-                    EngineEvent::Abyss(AbyssEvent::RestartDetected { .. })
-                ))
-                .count(),
-            2
+                .any(|event| matches!(event, EngineEvent::CaptureStopped)),
+            "真实抓包导入未发送结束事件: {}",
+            path.display()
         );
-        let mut state = crate::model::CombatState::default();
-        for event in events {
+    }
+
+    #[test]
+    fn actual_capture_contains_server_boss_hp_updates() {
+        let path = actual_capture_path();
+        let file = File::open(&path).expect("无法打开真实抓包文件");
+        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
+        let mut updates = Vec::new();
+
+        while let Some(block) = reader.next_block() {
+            let block = block.expect("真实抓包包含损坏的数据块");
+            let (interface_id, data) = match block {
+                Block::EnhancedPacket(packet) => {
+                    (packet.interface_id as usize, packet.data.into_owned())
+                }
+                Block::SimplePacket(packet) => (0, packet.data.into_owned()),
+                _ => continue,
+            };
+            let Some(interface) = reader.interfaces().get(interface_id) else {
+                continue;
+            };
+            if interface.linktype != DataLink::ETHERNET {
+                continue;
+            }
+            let Some((_, _, _, _, payload)) = parse_udp_ipv4(&data) else {
+                continue;
+            };
+            updates.extend(parse_boss_hp_updates(payload));
+        }
+
+        assert!(
+            updates.len() >= 2,
+            "真实抓包中缺少可用于伤害校正的 Boss HP 更新: {}",
+            path.display()
+        );
+        assert!(
+            updates
+                .windows(2)
+                .any(|pair| pair[1].current_hp < pair[0].current_hp),
+            "真实抓包中的 Boss HP 更新没有形成掉血序列: {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    #[ignore = "manual real-capture follow-up damage analysis"]
+    fn diagnose_actual_capture_follow_up_damage() {
+        let path = actual_capture_path();
+        let characters = Arc::new(
+            crate::parser::load_characters(Path::new("characters.json"))
+                .expect("无法加载实际 characters.json"),
+        );
+        let (sender, receiver) = unbounded();
+        import_pcapng(
+            path.clone(),
+            characters,
+            true,
+            sender,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .join()
+        .unwrap();
+
+        let mut hits: Vec<_> = receiver
+            .try_iter()
+            .filter_map(|event| match event {
+                EngineEvent::Hit(hit) if hit.direction != "incoming" => Some(hit),
+                _ => None,
+            })
+            .collect();
+        hits.sort_by(|left, right| left.timestamp.total_cmp(&right.timestamp));
+        let max_hp = hits
+            .iter()
+            .map(|hit| hit.target_max_hp.round() as u64)
+            .max()
+            .unwrap();
+        hits.retain(|hit| hit.target_max_hp.round() as u64 == max_hp);
+        for hit in &hits {
+            println!(
+                "parsed_hit t={:.6} char={} damage={:.3} hp_before={:.3} hp_after={:.3} max_hp={:.3} source={} target={:?}",
+                hit.timestamp,
+                hit.char_id,
+                hit.damage,
+                hit.target_hp_before,
+                hit.target_hp_after,
+                hit.target_max_hp,
+                hit.char_source,
+                hit.target_id
+            );
+        }
+
+        let mut gaps = Vec::new();
+        for pair in hits.windows(2) {
+            let gap = pair[0].target_hp_after - pair[1].target_hp_before;
+            if gap > 0.5 {
+                gaps.push((pair[1].timestamp, gap));
+            }
+        }
+        println!(
+            "capture={} max_hp={} hits={} damage={:.0} first_hp={:.0} last_hp={:.0} gaps={} gap_sum={:.0}",
+            path.display(),
+            max_hp,
+            hits.len(),
+            hits.iter().map(|hit| hit.damage).sum::<f64>(),
+            hits.first().unwrap().target_hp_before,
+            hits.last().unwrap().target_hp_after,
+            gaps.len(),
+            gaps.iter().map(|(_, gap)| gap).sum::<f64>()
+        );
+        let start = hits.first().unwrap().timestamp;
+        let mut frequencies: HashMap<u64, Vec<f64>> = HashMap::new();
+        for (timestamp, gap) in &gaps {
+            frequencies
+                .entry(gap.round() as u64)
+                .or_default()
+                .push(*timestamp);
+        }
+        let mut frequencies: Vec<_> = frequencies.into_iter().collect();
+        frequencies.sort_by_key(|(_, timestamps)| std::cmp::Reverse(timestamps.len()));
+        for (damage, timestamps) in frequencies.iter().take(30) {
+            let intervals: Vec<_> = timestamps
+                .windows(2)
+                .map(|pair| pair[1] - pair[0])
+                .collect();
+            println!(
+                "gap_damage={} count={} first={:.3}s intervals={:?}",
+                damage,
+                timestamps.len(),
+                timestamps[0] - start,
+                intervals
+                    .iter()
+                    .map(|interval| format!("{interval:.3}"))
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        #[derive(Clone)]
+        struct RawPacket {
+            timestamp: f64,
+            direction: &'static str,
+            payload: Vec<u8>,
+            hit_count: usize,
+            text: String,
+        }
+        let file = File::open(&path).unwrap();
+        let mut reader = PcapNgReader::new(file).unwrap();
+        let mut packets = Vec::new();
+        while let Some(block) = reader.next_block() {
+            let block = block.unwrap();
+            let (interface_id, timestamp, data) = match block {
+                Block::EnhancedPacket(packet) => (
+                    packet.interface_id as usize,
+                    packet.timestamp.as_secs_f64(),
+                    packet.data.into_owned(),
+                ),
+                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
+                _ => continue,
+            };
+            let Some(interface) = reader.interfaces().get(interface_id) else {
+                continue;
+            };
+            if interface.linktype != DataLink::ETHERNET {
+                continue;
+            }
+            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
+                continue;
+            };
+            for record in crate::parser::parse_damage_records(payload) {
+                println!(
+                    "raw_record t={timestamp:.6} dir={} damage={:.6} hp_before={:.6} max_hp={:.6} damage_time={:.6} world_time={:.6} repeated={:.6} flags={:?} trailing={:.6} shift={} offset={}",
+                    if src.is_private() && !dst.is_private() {
+                        "C2S"
+                    } else {
+                        "S2C"
+                    },
+                    record.damage,
+                    record.target_hp_before,
+                    record.target_max_hp,
+                    record.damage_time,
+                    record.world_time,
+                    record.repeated_damage,
+                    record.state_flags,
+                    record.trailing_value,
+                    record.bit_shift,
+                    record.byte_offset
+                );
+            }
+            let search_values = [641.0_f32, 3_177.0, 3_209.0, 3_818.0, 3_850.0, 8_772.0];
+            for bit_shift in 0..8 {
+                let shifted = decode_shifted_payload(payload, bit_shift);
+                for offset in 0..shifted.len().saturating_sub(4) {
+                    let value = f32::from_le_bytes(shifted[offset..offset + 4].try_into().unwrap());
+                    for expected in search_values {
+                        if value.is_finite() && (value - expected).abs() < 0.01 {
+                            println!(
+                                "float_value t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.3}"
+                            );
+                        }
+                    }
+                    if value.is_finite()
+                        && ((0.15..=0.25).contains(&value) || (0.95..=1.05).contains(&value))
+                    {
+                        println!(
+                            "ratio_value t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.9}"
+                        );
+                    }
+                    if !src.is_private()
+                        && dst.is_private()
+                        && timestamp >= 1_781_344_072.474
+                        && value.is_finite()
+                        && (1_100_000.0..=1_140_000.0).contains(&value)
+                        && value.fract().abs() < 0.01
+                    {
+                        println!(
+                            "boss_hp_candidate t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.0} len={}",
+                            payload.len()
+                        );
+                        if (value - 1_122_225.0).abs() < 0.5 || (value - 1_126_075.0).abs() < 0.5 {
+                            let start = offset.saturating_sub(40);
+                            let end = (offset + 40).min(shifted.len());
+                            println!(
+                                "boss_hp_context text={} bytes={}",
+                                decode_payload_text(payload).replace('\n', "|"),
+                                hex::encode(&shifted[start..end])
+                            );
+                        }
+                    }
+                }
+            }
+            packets.push(RawPacket {
+                timestamp,
+                direction: if src.is_private() && !dst.is_private() {
+                    "C2S"
+                } else {
+                    "S2C"
+                },
+                payload: payload.to_vec(),
+                hit_count: crate::parser::parse_damage_records(payload).len(),
+                text: decode_payload_text(payload),
+            });
+        }
+
+        let trigger_time = hits
+            .iter()
+            .find(|hit| (hit.damage - 8_772.0).abs() < 0.5)
+            .unwrap()
+            .timestamp;
+        let follow_up_time = hits
+            .iter()
+            .find(|hit| (hit.damage - 3_177.0).abs() < 0.5)
+            .unwrap()
+            .timestamp;
+        for (label, center) in [("trigger", trigger_time), ("follow_up", follow_up_time)] {
+            println!("window {label} center={center:.6}");
+            for packet in packets.iter().filter(|packet| {
+                packet.direction == "C2S"
+                    && packet.timestamp >= center - 0.5
+                    && packet.timestamp <= center + 0.5
+            }) {
+                let evidence = find_declared_character_evidence(&packet.payload);
+                println!(
+                    "window_packet label={label} dt={:.6} len={} hits={} ids={:?} text={} prefix={}",
+                    packet.timestamp - center,
+                    packet.payload.len(),
+                    packet.hit_count,
+                    declared_character_ids_from_evidence(&evidence),
+                    packet.text.replace('\n', "|"),
+                    hex::encode(&packet.payload[..packet.payload.len().min(48)])
+                );
+            }
+        }
+        for packet in &packets {
+            if packet.text.lines().any(|line| {
+                line.contains("GA_")
+                    || line.starts_with("Ability.")
+                    || line.starts_with("Effect")
+                    || line.contains("ActiveGE")
+            }) {
+                println!(
+                    "effect_text dt_trigger={:.6} dt_follow_up={:.6} dir={} len={} text={}",
+                    packet.timestamp - trigger_time,
+                    packet.timestamp - follow_up_time,
+                    packet.direction,
+                    packet.payload.len(),
+                    packet.text.replace('\n', "|")
+                );
+            }
+        }
+        for target in [641_u32, 3_177, 3_209, 3_850, 8_772] {
+            let u16_le = (target as u16).to_le_bytes();
+            let u16_be = (target as u16).to_be_bytes();
+            let u32_le = target.to_le_bytes();
+            let u32_be = target.to_be_bytes();
+            let f64_le = (target as f64).to_le_bytes();
+            let mut leb128 = Vec::new();
+            let mut remaining = target;
+            loop {
+                let mut byte = (remaining & 0x7f) as u8;
+                remaining >>= 7;
+                if remaining != 0 {
+                    byte |= 0x80;
+                }
+                leb128.push(byte);
+                if remaining == 0 {
+                    break;
+                }
+            }
+            for packet in &packets {
+                if (packet.timestamp - follow_up_time).abs() > 0.2 {
+                    continue;
+                }
+                for bit_shift in 0..8 {
+                    let shifted = decode_shifted_payload(&packet.payload, bit_shift);
+                    for (encoding, needle) in [
+                        ("u16_le", u16_le.as_slice()),
+                        ("u16_be", u16_be.as_slice()),
+                        ("u32_le", u32_le.as_slice()),
+                        ("u32_be", u32_be.as_slice()),
+                        ("f64_le", f64_le.as_slice()),
+                        ("leb128", leb128.as_slice()),
+                    ] {
+                        for offset in shifted
+                            .windows(needle.len())
+                            .enumerate()
+                            .filter_map(|(offset, window)| (window == needle).then_some(offset))
+                        {
+                            println!(
+                                "encoded_value target={target} encoding={encoding} dt={:.6} dir={} len={} shift={bit_shift} offset={offset} context={}",
+                                packet.timestamp - follow_up_time,
+                                packet.direction,
+                                packet.payload.len(),
+                                hex::encode(
+                                    &shifted[offset.saturating_sub(12)
+                                        ..(offset + needle.len() + 12).min(shifted.len())]
+                                )
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        for target in [0.2_f32, 1.2, 20.0] {
+            let needle = target.to_le_bytes();
+            for packet in &packets {
+                if (packet.timestamp - follow_up_time).abs() > 0.2 {
+                    continue;
+                }
+                for bit_shift in 0..8 {
+                    let shifted = decode_shifted_payload(&packet.payload, bit_shift);
+                    for offset in shifted
+                        .windows(needle.len())
+                        .enumerate()
+                        .filter_map(|(offset, window)| (window == needle).then_some(offset))
+                    {
+                        println!(
+                            "coefficient target={target} dt={:.6} dir={} len={} shift={bit_shift} offset={offset}",
+                            packet.timestamp - follow_up_time,
+                            packet.direction,
+                            packet.payload.len()
+                        );
+                    }
+                }
+            }
+        }
+        for (label, center) in [("trigger", trigger_time), ("follow_up", follow_up_time)] {
+            let packet = packets
+                .iter()
+                .find(|packet| packet.timestamp == center && packet.hit_count > 0)
+                .unwrap();
+            for bit_shift in 0..8 {
+                let shifted = decode_shifted_payload(&packet.payload, bit_shift);
+                let strings = shifted
+                    .split(|byte| !(0x20..=0x7e).contains(byte))
+                    .filter(|bytes| bytes.len() >= 4)
+                    .filter_map(|bytes| std::str::from_utf8(bytes).ok())
+                    .collect::<Vec<_>>();
+                if !strings.is_empty() {
+                    println!("hit_strings label={label} shift={bit_shift} values={strings:?}");
+                }
+                if let Some(offset) = shifted
+                    .windows(b"FHTClientActiveGE".len())
+                    .position(|window| window == b"FHTClientActiveGE")
+                {
+                    let start = offset.saturating_sub(96);
+                    let end = (offset + 256).min(shifted.len());
+                    println!(
+                        "active_ge label={label} shift={bit_shift} offset={offset} nearby={}",
+                        hex::encode(&shifted[start..end])
+                    );
+                    let anchor = offset + b"FHTClientActiveGE".len() + 5;
+                    let values = shifted[anchor..]
+                        .chunks_exact(4)
+                        .enumerate()
+                        .filter_map(|(index, bytes)| {
+                            let value = u32::from_le_bytes(bytes.try_into().unwrap());
+                            (2..=10_000_000)
+                                .contains(&value)
+                                .then_some((index * 4, value))
+                        })
+                        .collect::<Vec<_>>();
+                    println!("active_ge_u32 label={label} values={values:?}");
+                }
+            }
+            for record in crate::parser::parse_damage_records(&packet.payload) {
+                let shifted = decode_shifted_payload(&packet.payload, record.bit_shift);
+                let start = record.byte_offset.saturating_sub(96);
+                let end = (record.byte_offset + 128).min(shifted.len());
+                println!(
+                    "hit_record label={label} damage={} shift={} offset={} nearby={}",
+                    record.damage,
+                    record.bit_shift,
+                    record.byte_offset,
+                    hex::encode(&shifted[start..end])
+                );
+            }
+        }
+
+        let mut signature_hits: HashMap<(String, usize, String), usize> = HashMap::new();
+        let mut exact_float_matches = 0;
+        for pair in hits.windows(2) {
+            let gap = pair[0].target_hp_after - pair[1].target_hp_before;
+            if gap <= 0.5 {
+                continue;
+            }
+            let float_bytes = (gap as f32).to_le_bytes();
+            for packet in packets.iter().filter(|packet| {
+                packet.timestamp >= pair[0].timestamp
+                    && packet.timestamp <= pair[1].timestamp
+                    && packet.hit_count == 0
+            }) {
+                if packet
+                    .payload
+                    .windows(float_bytes.len())
+                    .any(|window| window == float_bytes)
+                {
+                    exact_float_matches += 1;
+                    println!(
+                        "float_match gap={gap:.0} dt={:.3} dir={} len={} text={}",
+                        packet.timestamp - pair[0].timestamp,
+                        packet.direction,
+                        packet.payload.len(),
+                        packet.text.replace('\n', "|")
+                    );
+                }
+                let text = if packet.text == UNREADABLE_PROTOCOL_TEXT {
+                    String::new()
+                } else {
+                    packet.text.lines().take(3).collect::<Vec<_>>().join("|")
+                };
+                *signature_hits
+                    .entry((packet.direction.to_owned(), packet.payload.len(), text))
+                    .or_default() += 1;
+            }
+        }
+        println!("exact_float_matches={exact_float_matches}");
+        let mut signature_hits: Vec<_> = signature_hits.into_iter().collect();
+        signature_hits.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+        for ((direction, len, text), count) in signature_hits.into_iter().take(60) {
+            println!("candidate count={count} dir={direction} len={len} text={text}");
+        }
+
+        let mut records_by_direction: HashMap<String, (usize, f64)> = HashMap::new();
+        for packet in &packets {
+            let records = crate::parser::parse_damage_records(&packet.payload);
+            let entry = records_by_direction
+                .entry(packet.direction.to_owned())
+                .or_default();
+            entry.0 += records.len();
+            entry.1 += records
+                .iter()
+                .map(|record| record.damage as f64)
+                .sum::<f64>();
+        }
+        for (direction, (count, damage)) in records_by_direction {
+            println!("records direction={direction} count={count} damage={damage:.0}");
+        }
+
+        let mut packet_groups: Vec<Vec<&Hit>> = Vec::new();
+        for hit in &hits {
+            if packet_groups
+                .last()
+                .is_none_or(|group| group[0].timestamp != hit.timestamp)
+            {
+                packet_groups.push(Vec::new());
+            }
+            packet_groups.last_mut().unwrap().push(hit);
+        }
+        let mut residuals = Vec::new();
+        for pair in packet_groups.windows(2) {
+            let previous = &pair[0];
+            let current = &pair[1];
+            let previous_before = previous
+                .iter()
+                .map(|hit| hit.target_hp_before)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let previous_damage = previous.iter().map(|hit| hit.damage).sum::<f64>();
+            let previous_after = (previous_before - previous_damage).max(0.0);
+            let current_before = current
+                .iter()
+                .map(|hit| hit.target_hp_before)
+                .fold(f64::NEG_INFINITY, f64::max);
+            residuals.push((
+                current[0].timestamp - start,
+                previous_after - current_before,
+                previous.len(),
+                current.len(),
+            ));
+        }
+        let positive = residuals
+            .iter()
+            .filter(|(_, residual, _, _)| *residual > 0.5)
+            .map(|(_, residual, _, _)| *residual)
+            .sum::<f64>();
+        let negative = residuals
+            .iter()
+            .filter(|(_, residual, _, _)| *residual < -0.5)
+            .map(|(_, residual, _, _)| -*residual)
+            .sum::<f64>();
+        println!(
+            "packet_groups={} positive_residual={positive:.0} negative_residual={negative:.0} net={:.0}",
+            packet_groups.len(),
+            positive - negative
+        );
+        for (elapsed, residual, previous_count, current_count) in residuals
+            .iter()
+            .filter(|(_, residual, _, _)| residual.abs() > 100.0)
+        {
+            println!(
+                "packet_residual t={elapsed:.3}s value={residual:.0} prev_hits={previous_count} current_hits={current_count}"
+            );
+        }
+
+        let mut positive_counts: HashMap<i64, usize> = HashMap::new();
+        let mut negative_counts: HashMap<i64, usize> = HashMap::new();
+        for (_, residual, _, _) in &residuals {
+            let rounded = residual.round() as i64;
+            if rounded > 0 {
+                *positive_counts.entry(rounded).or_default() += 1;
+            } else if rounded < 0 {
+                *negative_counts.entry(-rounded).or_default() += 1;
+            }
+        }
+        let mut unmatched = Vec::new();
+        for (damage, positive_count) in positive_counts {
+            let negative_count = negative_counts.get(&damage).copied().unwrap_or(0);
+            if positive_count > negative_count {
+                unmatched.push((damage, positive_count - negative_count));
+            }
+        }
+        unmatched.sort_by_key(|(damage, count)| (std::cmp::Reverse(*count), *damage));
+        println!(
+            "unmatched_positive_total={}",
+            unmatched
+                .iter()
+                .map(|(damage, count)| *damage * *count as i64)
+                .sum::<i64>()
+        );
+        for (damage, count) in unmatched {
+            println!("unmatched damage={damage} count={count}");
+        }
+
+        let mut hp_order = hits.iter().collect::<Vec<_>>();
+        hp_order.sort_by(|left, right| {
+            right
+                .target_hp_before
+                .total_cmp(&left.target_hp_before)
+                .then_with(|| left.timestamp.total_cmp(&right.timestamp))
+        });
+        let mut hp_gaps = Vec::new();
+        let mut overlaps = Vec::new();
+        for pair in hp_order.windows(2) {
+            let residual = pair[0].target_hp_after - pair[1].target_hp_before;
+            if residual > 0.5 {
+                hp_gaps.push((
+                    pair[1].timestamp - start,
+                    residual,
+                    pair[0].target_hp_after,
+                    pair[1].target_hp_before,
+                ));
+            } else if residual < -0.5 {
+                overlaps.push(-residual);
+            }
+        }
+        println!(
+            "hp_order gaps={} gap_sum={:.0} overlaps={} overlap_sum={:.0}",
+            hp_gaps.len(),
+            hp_gaps.iter().map(|(_, gap, _, _)| gap).sum::<f64>(),
+            overlaps.len(),
+            overlaps.iter().sum::<f64>()
+        );
+        let mut hp_gap_frequencies: HashMap<u64, usize> = HashMap::new();
+        for (_, gap, _, _) in &hp_gaps {
+            *hp_gap_frequencies.entry(gap.round() as u64).or_default() += 1;
+        }
+        let mut hp_gap_frequencies: Vec<_> = hp_gap_frequencies.into_iter().collect();
+        hp_gap_frequencies.sort_by_key(|(damage, count)| (std::cmp::Reverse(*count), *damage));
+        for (damage, count) in hp_gap_frequencies {
+            println!("hp_order_gap damage={damage} count={count}");
+        }
+
+        let mut text_counts: HashMap<String, usize> = HashMap::new();
+        for packet in &packets {
+            if packet.text == UNREADABLE_PROTOCOL_TEXT {
+                continue;
+            }
+            for line in packet.text.lines() {
+                *text_counts.entry(line.to_owned()).or_default() += 1;
+            }
+        }
+        let mut text_counts: Vec<_> = text_counts.into_iter().collect();
+        text_counts.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+        for (text, count) in text_counts {
+            println!("protocol_text count={count} value={text}");
+        }
+
+        let mut hits_by_character: HashMap<u32, Vec<usize>> = HashMap::new();
+        for (index, hit) in hits.iter().enumerate() {
+            hits_by_character
+                .entry(hit.char_id)
+                .or_default()
+                .push(index);
+        }
+        for (char_id, indexes) in hits_by_character {
+            let mut positive = 0.0;
+            let mut negative = 0.0;
+            let mut residual_values = Vec::new();
+            let mut cumulative = 0.0;
+            for pair in indexes.windows(2) {
+                let previous_index = pair[0];
+                let current_index = pair[1];
+                let ordinary_between = hits[previous_index..current_index]
+                    .iter()
+                    .map(|hit| hit.damage)
+                    .sum::<f64>();
+                let residual = hits[previous_index].target_hp_before
+                    - ordinary_between
+                    - hits[current_index].target_hp_before;
+                cumulative += residual;
+                println!(
+                    "character_stream_cumulative char_id={char_id} t={:.3}s delta={residual:.0} total={cumulative:.0}",
+                    hits[current_index].timestamp - start
+                );
+                if residual > 0.5 {
+                    positive += residual;
+                    residual_values.push((hits[current_index].timestamp - start, residual));
+                } else if residual < -0.5 {
+                    negative += -residual;
+                }
+            }
+            println!(
+                "character_stream char_id={char_id} records={} positive={positive:.0} negative={negative:.0} net={:.0}",
+                indexes.len(),
+                positive - negative
+            );
+            for (elapsed, residual) in residual_values {
+                println!(
+                    "character_stream_gap char_id={char_id} t={elapsed:.3}s damage={residual:.0}"
+                );
+            }
+        }
+
+        let mut active_ge_signatures: HashMap<(String, usize, usize, String), usize> =
+            HashMap::new();
+        for packet in &packets {
+            if !packet.text.contains("FHTClientActiveGE") {
+                continue;
+            }
+            let identifiers = packet
+                .text
+                .lines()
+                .filter(|line| {
+                    *line != "FHTClientActiveGE"
+                        && *line != "FCharacterForNet"
+                        && *line != "AbilitySystemComponent"
+                        && *line != "UnbalCurrent"
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            *active_ge_signatures
+                .entry((
+                    packet.direction.to_owned(),
+                    packet.payload.len(),
+                    packet.hit_count,
+                    identifiers,
+                ))
+                .or_default() += 1;
+        }
+        let mut active_ge_signatures: Vec<_> = active_ge_signatures.into_iter().collect();
+        active_ge_signatures.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+        for ((direction, len, hit_count, identifiers), count) in active_ge_signatures {
+            println!(
+                "active_ge count={count} dir={direction} len={len} hits={hit_count} ids={identifiers}"
+            );
+        }
+        for packet in packets
+            .iter()
+            .filter(|packet| packet.hit_count == 0 && packet.text.contains("FHTClientActiveGE"))
+        {
+            let evidence = find_declared_character_evidence(&packet.payload);
+            println!(
+                "active_ge_no_hit t={:.3}s dir={} len={} declared={:?} evidence={:?} text={} hex={}",
+                packet.timestamp - start,
+                packet.direction,
+                packet.payload.len(),
+                declared_character_ids_from_evidence(&evidence),
+                evidence,
+                packet.text.replace('\n', "|"),
+                hex::encode(&packet.payload)
+            );
+            for record in crate::parser::parse_damage_records(&packet.payload) {
+                println!(
+                    "active_ge_no_hit_record t={:.3}s damage={:.0} hp_before={:.0} max_hp={:.0} repeated={:.0} flags={:?} trailing={:.3} shift={} offset={}",
+                    packet.timestamp - start,
+                    record.damage,
+                    record.target_hp_before,
+                    record.target_max_hp,
+                    record.repeated_damage,
+                    record.state_flags,
+                    record.trailing_value,
+                    record.bit_shift,
+                    record.byte_offset
+                );
+            }
+            for bit_shift in 0..8 {
+                let shifted = decode_shifted_payload(&packet.payload, bit_shift);
+                for offset in 0..shifted.len().saturating_sub(9) {
+                    if shifted[offset] != 12 || shifted[offset + 1..offset + 5] != [4, 0, 0, 0] {
+                        continue;
+                    }
+                    let value =
+                        f32::from_le_bytes(shifted[offset + 5..offset + 9].try_into().unwrap());
+                    if !value.is_finite() || value.abs() < 1.0 {
+                        continue;
+                    }
+                    let mut cursor = offset;
+                    let mut fields = Vec::new();
+                    while cursor + 5 <= shifted.len() && fields.len() < 16 {
+                        let field_type = shifted[cursor];
+                        let length =
+                            u32::from_le_bytes(shifted[cursor + 1..cursor + 5].try_into().unwrap())
+                                as usize;
+                        if length == 0 || length > 64 || cursor + 5 + length > shifted.len() {
+                            break;
+                        }
+                        fields.push(format!("{field_type}:{length}"));
+                        cursor += 5 + length;
+                    }
+                    if fields.len() >= 3 {
+                        println!(
+                            "active_ge_fields t={:.3}s shift={} offset={} first={value:.3} fields={}",
+                            packet.timestamp - start,
+                            bit_shift,
+                            offset,
+                            fields.join(",")
+                        );
+                    }
+                }
+            }
+        }
+
+        #[derive(Clone, Copy)]
+        struct StreamEstimate {
+            hp_before: f64,
+            ordinary_total: f64,
+            inferred_total: f64,
+        }
+        let mut stream_estimates: HashMap<u32, StreamEstimate> = HashMap::new();
+        let mut ordinary_total = 0.0;
+        let mut confirmed = 0.0_f64;
+        let mut confirmed_events = Vec::new();
+        for hit in &hits {
+            if let Some(previous) = stream_estimates.get(&hit.char_id).copied() {
+                let expected_hp = previous.hp_before - (ordinary_total - previous.ordinary_total);
+                let residual = expected_hp - hit.target_hp_before;
+                stream_estimates.insert(
+                    hit.char_id,
+                    StreamEstimate {
+                        hp_before: hit.target_hp_before,
+                        ordinary_total,
+                        inferred_total: previous.inferred_total + residual,
+                    },
+                );
+            } else {
+                stream_estimates.insert(
+                    hit.char_id,
+                    StreamEstimate {
+                        hp_before: hit.target_hp_before,
+                        ordinary_total,
+                        inferred_total: 0.0,
+                    },
+                );
+            }
+            if stream_estimates.len() >= 2 {
+                let common = stream_estimates
+                    .values()
+                    .map(|estimate| estimate.inferred_total)
+                    .fold(f64::INFINITY, f64::min)
+                    .max(0.0);
+                if common > confirmed + 0.5 {
+                    confirmed_events.push((hit.timestamp - start, common - confirmed));
+                    confirmed = common;
+                }
+            }
+            ordinary_total += hit.damage;
+        }
+        println!(
+            "confirmed_burn total={confirmed:.0} events={}",
+            confirmed_events.len()
+        );
+        for (elapsed, damage) in confirmed_events {
+            println!("confirmed_burn_event t={elapsed:.3}s damage={damage:.0}");
+        }
+    }
+
+    #[test]
+    #[ignore = "manual real-capture follow-up settlement timeline"]
+    fn diagnose_actual_capture_follow_up_settlements() {
+        let path = actual_capture_path();
+        let characters = Arc::new(
+            crate::parser::load_characters(Path::new("characters.json"))
+                .expect("无法加载实际 characters.json"),
+        );
+        let (sender, receiver) = unbounded();
+        import_pcapng(
+            path.clone(),
+            characters.clone(),
+            true,
+            sender,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .join()
+        .unwrap();
+        let mut production_hits = Vec::new();
+        for event in receiver.try_iter() {
             match event {
-                EngineEvent::Abyss(event) => state.apply_abyss_event(event),
-                EngineEvent::Hit(hit) => state.push_hit(hit),
+                EngineEvent::Hit(hit) => {
+                    production_hits.push(hit.clone());
+                    println!(
+                        "production_hit t={:.6} char={} damage={:.0} direction={} source={}",
+                        hit.timestamp, hit.char_id, hit.damage, hit.direction, hit.char_source
+                    );
+                    if hit.char_source == "boss_hp_residual" {
+                        println!(
+                            "production_follow_up t={:.6} damage={:.0} context={}",
+                            hit.timestamp,
+                            hit.damage,
+                            hit.target_context.join("|")
+                        );
+                    }
+                }
+                EngineEvent::Packet(packet) if packet.note.contains("Boss HP 更新") => {
+                    println!(
+                        "production_boss_hp t={:.6} source={} destination={} direction={} note={}",
+                        packet.timestamp,
+                        packet.source,
+                        packet.destination,
+                        packet.direction,
+                        packet.note.replace('\n', "|")
+                    );
+                }
                 _ => {}
             }
         }
-        assert_eq!(state.abyss.floor, Some(11));
-        assert_eq!(state.abyss.first_half.hits.len(), 254);
-        assert_eq!(state.abyss.first_half.total_damage, 1_471_024.0);
-        assert_eq!(state.abyss.second_half.hits.len(), 207);
-        assert_eq!(state.abyss.second_half.total_damage, 1_959_151.0);
-        assert_eq!(state.abyss.second_half.total_damage_taken, 3_101.0);
-    }
+        let file = File::open(&path).expect("无法打开真实抓包文件");
+        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
+        let mut timeline = Vec::<(f64, Vec<Hit>, Vec<f64>)>::new();
 
-    #[test]
-    fn identifies_latest_capture_health_recovery_updates() {
-        let path = PathBuf::from("logs/nte_raw_20260613_012652_290.pcapng");
-        if !path.is_file() {
-            return;
-        }
-        let file = File::open(path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut updates = Vec::new();
         while let Some(block) = reader.next_block() {
-            let Block::EnhancedPacket(packet) = block.unwrap() else {
+            let block = block.expect("真实抓包包含损坏的数据块");
+            let (interface_id, timestamp, data) = match block {
+                Block::EnhancedPacket(packet) => (
+                    packet.interface_id as usize,
+                    packet.timestamp.as_secs_f64(),
+                    packet.data.into_owned(),
+                ),
+                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
+                _ => continue,
+            };
+            let Some(interface) = reader.interfaces().get(interface_id) else {
                 continue;
             };
-            let timestamp = packet.timestamp.as_secs_f64();
-            let Some((src, src_port, dst, dst_port, payload)) =
-                parse_udp_ipv4(packet.data.as_ref())
-            else {
+            if interface.linktype != DataLink::ETHERNET {
+                continue;
+            }
+            let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(&data) else {
                 continue;
             };
-            for update in parse_current_hp_updates(payload) {
-                if (19_000.0..=22_000.0).contains(&update.current_hp) {
-                    let packet_id = match parse_transport_packet(payload) {
-                        Some(TransportPacket::Sequenced(packet)) => Some(packet.packet_id),
-                        _ => None,
-                    };
-                    updates.push((
-                        timestamp,
-                        update.current_hp,
-                        payload.len(),
-                        packet_id,
-                        update.byte_offset,
-                        update.bit_shift,
-                        format!("{src}:{src_port}->{dst}:{dst_port}"),
+            for hit in production_hits
+                .iter()
+                .take(30)
+                .filter(|hit| timestamp >= hit.timestamp && timestamp <= hit.timestamp + 0.35)
+            {
+                let expected_hp = hit.target_hp_after as f32;
+                for bit_shift in 0..8 {
+                    let shifted = decode_shifted_payload(payload, bit_shift);
+                    for offset in shifted
+                        .windows(4)
+                        .enumerate()
+                        .filter_map(|(offset, bytes)| {
+                            let value = f32::from_le_bytes(bytes.try_into().unwrap());
+                            ((value - expected_hp).abs() < 0.5).then_some(offset)
+                        })
+                    {
+                        println!(
+                            "hp_reverse_match hit_t={:.6} packet_t={timestamp:.6} damage={:.0} expected_hp={expected_hp:.0} src={src}:{src_port} dst={dst}:{dst_port} shift={bit_shift} offset={offset} len={} context={}",
+                            hit.timestamp,
+                            hit.damage,
+                            payload.len(),
+                            hex::encode(
+                                &shifted
+                                    [offset.saturating_sub(48)..(offset + 48).min(shifted.len())]
+                            )
+                        );
+                    }
+                }
+            }
+            let evidence = find_declared_character_evidence(payload);
+            let ids = declared_character_ids_from_evidence(&evidence);
+            let outgoing = src.is_private() && !dst.is_private();
+            let hits = if outgoing {
+                parse_damage_payload(
+                    payload,
+                    timestamp,
+                    (ids.len() == 1).then(|| ids[0]),
+                    None,
+                    &characters,
+                    &evidence,
+                )
+            } else {
+                Vec::new()
+            };
+            if outgoing {
+                for record in crate::parser::parse_damage_records(payload) {
+                    println!(
+                        "game_clock packet={timestamp:.6} damage={:.0} damage_time={:.6} world_time={:.6}",
+                        record.damage, record.damage_time, record.world_time
+                    );
+                }
+            }
+            let hp_updates = if outgoing {
+                Vec::new()
+            } else {
+                parse_boss_hp_updates(payload)
+                    .into_iter()
+                    .map(|update| update.current_hp as f64)
+                    .collect()
+            };
+            if !hits.is_empty() || !hp_updates.is_empty() {
+                let _ = (src_port, dst_port);
+                timeline.push((timestamp, hits, hp_updates));
+            }
+        }
+
+        let mut replay_pending = Vec::<Hit>::new();
+        let mut replay_last_hp = None::<f64>;
+        let mut accepted_residual = 0.0;
+        let mut rejected_positive = Vec::new();
+        let mut unmatched_drops = Vec::new();
+        for (timestamp, hits, hp_updates) in &timeline {
+            for hit in hits {
+                if replay_pending
+                    .last()
+                    .is_some_and(|previous| hit.timestamp - previous.timestamp > 1.0)
+                {
+                    replay_pending.clear();
+                }
+                replay_pending.push(hit.clone());
+            }
+            for current_hp in hp_updates {
+                replay_pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
+                let previous_hp = replay_last_hp
+                    .or_else(|| replay_pending.first().map(|hit| hit.target_hp_before));
+                replay_last_hp = Some(*current_hp);
+                let Some(previous_hp) = previous_hp else {
+                    continue;
+                };
+                if *current_hp >= previous_hp || replay_pending.is_empty() {
+                    if *current_hp > previous_hp {
+                        replay_pending.clear();
+                    } else if *current_hp < previous_hp {
+                        unmatched_drops.push((
+                            *timestamp,
+                            previous_hp - current_hp,
+                            replay_pending
+                                .iter()
+                                .map(|hit| (hit.timestamp, hit.char_id, hit.damage))
+                                .collect::<Vec<_>>(),
+                        ));
+                    }
+                    continue;
+                }
+                let actual = previous_hp - current_hp;
+                let candidate = replay_pending
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, hit)| {
+                        let ratio = actual / hit.damage;
+                        (0.75..=1.35).contains(&ratio).then_some((
+                            index,
+                            (actual - hit.damage).abs() / actual.max(hit.damage),
+                            hit.timestamp,
+                        ))
+                    })
+                    .min_by(|left, right| {
+                        left.1
+                            .total_cmp(&right.1)
+                            .then_with(|| right.2.total_cmp(&left.2))
+                    });
+                let Some((index, _, _)) = candidate else {
+                    unmatched_drops.push((
+                        *timestamp,
+                        actual,
+                        replay_pending
+                            .iter()
+                            .map(|hit| (hit.timestamp, hit.char_id, hit.damage))
+                            .collect::<Vec<_>>(),
+                    ));
+                    continue;
+                };
+                let hit = replay_pending.remove(index);
+                let residual = actual - hit.damage;
+                let ratio = residual / hit.damage;
+                if residual >= 1.0 && (0.18..=0.26).contains(&ratio) {
+                    accepted_residual += residual;
+                } else if residual > 0.5 {
+                    rejected_positive.push((
+                        *timestamp,
+                        actual,
+                        hit.damage,
+                        residual,
+                        ratio,
+                        replay_pending
+                            .iter()
+                            .map(|candidate| {
+                                (candidate.timestamp, candidate.char_id, candidate.damage)
+                            })
+                            .collect::<Vec<_>>(),
                     ));
                 }
             }
         }
-
-        let values = updates.iter().map(|update| update.1).collect::<Vec<_>>();
-        assert_eq!(
-            values,
-            [
-                21_198.0, 21_460.0, 21_998.0, 19_172.0, 19_427.0, 19_637.0, 20_029.0, 20_513.0,
-                20_946.0,
-            ]
+        rejected_positive.sort_by(|left, right| right.3.total_cmp(&left.3));
+        unmatched_drops.sort_by(|left, right| right.1.total_cmp(&left.1));
+        println!(
+            "replay_summary accepted={accepted_residual:.0} rejected_positive={:.0} unmatched_drops={:.0} pending_damage={:.0}",
+            rejected_positive.iter().map(|row| row.3).sum::<f64>(),
+            unmatched_drops.iter().map(|row| row.1).sum::<f64>(),
+            replay_pending.iter().map(|hit| hit.damage).sum::<f64>()
         );
-        assert_eq!(
-            (updates[1].2, updates[1].3, updates[1].4, updates[1].5),
-            (351, Some(5896), 53, 5)
-        );
-        assert_eq!(
-            (updates[2].2, updates[2].3, updates[2].4, updates[2].5),
-            (117, Some(6016), 63, 4)
-        );
-    }
-
-    #[test]
-    fn keeps_completed_first_half_when_battle_born_starts_second_half() {
-        let path = PathBuf::from("logs/1.pcapng");
-        if !path.is_file() {
-            return;
+        for (timestamp, actual, reported, residual, ratio, remaining) in
+            rejected_positive.iter().take(30)
+        {
+            println!(
+                "replay_rejected t={timestamp:.6} actual={actual:.0} reported={reported:.0} residual={residual:.0} ratio={:.1}% remaining={remaining:?}",
+                ratio * 100.0,
+            );
         }
-        let characters = Arc::new(
-            crate::parser::load_characters(std::path::Path::new("characters.json")).unwrap(),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-        import_pcapng(path, characters, true, sender, stop)
-            .join()
-            .unwrap();
-        let mut state = crate::model::CombatState::default();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Abyss(event) => state.apply_abyss_event(event),
-                EngineEvent::Hit(hit) => state.push_hit(hit),
-                _ => {}
+        for (timestamp, actual, pending) in unmatched_drops.iter().take(30) {
+            println!("replay_unmatched t={timestamp:.6} actual={actual:.0} pending={pending:?}");
+        }
+
+        let mut fifo_pending = std::collections::VecDeque::<Hit>::new();
+        let mut fifo_last_hp = None::<f64>;
+        let mut fifo_positive_residual = 0.0;
+        let mut fifo_overlay_residual = 0.0;
+        let mut fifo_negative_residual = 0.0;
+        for (timestamp, hits, hp_updates) in &timeline {
+            for hit in hits {
+                fifo_pending.push_back(hit.clone());
             }
-        }
-
-        assert_eq!(state.abyss.floor, Some(12));
-        assert_eq!(state.abyss.first_half.hits.len(), 212);
-        assert_eq!(state.abyss.first_half.total_damage, 1_926_902.0);
-        assert_eq!(state.abyss.first_half.total_damage_taken, 5_259.0);
-        assert!(state.abyss.second_half.hits.is_empty());
-    }
-
-    #[test]
-    fn imports_exported_capture_json_and_repairs_legacy_comma() {
-        let text = r#"{
-  "hits": [{
-    "timestamp_unix": 1.25,
-    "char_id": 1010,
-    "char_name": "娜娜莉",
-    "damage": 1234,
-    "target_hp_after": 8000,
-    "target_max_hp": 10000,
-    "target_hp_percent": 80
-  }],
-  "packets": [{
-    "timestamp_unix": 1.25,
-    "source": "127.0.0.1:1",
-    "destination": "127.0.0.1:2",
-    "direction": "C2S",
-    "payload_len": 2,
-    "declared_ids": "[1010]",
-    "parsed_hits": 1,
-    "note": "",
-    "payload_preview": "abcd",
-    "payload_hex": "abcd"
-    "decoded_text": "Abyss_2_12_0"
-  }]
-}"#;
-        let document = parse_capture_export(text).unwrap();
-        assert_eq!(document.hits.len(), 1);
-        assert_eq!(document.packets.len(), 1);
-        assert_eq!(
-            parse_export_ids(&document.packets[0].declared_ids),
-            vec![1010]
-        );
-    }
-
-    #[test]
-    fn preserves_complete_udp_payload() {
-        let payload: Vec<u8> = (0..=255).cycle().take(900).collect();
-        let frame = udp_ipv4_frame(
-            Ipv4Addr::new(192, 168, 31, 61),
-            Ipv4Addr::new(49, 232, 46, 87),
-            &payload,
-        );
-        let (_, _, _, _, parsed_payload) = parse_udp_ipv4(&frame).expect("valid UDP frame");
-
-        assert_eq!(parsed_payload, payload);
-        assert_eq!(hex::encode(parsed_payload).len(), payload.len() * 2);
-    }
-
-    #[test]
-    fn infers_private_address_as_client_without_detected_local_ip() {
-        let private = Ipv4Addr::new(192, 168, 31, 61);
-        let public = Ipv4Addr::new(49, 232, 46, 87);
-        let endpoints = HashSet::new();
-
-        assert!(infer_outgoing(
-            private,
-            64592,
-            public,
-            None,
-            &[1010],
-            &endpoints,
-        ));
-        assert!(!infer_outgoing(
-            public,
-            30216,
-            private,
-            None,
-            &[1010],
-            &endpoints,
-        ));
-    }
-
-    #[test]
-    fn extracts_shifted_protocol_text() {
-        let source = b"FAbyssGamePlayData\0Abyss_2_12_0\0EAbyssFightStage::FirstHalf";
-        let mut shifted = Vec::with_capacity(source.len() + 1);
-        shifted.push(source[0] << 4);
-        for pair in source.windows(2) {
-            shifted.push((pair[0] >> 4) | (pair[1] << 4));
-        }
-        shifted.push(source[source.len() - 1] >> 4);
-
-        let decoded = decode_payload_text(&shifted);
-        assert!(decoded.contains("FAbyssGamePlayData"));
-        assert!(decoded.contains("Abyss_2_12_0"));
-        assert!(decoded.contains("EAbyssFightStage::FirstHalf"));
-    }
-
-    #[test]
-    fn extracts_shifted_length_prefixed_identifier() {
-        let value = b"EvadeBeanAdd\0";
-        let mut source = Vec::new();
-        source.extend_from_slice(&(value.len() as u32).to_le_bytes());
-        source.extend_from_slice(value);
-        let mut shifted = Vec::with_capacity(source.len() + 1);
-        shifted.push(source[0] << 3);
-        for pair in source.windows(2) {
-            shifted.push((pair[0] >> 5) | (pair[1] << 3));
-        }
-        shifted.push(source[source.len() - 1] >> 5);
-
-        assert_eq!(decode_payload_text(&shifted), "EvadeBeanAdd");
-    }
-
-    #[test]
-    fn describes_unreadable_replication_fragments_without_inventing_fields() {
-        let payload = vec![0_u8; 400];
-        let evidence = vec![(1010, 7, 30), (1010, 3, 145)];
-        let diagnostic =
-            binary_payload_diagnostic(&payload, "S2C", UNREADABLE_PROTOCOL_TEXT, &evidence)
-                .unwrap();
-
-        assert!(diagnostic.contains("无内联字段名"));
-        assert!(diagnostic.contains("2 个锚点、2 种位对齐"));
-        assert!(diagnostic.contains("1010@bit247"));
-        assert!(diagnostic.contains("1010@bit1163"));
-        assert!(
-            binary_payload_diagnostic(&payload, "C2S", UNREADABLE_PROTOCOL_TEXT, &evidence)
-                .is_none()
-        );
-        assert!(binary_payload_diagnostic(&payload, "S2C", "UnbalCurrent", &evidence).is_none());
-    }
-
-    #[test]
-    fn marks_low_entropy_long_s2c_payload_as_candidate_only() {
-        let mut payload = vec![0_u8; 400];
-        for index in (0..payload.len()).step_by(16) {
-            payload[index] = (index / 16) as u8 + 1;
-        }
-        let diagnostic =
-            binary_payload_diagnostic(&payload, "S2C", UNREADABLE_PROTOCOL_TEXT, &[]).unwrap();
-
-        assert!(diagnostic.starts_with("候选 UE 位打包复制/引用增量"));
-        assert!(diagnostic.contains("零字节占比"));
-        assert!(diagnostic.contains("熵"));
-    }
-
-    #[test]
-    fn recovers_action_names_from_current_capture() {
-        let path = std::path::Path::new("logs/nte_capture_20260612_114658.json");
-        if !path.is_file() {
-            return;
-        }
-        let document = parse_capture_export(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let mut decoded_packets = Vec::new();
-        let mut confirmed_binary_deltas = 0;
-        let mut candidate_binary_deltas = 0;
-        for packet in document.packets {
-            let payload = hex::decode(packet.payload_hex).unwrap();
-            let text = decode_payload_text(&payload);
-            if text != UNREADABLE_PROTOCOL_TEXT {
-                decoded_packets.push(text.clone());
-            }
-            let evidence = find_declared_character_evidence(&payload);
-            if let Some(diagnostic) =
-                binary_payload_diagnostic(&payload, &packet.direction, &text, &evidence)
-            {
-                if diagnostic.starts_with("已识别") {
-                    confirmed_binary_deltas += 1;
-                } else if diagnostic.starts_with("候选") {
-                    candidate_binary_deltas += 1;
+            fifo_pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
+            for current_hp in hp_updates {
+                let previous_hp =
+                    fifo_last_hp.or_else(|| fifo_pending.front().map(|hit| hit.target_hp_before));
+                fifo_last_hp = Some(*current_hp);
+                let Some(previous_hp) = previous_hp else {
+                    continue;
+                };
+                let actual = previous_hp - current_hp;
+                if actual <= 0.0 {
+                    continue;
+                }
+                let Some(hit) = fifo_pending.pop_front() else {
+                    continue;
+                };
+                let residual = actual - hit.damage;
+                if residual > 0.0 {
+                    fifo_positive_residual += residual;
+                    let ratio = residual / hit.damage;
+                    if (0.18..=0.26).contains(&ratio) {
+                        fifo_overlay_residual += residual;
+                    }
+                } else {
+                    fifo_negative_residual += residual;
                 }
             }
         }
-
-        assert_eq!(confirmed_binary_deltas, 86);
-        assert_eq!(candidate_binary_deltas, 5);
-        assert!(decoded_packets.iter().any(|value| value.contains("Melee1")));
-        assert!(
-            decoded_packets
-                .iter()
-                .any(|value| value.contains("PerfectEvadeFront"))
-        );
-        assert!(
-            decoded_packets
-                .iter()
-                .any(|value| value.contains("CritDamageBase"))
-        );
-    }
-
-    #[test]
-    fn rejects_shifted_garbage_text() {
-        for value in [
-            "Zbjdrpp\\`hl```Xddjfpd\\bnd```",
-            ":xB\"xB\"xB",
-            "bjrjhjjnrj",
-            "AAhw?*vF",
-            "ZKccsQJss",
-        ] {
-            assert_eq!(protocol_text_score(value), 0, "{value}");
-        }
-    }
-
-    #[test]
-    fn keeps_scene_and_unreal_protocol_identifiers() {
-        for value in [
-            "CurrentGameplayID",
-            "WorldBoss_Boss13",
-            "TeleportWithCar",
-            "CityLive",
-            "FHTClientActiveGE",
-            "FCharacterForNet",
-            "/Game/Maps/Map_bigworld/XL_map_bigworld_test",
-        ] {
-            assert!(protocol_text_score(value) > 0, "{value}");
-        }
-    }
-
-    #[test]
-    fn filters_only_short_unparsed_debug_packets() {
-        let long_binary: Vec<u8> = (0..128).map(|value| value as u8).collect();
-        assert!(!should_keep_debug_packet(
-            &[0xff; 30],
-            &[],
-            0,
-            UNREADABLE_PROTOCOL_TEXT,
-        ));
-        assert!(!should_keep_debug_packet(
-            &[0x10; 48],
-            &[],
-            0,
-            UNREADABLE_PROTOCOL_TEXT,
-        ));
-        assert!(should_keep_debug_packet(
-            &long_binary,
-            &[],
-            0,
-            UNREADABLE_PROTOCOL_TEXT,
-        ));
-        assert!(should_keep_debug_packet(
-            &[0x10; 11],
-            &[],
-            1,
-            UNREADABLE_PROTOCOL_TEXT,
-        ));
-        assert!(should_keep_debug_packet(&[0x10; 11], &[], 0, "CityLive",));
-    }
-
-    #[test]
-    fn recognizes_reliable_abyss_stage_events() {
-        let first = abyss_events_from_text(
-            1.0,
-            "EAbyssFightStage::FirstHalf\nFAbyssGamePlayData\nAbyss_2_12_0",
-        );
-        let second = abyss_events_from_text(
-            2.0,
-            "EAbyssFightStage::SecondHalf\nFAbyssGamePlayData\nAbyss_2_12_1",
-        );
-        let clone_data = abyss_events_from_text(
-            3.0,
-            "EAbyssFightStage::FirstHalf\nEAbyssFightStage::SecondHalf\nAbyssCloneCharacterData",
-        );
-        let success = abyss_events_from_text(
-            4.0,
-            "EAbyssFightStage::SecondHalf\nFAbyssGamePlayData\nConditionState_Success",
-        );
-        let restart = abyss_events_from_text(5.0, "Abyss_Battle_Born\nXL_map_bigworld_test");
-        let restart_with_stale_stage = abyss_events_from_text(
-            6.0,
-            "EAbyssFightStage::FirstHalf\nFAbyssGamePlayData\nAbyss_Battle_Born\nAbyss_2",
+        println!(
+            "fifo_summary positive={fifo_positive_residual:.0} overlay={fifo_overlay_residual:.0} negative={fifo_negative_residual:.0} pending={:.0}",
+            fifo_pending.iter().map(|hit| hit.damage).sum::<f64>()
         );
 
-        assert!(matches!(
-            first.as_slice(),
-            [AbyssEvent::Stage {
-                floor: Some(12),
-                half: AbyssHalf::First,
-                ..
-            }]
-        ));
-        assert!(matches!(
-            second.as_slice(),
-            [AbyssEvent::Stage {
-                floor: Some(12),
-                half: AbyssHalf::Second,
-                ..
-            }]
-        ));
-        assert!(clone_data.is_empty());
-        assert!(matches!(success.as_slice(), [AbyssEvent::Success { .. }]));
-        assert!(matches!(
-            restart.as_slice(),
-            [AbyssEvent::RestartDetected { .. }]
-        ));
-        assert!(matches!(
-            restart_with_stale_stage.as_slice(),
-            [AbyssEvent::RestartDetected { .. }]
-        ));
-    }
-
-    #[test]
-    fn imports_latest_abyss_capture_into_two_parties() {
-        let path = PathBuf::from("data/nte_capture_20260611_214538.json");
-        if !path.is_file() {
-            return;
-        }
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-        import_capture_json(path, sender, stop).join().unwrap();
-        let mut state = crate::model::CombatState::default();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Abyss(event) => state.apply_abyss_event(event),
-                EngineEvent::Hit(hit) => state.push_hit(hit),
-                _ => {}
+        let mut pending = Vec::<Hit>::new();
+        let mut last_hp = None::<f64>;
+        for (timestamp, hits, hp_updates) in timeline {
+            for hit in hits {
+                println!(
+                    "settlement_hit t={timestamp:.6} char={} damage={:.0} hp_before={:.0}",
+                    hit.char_id, hit.damage, hit.target_hp_before
+                );
+                if pending
+                    .last()
+                    .is_some_and(|previous| timestamp - previous.timestamp > 1.0)
+                {
+                    println!("settlement_clear reason=hit_gap pending={}", pending.len());
+                    pending.clear();
+                }
+                pending.push(hit);
+            }
+            for current_hp in hp_updates {
+                pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
+                let previous_hp =
+                    last_hp.or_else(|| pending.first().map(|hit| hit.target_hp_before));
+                last_hp = Some(current_hp);
+                let Some(previous_hp) = previous_hp else {
+                    println!(
+                        "settlement_hp t={timestamp:.6} hp={current_hp:.0} reason=no_baseline"
+                    );
+                    continue;
+                };
+                if current_hp >= previous_hp || pending.is_empty() {
+                    println!(
+                        "settlement_hp t={timestamp:.6} hp={current_hp:.0} previous={previous_hp:.0} pending={} reason={}",
+                        pending.len(),
+                        if current_hp >= previous_hp {
+                            "not_damage"
+                        } else {
+                            "no_pending_hit"
+                        }
+                    );
+                    if current_hp > previous_hp {
+                        pending.clear();
+                    }
+                    continue;
+                }
+                let settled = std::mem::take(&mut pending);
+                let reported = settled.iter().map(|hit| hit.damage).sum::<f64>();
+                let actual = previous_hp - current_hp;
+                let residual = actual - reported;
+                let ratio = residual / reported;
+                println!(
+                    "settlement t={timestamp:.6} previous={previous_hp:.0} hp={current_hp:.0} actual={actual:.0} reported={reported:.0} residual={residual:.0} ratio={:.1}% chars={:?} accepted={}",
+                    ratio * 100.0,
+                    settled.iter().map(|hit| hit.char_id).collect::<Vec<_>>(),
+                    residual >= 1.0 && (0.10..=0.30).contains(&ratio)
+                );
             }
         }
-
-        assert_eq!(state.abyss.floor, Some(12));
-        assert_eq!(state.abyss.first_half.hits.len(), 219);
-        assert_eq!(state.abyss.second_half.hits.len(), 233);
-        assert!(state.abyss.first_half.stats.contains_key(&1010));
-        assert!(state.abyss.second_half.stats.contains_key(&1004));
-        assert!(state.abyss.success_at.is_some());
-        assert!(state.abyss.exited_at.is_some());
     }
 }

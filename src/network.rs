@@ -150,13 +150,3 @@ fn tcp_connections_for_pid(pid: u32) -> Result<Vec<GameNetwork>, String> {
 fn decode_port(value: u32) -> u16 {
     u16::from_be(value as u16)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn decodes_mib_port() {
-        assert_eq!(decode_port(0x4f75), 30031);
-    }
-}

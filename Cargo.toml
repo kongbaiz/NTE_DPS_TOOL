@@ -32,5 +32,12 @@ windows-sys = { version = "0.60", features = [
 ] }
 
 [profile.release]
-lto = "thin"
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "z"
 strip = true
+debug = false
+
+[build-dependencies]
+winresource = "0.1.31"

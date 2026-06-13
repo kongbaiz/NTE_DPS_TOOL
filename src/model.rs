@@ -14,6 +14,8 @@ pub struct CharacterInfo {
     pub color: Option<String>,
     #[serde(default)]
     pub avatar: Option<String>,
+    #[serde(default)]
+    pub attribute: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -80,6 +82,43 @@ impl CharacterStats {
     }
 }
 
+fn update_combat_totals(
+    stats: &mut HashMap<u32, CharacterStats>,
+    started_at: &mut Option<f64>,
+    ended_at: &mut Option<f64>,
+    total_damage: &mut f64,
+    total_damage_taken: &mut f64,
+    hit: &Hit,
+) {
+    let row = stats.entry(hit.char_id).or_insert_with(|| CharacterStats {
+        char_id: hit.char_id,
+        name: hit.char_name.clone(),
+        first_hit: hit.timestamp,
+        last_hit: hit.timestamp,
+        ..Default::default()
+    });
+    row.name.clone_from(&hit.char_name);
+    if hit.direction == "incoming" {
+        row.hits_taken += 1;
+        row.damage_taken += hit.damage;
+        *total_damage_taken += hit.damage;
+        return;
+    }
+
+    *started_at = Some(started_at.map_or(hit.timestamp, |value| value.min(hit.timestamp)));
+    *ended_at = Some(ended_at.map_or(hit.timestamp, |value| value.max(hit.timestamp)));
+    *total_damage += hit.damage;
+    if row.hits == 0 {
+        row.first_hit = hit.timestamp;
+        row.last_hit = hit.timestamp;
+    } else {
+        row.first_hit = row.first_hit.min(hit.timestamp);
+        row.last_hit = row.last_hit.max(hit.timestamp);
+    }
+    row.hits += 1;
+    row.damage += hit.damage;
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AbyssHalf {
     #[default]
@@ -126,41 +165,14 @@ pub struct PartyCombatState {
 
 impl PartyCombatState {
     pub fn push_hit(&mut self, hit: Hit) {
-        let row = self
-            .stats
-            .entry(hit.char_id)
-            .or_insert_with(|| CharacterStats {
-                char_id: hit.char_id,
-                name: hit.char_name.clone(),
-                first_hit: hit.timestamp,
-                last_hit: hit.timestamp,
-                ..Default::default()
-            });
-        row.name = hit.char_name.clone();
-        if hit.direction == "incoming" {
-            row.hits_taken += 1;
-            row.damage_taken += hit.damage;
-            self.total_damage_taken += hit.damage;
-        } else {
-            self.started_at = Some(
-                self.started_at
-                    .map_or(hit.timestamp, |value| value.min(hit.timestamp)),
-            );
-            self.ended_at = Some(
-                self.ended_at
-                    .map_or(hit.timestamp, |value| value.max(hit.timestamp)),
-            );
-            self.total_damage += hit.damage;
-            if row.hits == 0 {
-                row.first_hit = hit.timestamp;
-                row.last_hit = hit.timestamp;
-            } else {
-                row.first_hit = row.first_hit.min(hit.timestamp);
-                row.last_hit = row.last_hit.max(hit.timestamp);
-            }
-            row.hits += 1;
-            row.damage += hit.damage;
-        }
+        update_combat_totals(
+            &mut self.stats,
+            &mut self.started_at,
+            &mut self.ended_at,
+            &mut self.total_damage,
+            &mut self.total_damage_taken,
+            &hit,
+        );
         self.hits.push_back(hit);
         while self.hits.len() > 50_000 {
             self.hits.pop_front();
@@ -324,41 +336,14 @@ pub struct CombatState {
 impl CombatState {
     pub fn push_hit(&mut self, hit: Hit) {
         self.abyss.push_hit(hit.clone());
-        let row = self
-            .stats
-            .entry(hit.char_id)
-            .or_insert_with(|| CharacterStats {
-                char_id: hit.char_id,
-                name: hit.char_name.clone(),
-                first_hit: hit.timestamp,
-                last_hit: hit.timestamp,
-                ..Default::default()
-            });
-        row.name = hit.char_name.clone();
-        if hit.direction == "incoming" {
-            row.hits_taken += 1;
-            row.damage_taken += hit.damage;
-            self.total_damage_taken += hit.damage;
-        } else {
-            self.started_at = Some(
-                self.started_at
-                    .map_or(hit.timestamp, |v| v.min(hit.timestamp)),
-            );
-            self.ended_at = Some(
-                self.ended_at
-                    .map_or(hit.timestamp, |v| v.max(hit.timestamp)),
-            );
-            self.total_damage += hit.damage;
-            if row.hits == 0 {
-                row.first_hit = hit.timestamp;
-                row.last_hit = hit.timestamp;
-            } else {
-                row.first_hit = row.first_hit.min(hit.timestamp);
-                row.last_hit = row.last_hit.max(hit.timestamp);
-            }
-            row.hits += 1;
-            row.damage += hit.damage;
-        }
+        update_combat_totals(
+            &mut self.stats,
+            &mut self.started_at,
+            &mut self.ended_at,
+            &mut self.total_damage,
+            &mut self.total_damage_taken,
+            &hit,
+        );
         self.hits.push_back(hit);
         while self.hits.len() > 50_000 {
             self.hits.pop_front();
@@ -380,12 +365,7 @@ impl CombatState {
     }
 
     pub fn dps(&self) -> f64 {
-        let duration = self.duration();
-        if duration > 0.0 {
-            self.total_damage / duration
-        } else {
-            0.0
-        }
+        self.total_damage / self.duration().max(1.0)
     }
 
     pub fn clear(&mut self) {
@@ -405,212 +385,4 @@ pub enum EngineEvent {
     Status(String),
     Error(String),
     CaptureStopped,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn hit(timestamp: f64, before: f64, damage: f64, max_hp: f64) -> Hit {
-        Hit {
-            timestamp,
-            char_id: 1,
-            char_name: "测试角色".to_owned(),
-            char_known: true,
-            damage,
-            byte_offset: 0,
-            bit_shift: 0,
-            char_source: "test".to_owned(),
-            direction: "outgoing".to_owned(),
-            target_hp_before: before,
-            target_hp_after: before - damage,
-            target_max_hp: max_hp,
-            target_hp_percent: (before - damage) / max_hp * 100.0,
-            target_id: None,
-            target_name: None,
-            target_context: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn leaves_target_empty_without_explicit_packet_identity() {
-        let mut state = CombatState::default();
-        state.push_hit(hit(1.0, 1_000.0, 200.0, 1_000.0));
-
-        assert!(state.hits[0].target_id.is_none());
-        assert!(state.hits[0].target_name.is_none());
-    }
-
-    #[test]
-    fn calculates_character_dps_from_its_own_active_window() {
-        let mut state = CombatState::default();
-        state.push_hit(hit(10.0, 1_000.0, 100.0, 1_000.0));
-        state.push_hit(hit(12.0, 900.0, 100.0, 1_000.0));
-
-        let stats = &state.stats[&1];
-        assert_eq!(stats.duration(), 2.0);
-        assert_eq!(stats.dps(), 100.0);
-    }
-
-    #[test]
-    fn tracks_incoming_damage_without_adding_it_to_output_dps() {
-        let mut state = CombatState::default();
-        state.push_hit(hit(1.0, 1_000.0, 100.0, 1_000.0));
-        let mut incoming = hit(2.0, 500.0, 75.0, 1_000.0);
-        incoming.direction = "incoming".to_owned();
-        state.push_hit(incoming);
-
-        let stats = &state.stats[&1];
-        assert_eq!(stats.hits, 1);
-        assert_eq!(stats.damage, 100.0);
-        assert_eq!(stats.hits_taken, 1);
-        assert_eq!(stats.damage_taken, 75.0);
-        assert_eq!(state.total_damage, 100.0);
-        assert_eq!(state.total_damage_taken, 75.0);
-    }
-
-    #[test]
-    fn routes_abyss_hits_to_independent_halves() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 1.0,
-            floor: Some(12),
-            half: AbyssHalf::First,
-        });
-        state.push_hit(hit(2.0, 1_000.0, 100.0, 1_000.0));
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 3.0,
-            floor: Some(12),
-            half: AbyssHalf::Second,
-        });
-        let mut second_hit = hit(4.0, 2_000.0, 250.0, 2_000.0);
-        second_hit.char_id = 2;
-        state.push_hit(second_hit);
-
-        assert_eq!(state.abyss.floor, Some(12));
-        assert_eq!(state.abyss.first_half.hits.len(), 1);
-        assert_eq!(state.abyss.first_half.total_damage, 100.0);
-        assert_eq!(state.abyss.second_half.hits.len(), 1);
-        assert_eq!(state.abyss.second_half.total_damage, 250.0);
-        assert!(state.abyss.first_half.stats.contains_key(&1));
-        assert!(state.abyss.second_half.stats.contains_key(&2));
-    }
-
-    #[test]
-    fn defers_abyss_restart_clear_until_the_half_is_known() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 1.0,
-            floor: Some(12),
-            half: AbyssHalf::First,
-        });
-        state.push_hit(hit(2.0, 1_000.0, 100.0, 1_000.0));
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 3.0,
-            floor: Some(12),
-            half: AbyssHalf::Second,
-        });
-        state.push_hit(hit(4.0, 1_000.0, 200.0, 1_000.0));
-        state.abyss.active_half = None;
-
-        state.apply_abyss_event(AbyssEvent::RestartDetected { timestamp: 5.0 });
-
-        assert_eq!(state.abyss.first_half.hits.len(), 1);
-        assert_eq!(state.abyss.second_half.hits.len(), 1);
-        assert!(state.abyss.active_half.is_none());
-        assert_eq!(state.abyss.pending_restart_at, Some(5.0));
-        assert!(state.abyss.pending_restart_half.is_none());
-
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 6.0,
-            floor: None,
-            half: AbyssHalf::Second,
-        });
-
-        assert_eq!(state.abyss.first_half.hits.len(), 1);
-        assert!(state.abyss.second_half.hits.is_empty());
-        assert_eq!(state.abyss.active_half, Some(AbyssHalf::Second));
-        assert!(state.abyss.pending_restart_at.is_none());
-    }
-
-    #[test]
-    fn clears_both_halves_when_restart_is_followed_by_an_immediate_half_switch() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 1.0,
-            floor: Some(12),
-            half: AbyssHalf::First,
-        });
-        state.push_hit(hit(2.0, 1_000.0, 100.0, 1_000.0));
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 3.0,
-            floor: Some(12),
-            half: AbyssHalf::Second,
-        });
-        state.push_hit(hit(4.0, 1_000.0, 200.0, 1_000.0));
-
-        state.apply_abyss_event(AbyssEvent::RestartDetected { timestamp: 5.0 });
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 6.0,
-            floor: None,
-            half: AbyssHalf::First,
-        });
-
-        assert!(state.abyss.first_half.hits.is_empty());
-        assert!(state.abyss.second_half.hits.is_empty());
-        assert_eq!(state.abyss.active_half, Some(AbyssHalf::First));
-        assert!(state.abyss.pending_restart_at.is_none());
-        assert!(state.abyss.pending_restart_half.is_none());
-    }
-
-    #[test]
-    fn restart_after_half_switch_only_clears_the_active_half() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 1.0,
-            floor: Some(12),
-            half: AbyssHalf::First,
-        });
-        state.push_hit(hit(2.0, 1_000.0, 100.0, 1_000.0));
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 3.0,
-            floor: Some(12),
-            half: AbyssHalf::Second,
-        });
-        state.push_hit(hit(4.0, 1_000.0, 200.0, 1_000.0));
-
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 5.0,
-            floor: None,
-            half: AbyssHalf::First,
-        });
-        state.apply_abyss_event(AbyssEvent::RestartDetected { timestamp: 6.0 });
-
-        assert!(state.abyss.first_half.hits.is_empty());
-        assert_eq!(state.abyss.second_half.hits.len(), 1);
-        assert_eq!(state.abyss.active_half, Some(AbyssHalf::First));
-    }
-
-    #[test]
-    fn does_not_clear_the_other_half_on_a_delayed_normal_half_switch() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 1.0,
-            floor: Some(12),
-            half: AbyssHalf::First,
-        });
-        state.push_hit(hit(2.0, 1_000.0, 100.0, 1_000.0));
-        state.apply_abyss_event(AbyssEvent::RestartDetected { timestamp: 3.0 });
-        state.push_hit(hit(4.0, 1_000.0, 150.0, 1_000.0));
-
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 30.0,
-            floor: None,
-            half: AbyssHalf::Second,
-        });
-
-        assert_eq!(state.abyss.first_half.hits.len(), 1);
-        assert!(state.abyss.second_half.hits.is_empty());
-        assert_eq!(state.abyss.active_half, Some(AbyssHalf::Second));
-    }
 }

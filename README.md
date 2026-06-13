@@ -38,6 +38,11 @@ cargo run --release
 
 Debug 面板支持导入完整 PCAPNG 或解析 JSON，并使用与实时抓包相同的解析流程。
 
+## 算法文档
+
+封包字段、Boss HP、覆纹逐段推算、DPS 与统计公式详见
+[NTE_封包解析算法.md](NTE_封包解析算法.md)。
+
 ## 验证
 
 ```powershell

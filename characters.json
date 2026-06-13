@@ -9,6 +9,7 @@
       "verified": false
     },
     "1003": {
+      "attribute": "咒",
       "avatar": "res/player_003_256.png",
       "codename": "Sagiri",
       "color": "#c34804",
@@ -17,6 +18,7 @@
       "verified": true
     },
     "1004": {
+      "attribute": "暗",
       "avatar": "res/player_004_256.png",
       "codename": "Lacrimosa",
       "color": "#c3c3c5",
@@ -25,6 +27,7 @@
       "verified": true
     },
     "1005": {
+      "attribute": "暗",
       "avatar": "res/player_005_256.png",
       "codename": "Daffodill",
       "color": "#346295",
@@ -33,6 +36,7 @@
       "verified": false
     },
     "1008": {
+      "attribute": "相",
       "avatar": "Character_skia.png",
       "codename": "Skia",
       "color": "#893e4e",
@@ -41,6 +45,7 @@
       "verified": true
     },
     "1009": {
+      "attribute": "光",
       "avatar": "Character_player_F.png",
       "codename": "Female",
       "color": "#ffffff",
@@ -49,6 +54,7 @@
       "verified": false
     },
     "1010": {
+      "attribute": "灵",
       "avatar": "res/player_010_256.png",
       "codename": "Nanally",
       "color": "#f52859",
@@ -57,6 +63,7 @@
       "verified": true
     },
     "1013": {
+      "attribute": "光",
       "avatar": "res/player_052_256.png",
       "codename": "Jin",
       "color": "#950742",
@@ -64,15 +71,8 @@
       "name_zh": "浔",
       "verified": false
     },
-    "1014": {
-      "avatar": "res/player_104_256.png",
-      "codename": "Kuhara",
-      "color": "#6d5590",
-      "name_en": "Jiuyuan",
-      "name_zh": "九原",
-      "verified": false
-    },
     "1015": {
+      "attribute": "咒",
       "avatar": "Character_Adler.png",
       "codename": "Adler",
       "color": "#870803",
@@ -80,21 +80,8 @@
       "name_zh": "阿德勒",
       "verified": false
     },
-    "1017": {
-      "avatar": "Character_Haniel.png",
-      "codename": "Haniel",
-      "color": "#a83c78",
-      "name_en": "Haniel",
-      "name_zh": "哈尼婭",
-      "verified": false
-    },
-    "1018": {
-      "codename": "Alphard",
-      "name_en": "Alphard",
-      "name_zh": "Alphard",
-      "verified": false
-    },
     "1019": {
+      "attribute": "灵",
       "avatar": "Character_Mint.png",
       "codename": "Mint",
       "color": "#2aacba",
@@ -103,6 +90,7 @@
       "verified": true
     },
     "1020": {
+      "attribute": "魂",
       "avatar": "res/player_020_256.png",
       "codename": "Haniel",
       "color": "#a83c78",
@@ -127,6 +115,7 @@
       "verified": false
     },
     "1023": {
+      "attribute": "咒",
       "avatar": "Character_cang.png",
       "codename": "Cang",
       "color": "#95a2b0",
@@ -134,87 +123,23 @@
       "name_zh": "白藏",
       "verified": false
     },
-    "1024": {
-      "codename": "Jenson",
-      "name_en": "Jenson",
-      "name_zh": "Jenson",
-      "verified": false
-    },
     "1025": {
+      "attribute": "相",
       "avatar": "Character_Hathor.png",
       "codename": "Hathor",
       "color": "#737374",
       "name_en": "Hathor",
-      "name_zh": "哈索爾",
-      "verified": false
-    },
-    "1026": {
-      "codename": "Illica",
-      "name_en": "Illica",
-      "name_zh": "Illica",
-      "verified": false
-    },
-    "1027": {
-      "codename": "Mismo",
-      "name_en": "Mismo",
-      "name_zh": "Mismo",
-      "verified": false
-    },
-    "1028": {
-      "codename": "Otro",
-      "name_en": "Otro",
-      "name_zh": "Otro",
-      "verified": false
-    },
-    "1030": {
-      "codename": "Iskra",
-      "name_en": "Iskra",
-      "name_zh": "Iskra",
-      "verified": false
-    },
-    "1031": {
-      "codename": "Palomino",
-      "name_en": "Palomino",
-      "name_zh": "Palomino",
-      "verified": false
-    },
-    "1032": {
-      "codename": "Aniela",
-      "name_en": "Aniela",
-      "name_zh": "Aniela",
+      "name_zh": "哈索尔",
       "verified": false
     },
     "1033": {
+      "attribute": "咒",
       "avatar": "Character_Adler.png",
       "codename": "Adler",
       "color": "#870803",
       "name_en": "Adler",
       "name_zh": "阿德勒",
       "verified": true
-    },
-    "1034": {
-      "codename": "Eri",
-      "name_en": "Ellie",
-      "name_zh": "Ellie",
-      "verified": false
-    },
-    "1035": {
-      "codename": "Adonis",
-      "name_en": "Adonis",
-      "name_zh": "Adonis",
-      "verified": false
-    },
-    "1036": {
-      "codename": "Zankou",
-      "name_en": "Zankou",
-      "name_zh": "Zankou",
-      "verified": false
-    },
-    "1038": {
-      "codename": "Elms",
-      "name_en": "Jerma",
-      "name_zh": "Jerma",
-      "verified": false
     },
     "1039": {
       "avatar": "Character_fadia.png",
@@ -224,19 +149,8 @@
       "name_zh": "法帝婭",
       "verified": false
     },
-    "1041": {
-      "codename": "Exe",
-      "name_en": "Exe",
-      "name_zh": "Exe",
-      "verified": false
-    },
-    "1042": {
-      "codename": "Blackbird",
-      "name_en": "Raven",
-      "name_zh": "Raven",
-      "verified": false
-    },
     "1046": {
+      "attribute": "光",
       "avatar": "res/player_046_256.png",
       "codename": "Male",
       "color": "#ffffff",
@@ -245,6 +159,7 @@
       "verified": true
     },
     "1051": {
+      "attribute": "光",
       "avatar": "Character_player_F.png",
       "codename": "Female",
       "color": "#ffffff",
@@ -253,6 +168,7 @@
       "verified": true
     },
     "1052": {
+      "attribute": "光",
       "avatar": "res/player_052_256.png",
       "codename": "Jin",
       "color": "#950742",
@@ -261,6 +177,7 @@
       "verified": false
     },
     "1054": {
+      "attribute": "暗",
       "avatar": "res/player_005_256.png",
       "codename": "Daffodill",
       "color": "#346295",
@@ -269,6 +186,7 @@
       "verified": true
     },
     "1055": {
+      "attribute": "灵",
       "avatar": "res/player_104_256.png",
       "codename": "Kuhara",
       "color": "#6d5590",
@@ -276,19 +194,8 @@
       "name_zh": "九原",
       "verified": true
     },
-    "1056": {
-      "codename": "Bat",
-      "name_en": "Bat",
-      "name_zh": "Bat",
-      "verified": false
-    },
-    "1057": {
-      "codename": "Akane",
-      "name_en": "Akane Rin",
-      "name_zh": "Akane Rin",
-      "verified": false
-    },
     "1070": {
+      "attribute": "魂",
       "avatar": "Character_misuki.png",
       "codename": "mitsuki",
       "color": "#7ea1c8",
@@ -296,36 +203,13 @@
       "name_zh": "海月",
       "verified": false
     },
-    "1071": {
-      "codename": "Chaos",
-      "name_en": "Chaos",
-      "name_zh": "Chaos",
-      "verified": false
-    },
-    "1072": {
-      "codename": "Radio",
-      "name_en": "Linko",
-      "name_zh": "Linko",
-      "verified": false
-    },
     "1073": {
+      "attribute": "光",
       "avatar": "Character_chiichan.png",
       "codename": "chiichan",
       "color": "#f9b5b5",
       "name_en": "Chiz",
       "name_zh": "小吱",
-      "verified": false
-    },
-    "1075": {
-      "codename": "oneiroi",
-      "name_en": "Iroi",
-      "name_zh": "Iroi",
-      "verified": false
-    },
-    "1076": {
-      "codename": "Shinku",
-      "name_en": "Shinku",
-      "name_zh": "Shinku",
       "verified": false
     }
   },
