@@ -9,3 +9,4 @@ uv.lock
 /logs/
 /data/
 /NTE_Assets/
+*.i64
