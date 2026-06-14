@@ -10,6 +10,10 @@ Rust + egui 实现的 NTE 队伍实时 DPS 统计工具。直接通过 Npcap 捕
 - 独立 Debug 面板，显示封包端点、角色声明、解析结果和载荷预览
 - 实时流式保存完整 Ethernet 帧为 `logs/nte_raw_*.pcapng`
 - 支持另存完整 PCAPNG，以及单独导出筛选后的解析 JSON
+- 支持将 `.pcapng` 直接拖入主窗口导入；管理员权限运行时可使用主界面的
+  “导入 PCAPNG”按钮或 `Ctrl+O`（Windows 禁止普通权限资源管理器向管理员窗口拖放）
+- 自动保存透明度、明暗主题和窗口置顶设置到
+  `%LOCALAPPDATA%\NTE DPS Tool\config.json`
 - Debug 窗口按封包、角色数据、环境分栏，并可编辑或新增
   `res/data/characters/characters.json` 记录
 - 动态加载 Npcap，不需要安装 Npcap SDK
@@ -187,3 +191,21 @@ cargo build --release
 ```powershell
 cargo test -- --ignored
 ```
+
+### Scene index
+
+The application does not load the full UE world export at runtime. After
+updating the unpacked resources, regenerate the compact scene index with:
+
+```powershell
+python tools/build_scene_index.py
+python tools/build_monster_index.py
+```
+
+The generated `res/data/scenes/scene_index.json` is embedded into the
+executable and maps DataLayer GUIDs and selected World Partition cell IDs to
+displayable scene names.
+
+Use `--include-all --output res/data/scenes/scene_index_all.json` to regenerate
+the review-only full scene list. `res/data/monsters/monster_index.json` maps
+runtime monster classes and GameplayEffect source families to Chinese names.

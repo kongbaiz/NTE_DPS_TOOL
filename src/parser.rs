@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -24,6 +25,27 @@ pub const CHARACTER_DATA_PATH: &str = "res/data/characters/characters.json";
 pub const GAMEPLAY_EFFECT_MAPPING_PATH: &str = "res/data/skills/gameplay_effect_mapping.json";
 pub const SKILL_DAMAGE_DATA_PATH: &str = "res/data/skills/skill_damage.json";
 pub const WOODEN_DAMAGE_DESCRIPTIONS_PATH: &str = "res/data/skills/wooden_damage_descriptions.json";
+const MONSTER_INDEX_JSON: &str = include_str!("../res/data/monsters/monster_index.json");
+
+#[derive(Debug, Deserialize)]
+struct MonsterIndexDocument {
+    aliases: HashMap<String, MonsterIndexEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+struct MonsterIndexEntry {
+    id: String,
+    display_name: String,
+}
+
+fn monster_index() -> &'static HashMap<String, MonsterIndexEntry> {
+    static INDEX: OnceLock<HashMap<String, MonsterIndexEntry>> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        serde_json::from_str::<MonsterIndexDocument>(MONSTER_INDEX_JSON)
+            .expect("embedded monster index must be valid")
+            .aliases
+    })
+}
 
 #[derive(Deserialize)]
 struct CharacterDocument {
@@ -196,9 +218,19 @@ pub fn load_wooden_damage_names(path: &Path) -> Result<HashMap<String, String>> 
                 .and_then(|desc| desc.get("CultureInvariantString"))
                 .and_then(serde_json::Value::as_str)
                 .filter(|description| !description.trim().is_empty())
-                .map(|description| (effect_name.clone(), description.trim().to_owned()))
+                .map(|description| (effect_name.clone(), normalize_damage_name(description)))
         })
         .collect())
+}
+
+pub fn normalize_damage_name(description: &str) -> String {
+    description
+        .replace("QTE", "环合")
+        .chars()
+        .filter(|character| !character.is_ascii_digit() && *character != '_')
+        .collect::<String>()
+        .trim()
+        .to_owned()
 }
 
 fn damage_source_category_code(value: &str) -> Option<&str> {
@@ -213,8 +245,16 @@ pub fn classify_attack_type(
     effect_name: &str,
     ability_name: Option<&str>,
 ) -> String {
+    let searchable = format!("{} {}", effect_name, ability_name.unwrap_or_default());
+    let searchable_lower = searchable.to_ascii_lowercase();
+    if searchable_lower.contains("tenacity") {
+        return "倾陷伤害".to_owned();
+    }
+    if searchable_lower.contains("parry") {
+        return "格挡反击".to_owned();
+    }
     if effect_name.contains("Reaction_1") || effect_name.contains("Reaction1_") {
-        return "创生".to_owned();
+        return "创生花".to_owned();
     }
     if effect_name.contains("Reaction_2") || effect_name.contains("Reaction2_") {
         return "覆纹".to_owned();
@@ -233,7 +273,7 @@ pub fn classify_attack_type(
         Some("A") => Some("普攻"),
         Some("E") => Some("E技能"),
         Some("Q") => Some("Q技能"),
-        Some("H") => Some("QTE"),
+        Some("H") => Some("环合"),
         Some("R") => Some("反应伤害"),
         Some("Z") => Some("闪避反击"),
         _ => None,
@@ -242,11 +282,10 @@ pub fn classify_attack_type(
         return attack_type.to_owned();
     }
 
-    let searchable = format!("{} {}", effect_name, ability_name.unwrap_or_default());
     if searchable.contains("UltraSkill") {
         "Q技能".to_owned()
     } else if searchable.contains("QTE") || searchable.contains("EntryAttack") {
-        "QTE".to_owned()
+        "环合".to_owned()
     } else if searchable.contains("Melee") || searchable.contains("NormalAttack") {
         "普攻".to_owned()
     } else if searchable.contains("Skill") {
@@ -257,8 +296,8 @@ pub fn classify_attack_type(
 }
 
 pub fn classify_attack_type_from_description(description: &str) -> Option<String> {
-    if description.contains("QTE") {
-        Some("QTE".to_owned())
+    if description.contains("QTE") || description.contains("环合") {
+        Some("环合".to_owned())
     } else if description.contains("大招") {
         Some("Q技能".to_owned())
     } else if description.contains("普攻") {
@@ -731,12 +770,13 @@ fn extract_target_metadata(
     byte_offset: usize,
     bit_shift: u8,
 ) -> (Option<String>, Option<String>, Vec<String>) {
-    let start = byte_offset.saturating_sub(256);
-    let end = data.len().min(byte_offset.saturating_add(320));
+    let start = byte_offset.saturating_sub(1_024);
+    let end = data.len().min(byte_offset.saturating_add(1_024));
     let mut shifted = vec![0; end - start];
     if decode_shifted_into(data, start, bit_shift, 0, &mut shifted).is_none() {
         return (None, None, Vec::new());
     }
+    let mut all_strings = Vec::new();
     let mut strings = Vec::new();
     let mut cursor = 0;
     while cursor < shifted.len() {
@@ -751,6 +791,9 @@ fn extract_target_metadata(
                 let value = String::from_utf8_lossy(&shifted[begin..cursor])
                     .trim()
                     .to_owned();
+                if !all_strings.contains(&value) {
+                    all_strings.push(value.clone());
+                }
                 let lower = value.to_ascii_lowercase();
                 if [
                     "target",
@@ -777,7 +820,7 @@ fn extract_target_metadata(
     let target_id = strings
         .iter()
         .find_map(|value| metadata_value(value, &["targetid", "target_id", "entityid", "actorid"]));
-    let target_name = strings.iter().find_map(|value| {
+    let mut target_name = strings.iter().find_map(|value| {
         metadata_value(
             value,
             &[
@@ -789,7 +832,85 @@ fn extract_target_metadata(
             ],
         )
     });
+    let mut resolved_monsters = all_strings
+        .iter()
+        .flat_map(|value| {
+            value
+                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .filter(|token| !token.is_empty())
+        })
+        .filter_map(monster_entry)
+        .collect::<Vec<_>>();
+    resolved_monsters.sort_by(|left, right| left.id.cmp(&right.id));
+    resolved_monsters.dedup_by(|left, right| left.id == right.id);
+    let mut target_id = target_id;
+    if resolved_monsters.len() == 1 {
+        let monster = resolved_monsters.remove(0);
+        target_id.get_or_insert(monster.id);
+        target_name.get_or_insert(monster.display_name);
+    }
     (target_id, target_name, strings)
+}
+
+fn monster_entry(value: &str) -> Option<MonsterIndexEntry> {
+    let normalized = value
+        .strip_suffix("_C")
+        .or_else(|| value.strip_suffix("_c"))
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    monster_index().get(&normalized).cloned()
+}
+
+pub fn detect_monster_targets(data: &[u8]) -> Vec<(String, String)> {
+    let mut monsters = Vec::new();
+    for bit_shift in 0..8_u8 {
+        let shifted = if bit_shift == 0 {
+            data.to_vec()
+        } else {
+            match decode_shifted_bytes(data, 0, bit_shift, 0, data.len().saturating_sub(1)) {
+                Some(value) => value,
+                None => continue,
+            }
+        };
+        let text = String::from_utf8_lossy(&shifted);
+        for token in
+            text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        {
+            let Some(monster) = monster_entry(token) else {
+                continue;
+            };
+            let entry = (monster.id, monster.display_name);
+            if !monsters.contains(&entry) {
+                monsters.push(entry);
+            }
+        }
+    }
+    monsters
+}
+
+pub fn monster_target_from_identifier(value: &str) -> Option<(String, String)> {
+    if let Some(monster) = monster_entry(value) {
+        return Some((monster.id, monster.display_name));
+    }
+    let lower = value.to_ascii_lowercase();
+    for marker in ["boss_", "mon_"] {
+        let Some(start) = lower.find(marker) else {
+            continue;
+        };
+        let digits = lower[start + marker.len()..]
+            .trim_start_matches('0')
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>();
+        if digits.is_empty() {
+            continue;
+        }
+        let family = format!("{}{}", marker, digits);
+        if let Some(monster) = monster_index().get(&family) {
+            return Some((monster.id.clone(), monster.display_name.clone()));
+        }
+    }
+    None
 }
 
 fn metadata_value(value: &str, keys: &[&str]) -> Option<String> {
@@ -891,7 +1012,7 @@ mod character_tests {
                 "Q技能",
                 "GA_Nanally_UltraSkill",
             ),
-            ("GE_Player_Sagiri_QTE1_Damage", "QTE", "GA_Sagiri_QTE"),
+            ("GE_Player_Sagiri_QTE1_Damage", "环合", "GA_Sagiri_QTE"),
             (
                 "GE_Player_Nanally_PerfectEvadeAttack_Damage",
                 "闪避反击",
@@ -912,17 +1033,37 @@ mod character_tests {
             names
                 .get("GE_Player_Sagiri_QTE1_Damage")
                 .map(String::as_str),
-            Some("早雾QTE")
+            Some("早雾环合")
         );
         assert_eq!(
             names
                 .get("GE_Player_Nanally_Melee1_Damage")
                 .map(String::as_str),
-            Some("娜娜莉普攻1")
+            Some("娜娜莉普攻")
         );
         assert_eq!(
             classify_attack_type_from_description("早雾大招1").as_deref(),
             Some("Q技能")
+        );
+    }
+
+    #[test]
+    fn normalizes_damage_names_for_grouping() {
+        assert_eq!(normalize_damage_name("早雾大招2"), "早雾大招");
+        assert_eq!(normalize_damage_name("早雾普攻2_1"), "早雾普攻");
+        assert_eq!(normalize_damage_name("哈索尔QTE2"), "哈索尔环合");
+        assert_eq!(normalize_damage_name("法帝娅大招追加3_2"), "法帝娅大招追加");
+    }
+
+    #[test]
+    fn classifies_tenacity_and_parry_damage() {
+        assert_eq!(
+            classify_attack_type(Some("B"), "Buff_Tenacity_damage", None,),
+            "倾陷伤害"
+        );
+        assert_eq!(
+            classify_attack_type(Some("T"), "GE_Parry_Damage", None,),
+            "格挡反击"
         );
     }
 
@@ -956,5 +1097,22 @@ mod character_tests {
         assert_eq!(declared_character_for_shift(&evidence, 3), Some(1004));
         assert_eq!(declared_character_for_shift(&evidence, 2), Some(1003));
         assert_eq!(declared_character_for_shift(&evidence, 5), None);
+    }
+
+    #[test]
+    fn resolves_monster_class_near_damage_record() {
+        let payload = b"/Game/Blueprints/Character/Monster/Boss_017_BP_Abyss.Boss_017_BP_Abyss_C";
+        let (target_id, target_name, _) = extract_target_metadata(payload, payload.len() / 2, 0);
+
+        assert_eq!(target_id.as_deref(), Some("Boss_017_BP_Abyss"));
+        assert_eq!(target_name.as_deref(), Some("玛门"));
+        assert_eq!(
+            detect_monster_targets(payload),
+            vec![("Boss_017_BP_Abyss".to_owned(), "玛门".to_owned())]
+        );
+        assert_eq!(
+            monster_target_from_identifier("GE_Boss_017_act01_Dmg_05a_Steal_BP"),
+            Some(("Boss_017_BP_Abyss".to_owned(), "玛门".to_owned()))
+        );
     }
 }

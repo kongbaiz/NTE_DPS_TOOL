@@ -3,11 +3,14 @@
 
 mod app;
 mod capture;
+mod config;
+mod file_drop;
 mod hotkey;
 mod model;
 mod network;
 mod parser;
 mod protocol;
+mod scene;
 
 use anyhow::Result;
 use app::DpsApp;
@@ -16,6 +19,7 @@ use std::sync::Arc;
 
 fn main() -> Result<()> {
     install_panic_log();
+    let (ui_config, config_warning) = config::load();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("NTE DPS TOOL")
@@ -24,14 +28,18 @@ fn main() -> Result<()> {
             .with_decorations(false)
             .with_transparent(true)
             .with_icon(Arc::new(app_icon()))
-            .with_window_level(egui::WindowLevel::AlwaysOnTop),
+            .with_window_level(if ui_config.always_on_top {
+                egui::WindowLevel::AlwaysOnTop
+            } else {
+                egui::WindowLevel::Normal
+            }),
         ..Default::default()
     };
 
     eframe::run_native(
         "NTE DPS TOOL",
         options,
-        Box::new(|cc| Ok(Box::new(DpsApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(DpsApp::new(cc, ui_config, config_warning)))),
     )
     .map_err(|error| anyhow::anyhow!(error.to_string()))
 }

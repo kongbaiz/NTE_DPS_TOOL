@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::{
@@ -6,7 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use crossbeam_channel::{Receiver, Sender, unbounded};
@@ -25,6 +25,8 @@ use crate::capture::{
     CaptureDevice, CaptureHandle, RawCaptureBuffer, import_capture_json, import_pcapng,
     list_devices, start_capture,
 };
+use crate::config::{self, UiConfig};
+use crate::file_drop::NativeFileDrop;
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, CharacterStats, CombatState, EngineEvent,
@@ -34,6 +36,8 @@ use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, load_characters};
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
+const MAX_PAUSED_EVENTS: usize = 50_000;
+const MAX_ENGINE_QUEUE_BACKLOG: usize = 20_000;
 const MAX_DETAIL_HITS: usize = 10_000;
 const TITLE_BAR_BUTTON_SIZE: egui::Vec2 = egui::vec2(28.0, 22.0);
 const TITLE_BAR_TOGGLE_SIZE: egui::Vec2 = egui::vec2(64.0, 24.0);
@@ -291,6 +295,8 @@ pub struct DpsApp {
     replay_thread: Option<thread::JoinHandle<()>>,
     sender: Sender<EngineEvent>,
     receiver: Receiver<EngineEvent>,
+    paused_events: VecDeque<EngineEvent>,
+    dropped_debug_packets: u64,
     status: String,
     diagnostic: Option<String>,
     last_error: Option<String>,
@@ -309,20 +315,38 @@ pub struct DpsApp {
     theme_transition_from: Option<Color32>,
     theme_transition_started_at: Option<f64>,
     pending_debug_import: Option<(DebugImportKind, u8)>,
+    saved_ui_config: UiConfig,
+    pending_ui_config: Option<(UiConfig, Instant)>,
+    ui_config_path: PathBuf,
+    native_file_drop: NativeFileDrop,
+    last_dropped_file: Option<(PathBuf, Instant)>,
     last_rounding_apply_at: f64,
     hotkey_receiver: Receiver<HotkeyEvent>,
     _hotkey: HotkeyHandle,
 }
 
 impl DpsApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        ui_config: UiConfig,
+        config_warning: Option<String>,
+    ) -> Self {
         install_fonts(&cc.egui_ctx);
-        configure_style(&cc.egui_ctx, false);
+        configure_style(&cc.egui_ctx, ui_config.dark_mode);
         let (hotkey, hotkey_receiver) = HotkeyHandle::start(cc.egui_ctx.clone());
         let (sender, receiver) = unbounded();
         let data_root = data_root();
         let characters_path = data_root.join(CHARACTER_DATA_PATH);
-        let characters = load_characters(characters_path.as_path()).unwrap_or_default();
+        let (characters, character_load_error) = match load_characters(characters_path.as_path()) {
+            Ok(characters) => (characters, None),
+            Err(error) => (
+                HashMap::new(),
+                Some(format!(
+                    "角色数据加载失败（{}）：{error}",
+                    characters_path.display()
+                )),
+            ),
+        };
         let avatar_textures = load_character_avatars(&cc.egui_ctx, &data_root, &characters);
         let attribute_textures = load_attribute_icons(&cc.egui_ctx, &data_root);
         let character_editor =
@@ -342,17 +366,30 @@ impl DpsApp {
             Ok(devices) => (devices, None),
             Err(error) => (Vec::new(), Some(error)),
         };
-        let (selected_device, game_network, status, diagnostic) = match device_error {
+        let (selected_device, game_network, status, mut diagnostic) = match device_error {
             Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
             None => match detect_game_device(&devices) {
                 Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
                 Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
             },
         };
+        if let Some(error) = &character_load_error {
+            diagnostic = Some(match diagnostic {
+                Some(existing) => format!("{error}\n{existing}"),
+                None => error.clone(),
+            });
+        }
         let local_ip = game_network
             .as_ref()
             .map(|network| network.local_ip.to_string())
             .unwrap_or_default();
+        let startup_error = match (config_warning, character_load_error) {
+            (Some(config_error), Some(character_error)) => {
+                Some(format!("{config_error}\n{character_error}"))
+            }
+            (Some(error), None) | (None, Some(error)) => Some(error),
+            (None, None) => None,
+        };
         Self {
             characters: Arc::new(characters),
             avatar_textures,
@@ -377,24 +414,31 @@ impl DpsApp {
             replay_thread: None,
             sender,
             receiver,
+            paused_events: VecDeque::new(),
+            dropped_debug_packets: 0,
             status,
             diagnostic,
-            last_error: None,
+            last_error: startup_error,
             debug_open: false,
             debug_tab: DebugTab::Packets,
             debug_only_hits: false,
             debug_search: String::new(),
             character_editor,
             paused: false,
-            dark_mode: false,
-            always_on_top: true,
+            dark_mode: ui_config.dark_mode,
+            always_on_top: ui_config.always_on_top,
             mouse_passthrough: false,
-            opacity: 0.92,
+            opacity: ui_config.opacity,
             applied_opacity: None,
             opacity_reapply_frames: 4,
             theme_transition_from: None,
             theme_transition_started_at: None,
             pending_debug_import: None,
+            saved_ui_config: ui_config,
+            pending_ui_config: None,
+            ui_config_path: config::config_path(),
+            native_file_drop: NativeFileDrop::new(),
+            last_dropped_file: None,
             last_rounding_apply_at: f64::NEG_INFINITY,
             hotkey_receiver,
             _hotkey: hotkey,
@@ -411,14 +455,22 @@ impl DpsApp {
         if let Some(thread) = self.replay_thread.take() {
             let _ = thread.join();
         }
+        // All producers are joined, so every queued event belongs to the stopped task.
+        // Apply them now to prevent a delayed CaptureStopped from affecting the next task.
+        self.drain_pending_events();
     }
 
     fn drain_hotkeys(&mut self, ctx: &egui::Context) {
         let home_pressed = ctx.input(|input| input.key_pressed(egui::Key::Home));
+        let import_pressed =
+            ctx.input(|input| input.modifiers.command && input.key_pressed(egui::Key::O));
         #[cfg(not(feature = "no_debug"))]
         let f12_pressed = ctx.input(|input| input.key_pressed(egui::Key::F12));
         if home_pressed {
             self.toggle_mouse_passthrough(ctx);
+        }
+        if import_pressed {
+            self.request_debug_import(ctx, DebugImportKind::Pcapng);
         }
         #[cfg(not(feature = "no_debug"))]
         if f12_pressed {
@@ -492,7 +544,11 @@ impl DpsApp {
                 .color(theme_accent(self.dark_mode)),
         );
         let title_status = if self.paused {
-            format!("已暂停 · 队列 {}", self.receiver.len())
+            format!(
+                "已暂停 · 待处理 {} · 已丢弃调试封包 {}",
+                self.paused_events.len(),
+                self.dropped_debug_packets
+            )
         } else {
             self.status.clone()
         };
@@ -668,6 +724,94 @@ impl DpsApp {
         self.status = "正在导入抓包 JSON...".to_owned();
     }
 
+    fn process_file_drops(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        self.native_file_drop.install(frame);
+        let mut paths = ctx.input(|input| {
+            input
+                .raw
+                .dropped_files
+                .iter()
+                .filter_map(|file| file.path.clone())
+                .collect::<Vec<_>>()
+        });
+        paths.extend(self.native_file_drop.try_iter());
+        for path in paths {
+            self.import_dropped_file(path);
+        }
+    }
+
+    fn import_dropped_file(&mut self, path: PathBuf) {
+        if self
+            .last_dropped_file
+            .as_ref()
+            .is_some_and(|(previous, at)| {
+                previous == &path && at.elapsed() < Duration::from_secs(1)
+            })
+        {
+            return;
+        }
+        self.last_dropped_file = Some((path.clone(), Instant::now()));
+        let is_pcapng = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("pcapng"));
+        if !is_pcapng {
+            self.last_error = Some(format!(
+                "不支持拖入该文件：{}\n当前仅支持 .pcapng",
+                path.display()
+            ));
+            return;
+        }
+        self.start_pcapng_import(path);
+    }
+
+    fn current_ui_config(&self) -> UiConfig {
+        UiConfig {
+            version: 1,
+            opacity: self.opacity,
+            dark_mode: self.dark_mode,
+            always_on_top: self.always_on_top,
+        }
+        .sanitized()
+    }
+
+    fn persist_ui_config(&mut self) {
+        let current = self.current_ui_config();
+        if current == self.saved_ui_config {
+            self.pending_ui_config = None;
+            return;
+        }
+        let should_replace_pending = self
+            .pending_ui_config
+            .as_ref()
+            .is_none_or(|(pending, _)| pending != &current);
+        if should_replace_pending {
+            self.pending_ui_config = Some((current, Instant::now() + Duration::from_millis(350)));
+            return;
+        }
+        let Some((pending, save_at)) = &self.pending_ui_config else {
+            return;
+        };
+        if Instant::now() < *save_at {
+            return;
+        }
+        let pending = pending.clone();
+        match config::save(&self.ui_config_path, &pending) {
+            Ok(()) => {
+                self.saved_ui_config = pending;
+                self.pending_ui_config = None;
+            }
+            Err(error) => {
+                self.last_error = Some(format!(
+                    "UI 配置保存失败（{}）：{error}",
+                    self.ui_config_path.display()
+                ));
+                self.saved_ui_config = pending;
+                self.pending_ui_config = None;
+            }
+        }
+    }
+
     fn request_debug_import(&mut self, ctx: &egui::Context, kind: DebugImportKind) {
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::Normal,
@@ -719,17 +863,54 @@ impl DpsApp {
 
     fn drain_events(&mut self) {
         if self.paused {
+            while let Ok(event) = self.receiver.try_recv() {
+                match event {
+                    EngineEvent::Packet(_) => {
+                        self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
+                    }
+                    EngineEvent::Hit(_) | EngineEvent::Abyss(_) | EngineEvent::Scene(_) => {
+                        if self.paused_events.len() == MAX_PAUSED_EVENTS {
+                            self.paused_events.pop_front();
+                        }
+                        self.paused_events.push_back(event);
+                    }
+                    EngineEvent::Status(_)
+                    | EngineEvent::Error(_)
+                    | EngineEvent::CaptureStopped => self.apply_engine_event(event),
+                }
+            }
             return;
         }
         for _ in 0..MAX_UI_EVENTS_PER_FRAME {
-            let Ok(event) = self.receiver.try_recv() else {
+            let event = if let Some(event) = self.paused_events.pop_front() {
+                event
+            } else if let Ok(event) = self.receiver.try_recv() {
+                event
+            } else {
                 break;
             };
             self.apply_engine_event(event);
         }
+        self.shed_event_backlog();
+    }
+
+    fn shed_event_backlog(&mut self) {
+        while self.receiver.len() > MAX_ENGINE_QUEUE_BACKLOG {
+            let Ok(event) = self.receiver.try_recv() else {
+                break;
+            };
+            if matches!(event, EngineEvent::Packet(_)) {
+                self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
+            } else {
+                self.apply_engine_event(event);
+            }
+        }
     }
 
     fn drain_pending_events(&mut self) {
+        while let Some(event) = self.paused_events.pop_front() {
+            self.apply_engine_event(event);
+        }
         while let Ok(event) = self.receiver.try_recv() {
             self.apply_engine_event(event);
         }
@@ -746,18 +927,27 @@ impl DpsApp {
                 } else if matches!(&event, AbyssEvent::Success { .. } | AbyssEvent::Exit { .. }) {
                     self.abyss_compact_mode = false;
                 }
+                if matches!(&event, AbyssEvent::Exit { .. }) {
+                    self.state.scene.clear();
+                }
                 self.state.apply_abyss_event(event);
             }
+            EngineEvent::Scene(scene) => self.state.apply_scene_observation(scene),
             EngineEvent::Status(status) => self.status = status,
             EngineEvent::Error(error) => {
                 self.status = "运行失败".to_owned();
                 self.last_error = Some(error);
             }
             EngineEvent::CaptureStopped => {
+                let import_finished = self.replay_thread.is_some();
                 self.capture.take();
                 self.replay_stop = None;
                 if let Some(thread) = self.replay_thread.take() {
                     let _ = thread.join();
+                }
+                if import_finished {
+                    self.selected_abyss_half = AbyssHalf::First;
+                    self.abyss_compact_mode = false;
                 }
                 self.status = "已停止".to_owned();
             }
@@ -1329,6 +1519,22 @@ impl DpsApp {
         });
     }
 
+    fn scene_indicator(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("当前场景")
+                    .size(10.5)
+                    .color(ui.visuals().weak_text_color()),
+            );
+            ui.label(
+                RichText::new(self.state.scene.display_name())
+                    .size(11.5)
+                    .strong()
+                    .color(theme_accent(self.dark_mode)),
+            );
+        });
+    }
+
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if self.capture.is_none() && self.replay_thread.is_none() {
@@ -1358,6 +1564,13 @@ impl DpsApp {
                 self.team_hit_detail_open = false;
             }
             if ui
+                .button("导入 PCAPNG")
+                .on_hover_text("管理员模式下请使用此按钮或 Ctrl+O")
+                .clicked()
+            {
+                self.request_debug_import(ui.ctx(), DebugImportKind::Pcapng);
+            }
+            if ui
                 .selectable_label(self.paused, if self.paused { "继续" } else { "暂停" })
                 .clicked()
             {
@@ -1369,7 +1582,11 @@ impl DpsApp {
             ui.separator();
             let status_color = status_color(&self.status, self.paused, self.dark_mode);
             let status = if self.paused {
-                format!("已暂停 · 队列 {}", self.receiver.len())
+                format!(
+                    "已暂停 · 待处理 {} · 已丢弃调试封包 {}",
+                    self.paused_events.len(),
+                    self.dropped_debug_packets
+                )
             } else if self.receiver.is_empty() {
                 self.status.clone()
             } else {
@@ -1466,6 +1683,53 @@ impl DpsApp {
         });
         self.party_panel(&mut child);
         ui.allocate_rect(available, egui::Sense::hover());
+    }
+
+    fn import_loading_content(&self, ui: &mut egui::Ui) {
+        let available_rect = ui.available_rect_before_wrap();
+        ui.allocate_rect(available_rect, egui::Sense::hover());
+        let card_size = egui::vec2(
+            360.0_f32.min(available_rect.width()),
+            150.0_f32.min(available_rect.height()),
+        );
+        let card_rect = egui::Rect::from_center_size(available_rect.center(), card_size);
+        ui.painter().rect(
+            card_rect,
+            egui::CornerRadius::same(10),
+            shadcn_card(self.dark_mode),
+            Stroke::new(1.0, shadcn_border(self.dark_mode)),
+            egui::StrokeKind::Inside,
+        );
+        let content_rect = card_rect.shrink(18.0);
+        let mut content = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("import_loading_content")
+                .max_rect(content_rect)
+                .layout(egui::Layout::top_down(egui::Align::Center)),
+        );
+        content.add_space((content_rect.height() - 83.0).max(0.0) * 0.5);
+        content.add(
+            egui::Spinner::new()
+                .size(28.0)
+                .color(theme_accent(self.dark_mode)),
+        );
+        content.add_space(8.0);
+        content.label(
+            RichText::new("正在导入并解析抓包")
+                .size(15.0)
+                .strong()
+                .color(shadcn_foreground(self.dark_mode)),
+        );
+        content.add_space(2.0);
+        content.label(
+            RichText::new(format!(
+                "已解析 {} 条伤害记录 · {} 个封包",
+                self.state.hits.len(),
+                self.state.packets.len()
+            ))
+            .size(11.0)
+            .color(content.visuals().weak_text_color()),
+        );
     }
 
     fn paint_theme_transition(&mut self, ctx: &egui::Context) {
@@ -2157,55 +2421,63 @@ impl DpsApp {
                                 });
                             });
                         ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new("伤害类型")
-                                    .strong()
-                                    .color(ui.visuals().weak_text_color()),
-                            );
-                            ui.selectable_value(
-                                &mut self.hit_detail_filter,
-                                HitDetailFilter::All,
-                                format!("全部 {}", outgoing_count + incoming_count),
-                            );
-                            ui.selectable_value(
-                                &mut self.hit_detail_filter,
-                                HitDetailFilter::Outgoing,
-                                format!("输出 {outgoing_count}"),
-                            );
-                            ui.selectable_value(
-                                &mut self.hit_detail_filter,
-                                HitDetailFilter::Incoming,
-                                format!("受击 {incoming_count}"),
-                            );
-                            ui.separator();
-                            ui.label(
-                                RichText::new("具体招式")
-                                    .strong()
-                                    .color(ui.visuals().weak_text_color()),
-                            );
-                            egui::ComboBox::from_id_salt(("hit_skill_filter", char_id))
-                                .width(240.0)
-                                .selected_text(if self.hit_detail_skill_filter.is_empty() {
-                                    "全部招式".to_owned()
-                                } else {
-                                    self.hit_detail_skill_filter.clone()
-                                })
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut self.hit_detail_skill_filter,
-                                        String::new(),
-                                        "全部招式",
-                                    );
-                                    for summary in &skill_summaries {
-                                        ui.selectable_value(
-                                            &mut self.hit_detail_skill_filter,
-                                            summary.name.clone(),
-                                            format!("{}  {}次", summary.name, summary.hits),
-                                        );
-                                    }
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(ui.available_width(), 32.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.label(
+                                    RichText::new("伤害类型")
+                                        .strong()
+                                        .color(ui.visuals().weak_text_color()),
+                                );
+                                ui.selectable_value(
+                                    &mut self.hit_detail_filter,
+                                    HitDetailFilter::All,
+                                    format!("全部 {}", outgoing_count + incoming_count),
+                                );
+                                ui.selectable_value(
+                                    &mut self.hit_detail_filter,
+                                    HitDetailFilter::Outgoing,
+                                    format!("输出 {outgoing_count}"),
+                                );
+                                ui.selectable_value(
+                                    &mut self.hit_detail_filter,
+                                    HitDetailFilter::Incoming,
+                                    format!("受击 {incoming_count}"),
+                                );
+                                ui.separator();
+                                ui.label(
+                                    RichText::new("具体招式")
+                                        .strong()
+                                        .color(ui.visuals().weak_text_color()),
+                                );
+                                ui.scope(|ui| {
+                                    ui.spacing_mut().interact_size.y = 27.0;
+                                    ui.spacing_mut().button_padding.y = 2.0;
+                                    egui::ComboBox::from_id_salt(("hit_skill_filter", char_id))
+                                        .width(240.0)
+                                        .selected_text(if self.hit_detail_skill_filter.is_empty() {
+                                            "全部招式".to_owned()
+                                        } else {
+                                            self.hit_detail_skill_filter.clone()
+                                        })
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.hit_detail_skill_filter,
+                                                String::new(),
+                                                "全部招式",
+                                            );
+                                            for summary in &skill_summaries {
+                                                ui.selectable_value(
+                                                    &mut self.hit_detail_skill_filter,
+                                                    summary.name.clone(),
+                                                    format!("{}  {}次", summary.name, summary.hits),
+                                                );
+                                            }
+                                        });
                                 });
-                        });
+                            },
+                        );
                         ui.add_space(4.0);
                         draw_skill_damage_summary(
                             ui,
@@ -2741,6 +3013,7 @@ impl eframe::App for DpsApp {
         configure_style(ctx, self.dark_mode);
         self.drain_events();
         self.drain_hotkeys(ctx);
+        self.process_file_drops(ctx, frame);
         self.process_debug_import_dialog(ctx);
         let force_opacity = self.opacity_reapply_frames > 0;
         apply_window_attributes(
@@ -2777,10 +3050,15 @@ impl eframe::App for DpsApp {
             )
             .show(ctx, |ui| {
                 self.animated_controls(ui);
-                if self.state.abyss.is_active() {
-                    self.abyss_selector(ui);
+                if self.replay_thread.is_some() {
+                    self.import_loading_content(ui);
+                } else {
+                    self.scene_indicator(ui);
+                    if self.state.abyss.is_active() {
+                        self.abyss_selector(ui);
+                    }
+                    self.animated_party_content(ui);
                 }
-                self.animated_party_content(ui);
             });
 
         #[cfg(not(feature = "no_debug"))]
@@ -2792,6 +3070,25 @@ impl eframe::App for DpsApp {
         }
         if self.team_hit_detail_open {
             self.team_hit_detail_panel(ctx);
+        }
+        if ctx.input(|input| !input.raw.hovered_files.is_empty()) {
+            egui::Area::new(egui::Id::new("pcapng_drop_overlay"))
+                .order(egui::Order::Foreground)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(ctx, |ui| {
+                    egui::Frame::popup(ui.style())
+                        .fill(shadcn_card(self.dark_mode))
+                        .stroke(Stroke::new(2.0, theme_accent(self.dark_mode)))
+                        .inner_margin(egui::Margin::symmetric(28, 20))
+                        .show(ui, |ui| {
+                            ui.label(
+                                RichText::new("松开以导入 PCAPNG")
+                                    .size(18.0)
+                                    .strong()
+                                    .color(theme_accent(self.dark_mode)),
+                            );
+                        });
+                });
         }
         self.paint_theme_transition(ctx);
         let now = ctx.input(|input| input.time);
@@ -2811,17 +3108,26 @@ impl eframe::App for DpsApp {
                     }
                 });
         }
+        self.persist_ui_config();
     }
 }
 
 impl Drop for DpsApp {
     fn drop(&mut self) {
+        let current = self.current_ui_config();
+        if current != self.saved_ui_config {
+            let _ = config::save(&self.ui_config_path, &current);
+        }
         self.stop_engine();
     }
 }
 
 fn install_fonts(ctx: &egui::Context) {
-    let Ok(bytes) = std::fs::read(r"C:\Windows\Fonts\msyh.ttc") else {
+    let windows_dir = std::env::var_os("SystemRoot")
+        .or_else(|| std::env::var_os("WINDIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let Ok(bytes) = std::fs::read(windows_dir.join("Fonts").join("msyh.ttc")) else {
         return;
     };
     let mut fonts = egui::FontDefinitions::default();
@@ -3039,14 +3345,12 @@ fn configure_style(ctx: &egui::Context, dark_mode: bool) {
     style.interaction.selectable_labels = false;
     style.spacing.item_spacing = egui::vec2(8.0, 5.0);
     style.spacing.button_padding = egui::vec2(11.0, 4.0);
-    let mut scroll = egui::style::ScrollStyle::floating();
-    // Use explicit high-contrast foreground colors for all scrollbar states.
-    // The active widget fill is inverted for buttons and is unsuitable here.
+    let mut scroll = egui::style::ScrollStyle::solid();
+    scroll.bar_width = 8.0;
+    scroll.handle_min_length = 32.0;
+    scroll.bar_inner_margin = 4.0;
+    scroll.bar_outer_margin = 2.0;
     scroll.foreground_color = true;
-    scroll.dormant_handle_opacity = 0.82;
-    scroll.active_handle_opacity = 0.94;
-    scroll.interact_handle_opacity = 1.0;
-    scroll.interact_background_opacity = 0.28;
     style.spacing.scroll = scroll;
     style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
     style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
@@ -3176,51 +3480,99 @@ fn draw_skill_damage_summary(
     )
     .default_open(true)
     .show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("具体招式").strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new("伤害占比 / 总伤害 / 次数").strong());
-            });
-        });
+        let header_width = ui.available_width() - ui.style().spacing.scroll.allocated_width();
+        let (header_rect, _) =
+            ui.allocate_exact_size(egui::vec2(header_width, 24.0), egui::Sense::hover());
+        let header_font = egui::FontId::proportional(12.0);
+        let header_color = ui.visuals().weak_text_color();
+        ui.painter().text(
+            header_rect.left_center() + egui::vec2(10.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            "具体招式",
+            header_font.clone(),
+            header_color,
+        );
+        ui.painter().text(
+            header_rect.right_center() - egui::vec2(10.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            "伤害占比 / 总伤害 / 次数",
+            header_font,
+            header_color,
+        );
         egui::ScrollArea::vertical()
             .id_salt("skill_damage_summary")
-            .max_height(145.0)
+            .max_height(190.0)
+            .auto_shrink([false, true])
             .show(ui, |ui| {
-                for summary in summaries {
+                ui.set_min_width(ui.available_width());
+                for (rank, summary) in summaries.iter().enumerate() {
                     let share = if total_damage > 0.0 {
                         summary.damage / total_damage * 100.0
                     } else {
                         0.0
                     };
                     let selected = selected_skill == &summary.name;
-                    let response = ui
-                        .horizontal(|ui| {
-                            let response = ui.selectable_label(
-                                selected,
-                                format!("{}  [{}]", summary.name, summary.category),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(format!(
-                                        "{share:.1}%  ·  {}  ·  {}次",
-                                        format_number(summary.damage),
-                                        summary.hits
-                                    ));
-                                },
-                            );
-                            response
-                        })
-                        .inner;
-                    let bar_rect = egui::Rect::from_min_size(
-                        egui::pos2(ui.min_rect().left(), response.rect.bottom() - 2.0),
-                        egui::vec2(
-                            ui.available_width() * (share as f32 / 100.0).clamp(0.0, 1.0),
-                            2.0,
+                    let (rect, response) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 34.0),
+                        egui::Sense::click(),
+                    );
+                    let corner_radius = egui::CornerRadius::same(6);
+                    let base_color = if selected {
+                        shadcn_muted(dark_mode)
+                    } else if response.hovered() {
+                        shadcn_card_hover(dark_mode)
+                    } else {
+                        shadcn_card(dark_mode)
+                    };
+                    ui.painter().rect_filled(rect, corner_radius, base_color);
+                    let progress_rect = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(
+                            rect.left() + rect.width() * (share as f32 / 100.0).clamp(0.0, 1.0),
+                            rect.bottom(),
                         ),
                     );
-                    ui.painter()
-                        .rect_filled(bar_rect, 1.0, theme_accent(dark_mode));
+                    ui.painter().rect_filled(
+                        progress_rect,
+                        corner_radius,
+                        theme_accent(dark_mode).gamma_multiply(if selected { 0.28 } else { 0.16 }),
+                    );
+                    if selected {
+                        ui.painter().rect_stroke(
+                            rect,
+                            corner_radius,
+                            Stroke::new(1.0, theme_accent(dark_mode)),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                    let foreground = shadcn_foreground(dark_mode);
+                    let metrics_width = 230.0_f32.min(rect.width() * 0.48);
+                    let left_clip = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(rect.right() - metrics_width - 8.0, rect.bottom()),
+                    );
+                    ui.painter().with_clip_rect(left_clip).text(
+                        rect.left_center() + egui::vec2(10.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{}. {}  [{}]", rank + 1, summary.name, summary.category),
+                        egui::FontId::proportional(12.0),
+                        foreground,
+                    );
+                    let metrics_clip = egui::Rect::from_min_max(
+                        egui::pos2(rect.right() - metrics_width, rect.top()),
+                        rect.max,
+                    );
+                    ui.painter().with_clip_rect(metrics_clip).text(
+                        rect.right_center() - egui::vec2(10.0, 0.0),
+                        egui::Align2::RIGHT_CENTER,
+                        format!(
+                            "{share:.1}%  ·  {}  ·  {}次",
+                            format_number(summary.damage),
+                            summary.hits
+                        ),
+                        egui::FontId::monospace(11.5),
+                        foreground,
+                    );
                     if response.clicked() {
                         if selected {
                             selected_skill.clear();

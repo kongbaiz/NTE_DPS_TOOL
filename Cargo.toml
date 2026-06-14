@@ -28,6 +28,7 @@ windows-sys = { version = "0.60", features = [
     "Win32_Networking_WinSock",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

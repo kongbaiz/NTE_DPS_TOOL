@@ -28,10 +28,11 @@ use crate::model::{AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, Packe
 use crate::parser::{
     GAMEPLAY_EFFECT_MAPPING_PATH, GameplayEffectSkill, ParsedGameplayEffect,
     SKILL_DAMAGE_DATA_PATH, WOODEN_DAMAGE_DESCRIPTIONS_PATH, classify_attack_type,
-    classify_attack_type_from_description, declared_character_ids_from_evidence, find_data_file,
-    find_declared_character_evidence, load_gameplay_effect_mapping, load_gameplay_effect_skills,
-    load_wooden_damage_names, parse_boss_hp_updates, parse_current_hp_updates,
-    parse_damage_payload, parse_gameplay_effects, qte_reaction_type,
+    classify_attack_type_from_description, declared_character_ids_from_evidence,
+    detect_monster_targets, find_data_file, find_declared_character_evidence,
+    load_gameplay_effect_mapping, load_gameplay_effect_skills, load_wooden_damage_names,
+    monster_target_from_identifier, normalize_damage_name, parse_boss_hp_updates,
+    parse_current_hp_updates, parse_damage_payload, parse_gameplay_effects, qte_reaction_type,
 };
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 
@@ -311,11 +312,19 @@ impl RawCaptureWriter {
 }
 
 fn npcap_library_path() -> PathBuf {
-    PathBuf::from(r"C:\Windows\System32\Npcap\wpcap.dll")
+    windows_system_directory().join("Npcap").join("wpcap.dll")
 }
 
 fn packet_library_path() -> PathBuf {
-    PathBuf::from(r"C:\Windows\System32\Npcap\Packet.dll")
+    windows_system_directory().join("Npcap").join("Packet.dll")
+}
+
+fn windows_system_directory() -> PathBuf {
+    std::env::var_os("SystemRoot")
+        .or_else(|| std::env::var_os("WINDIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+        .join("System32")
 }
 
 unsafe fn load_symbol<T: Copy>(library: &Library, name: &[u8]) -> Result<T, String> {
@@ -771,6 +780,9 @@ fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
     for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
         let _ = sender.send(EngineEvent::Abyss(event));
     }
+    for scene in crate::scene::detect_scenes(packet.timestamp, &packet.decoded_text) {
+        let _ = sender.send(EngineEvent::Scene(scene));
+    }
     let _ = sender.send(EngineEvent::Packet(packet));
 }
 
@@ -989,6 +1001,7 @@ struct PacketDecoder {
     wooden_damage_names: HashMap<String, String>,
     resource_warnings: Vec<String>,
     character_declarations: HashMap<u32, f64>,
+    current_monster: Option<(String, String, f64, u8)>,
 }
 
 impl Default for PacketDecoder {
@@ -1027,11 +1040,32 @@ impl Default for PacketDecoder {
             wooden_damage_names,
             resource_warnings,
             character_declarations: HashMap::new(),
+            current_monster: None,
         }
     }
 }
 
 impl PacketDecoder {
+    fn observe_monster(
+        &mut self,
+        id: String,
+        name: String,
+        observed_at: f64,
+        expires_at: f64,
+        confidence: u8,
+    ) {
+        let should_replace = self.current_monster.as_ref().is_none_or(
+            |(current_id, _, current_expires_at, current_confidence)| {
+                id == *current_id
+                    || confidence >= *current_confidence
+                    || observed_at >= *current_expires_at
+            },
+        );
+        if should_replace {
+            self.current_monster = Some((id, name, expires_at, confidence));
+        }
+    }
+
     fn resource_warning(&self) -> Option<String> {
         (!self.resource_warnings.is_empty()).then(|| self.resource_warnings.join("；"))
     }
@@ -1069,7 +1103,7 @@ fn enrich_hit_with_gameplay_effect(
         return;
     };
     hit.gameplay_effect_name = Some(effect_name.clone());
-    hit.damage_name = wooden_names.get(effect_name).cloned();
+    hit.damage_name = resolve_damage_name(effect_name, skills, wooden_names);
     if let Some(skill) = skills.get(effect_name) {
         hit.ability_name = skill.ability_name.clone();
         hit.attack_type = Some(skill.attack_type.clone());
@@ -1082,6 +1116,26 @@ fn enrich_hit_with_gameplay_effect(
     } else {
         hit.attack_type = Some(classify_attack_type(None, effect_name, None));
     }
+}
+
+fn resolve_damage_name(
+    effect_name: &str,
+    skills: &HashMap<String, GameplayEffectSkill>,
+    wooden_names: &HashMap<String, String>,
+) -> Option<String> {
+    if let Some(name) = wooden_names.get(effect_name) {
+        return Some(name.clone());
+    }
+    let ability_name = skills.get(effect_name)?.ability_name.as_deref()?;
+    let mut names = skills
+        .iter()
+        .filter(|(_, skill)| skill.ability_name.as_deref() == Some(ability_name))
+        .filter_map(|(candidate_effect, _)| wooden_names.get(candidate_effect))
+        .cloned()
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    (names.len() == 1).then(|| names.remove(0))
 }
 
 impl PacketDecoder {
@@ -1111,6 +1165,22 @@ impl PacketDecoder {
         }
         let direction = if outgoing { "C2S" } else { "S2C" };
         let gameplay_effects = parse_gameplay_effects(payload);
+        let detected_monsters = detect_monster_targets(payload);
+        if detected_monsters.len() == 1 {
+            let (id, name) = detected_monsters[0].clone();
+            self.observe_monster(id, name, timestamp, timestamp + 1.0, 1);
+        }
+        let mut effect_monsters = gameplay_effects
+            .iter()
+            .filter_map(|effect| self.gameplay_effect_names.get(&effect.unique_index))
+            .filter_map(|effect_name| monster_target_from_identifier(effect_name))
+            .collect::<Vec<_>>();
+        effect_monsters.sort();
+        effect_monsters.dedup();
+        if effect_monsters.len() == 1 {
+            let (id, name) = effect_monsters.remove(0);
+            self.observe_monster(id, name, timestamp, timestamp + 10.0, 2);
+        }
         let mut hits = if outgoing {
             let packet_char_id = if ids.len() == 1 {
                 ids.first().copied()
@@ -1133,6 +1203,18 @@ impl PacketDecoder {
         } else {
             Vec::new()
         };
+        if outgoing
+            && let Some((target_id, target_name, expires_at, _)) = &self.current_monster
+            && timestamp <= *expires_at
+        {
+            for hit in &mut hits {
+                if hit.target_name.is_none() {
+                    hit.target_id = Some(target_id.clone());
+                    hit.target_name = Some(target_name.clone());
+                    hit.target_context.push("怪物实体/技能来源特征".to_owned());
+                }
+            }
+        }
         for hit in &mut hits {
             enrich_hit_with_gameplay_effect(
                 hit,
@@ -1144,7 +1226,7 @@ impl PacketDecoder {
             if hit
                 .attack_type
                 .as_deref()
-                .is_some_and(|attack_type| attack_type.starts_with("QTE"))
+                .is_some_and(|attack_type| attack_type.starts_with("环合"))
             {
                 let previous_declared_character = self
                     .character_declarations
@@ -1168,7 +1250,7 @@ impl PacketDecoder {
                         &self.follow_up_damage.team_attributes,
                     )
                 {
-                    hit.attack_type = Some(format!("QTE·{reaction_type}"));
+                    hit.attack_type = Some(format!("环合·{reaction_type}"));
                     hit.target_context.push(format!(
                         "异能环合：{}({}) + {}({}) = {}",
                         previous_declared_character
@@ -1196,6 +1278,12 @@ impl PacketDecoder {
         let preview_len = payload.len().min(96);
         let payload_hex = hex::encode(payload);
         let decoded_text = decode_payload_text(payload);
+        if crate::scene::detect_scenes(timestamp, &decoded_text)
+            .iter()
+            .any(|scene| scene.category == "transition")
+        {
+            self.current_monster = None;
+        }
         let current_hp_updates = if outgoing {
             Vec::new()
         } else {
@@ -1356,10 +1444,10 @@ pub fn start_capture(
             raw_capture: &thread_raw_capture,
         });
         thread_raw_capture.finish();
+        let _ = sender.send(EngineEvent::CaptureStopped);
         if let Err(error) = result {
             let _ = sender.send(EngineEvent::Error(error));
         }
-        let _ = sender.send(EngineEvent::CaptureStopped);
     });
     CaptureHandle {
         stop,
@@ -1634,97 +1722,43 @@ pub fn import_capture_json(
     thread::spawn(move || {
         let result = (|| -> Result<(usize, usize), String> {
             let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
-            let document = parse_capture_export(&text)?;
+            let mut document = parse_capture_export(&text)?;
+            drop(text);
             let hit_count = document.hits.len();
             let mut packet_count = 0;
-            let mut events = Vec::<(f64, u8, EngineEvent)>::new();
+            document
+                .packets
+                .sort_by(|left, right| left.timestamp_unix.total_cmp(&right.timestamp_unix));
+            document
+                .hits
+                .sort_by(|left, right| left.timestamp_unix.total_cmp(&right.timestamp_unix));
+            let mut packets = document.packets.into_iter().peekable();
+            let mut hits = document.hits.into_iter().peekable();
 
-            for packet in document.packets {
-                let declared_ids = parse_export_ids(&packet.declared_ids);
-                let payload = hex::decode(&packet.payload_hex).unwrap_or_default();
-                let decoded_text = if payload.is_empty() {
-                    packet.decoded_text
-                } else {
-                    decode_payload_text(&payload)
-                };
-                if !should_keep_debug_packet(
-                    &payload,
-                    &declared_ids,
-                    packet.parsed_hits,
-                    &decoded_text,
-                ) {
-                    continue;
-                }
-                let evidence = find_declared_character_evidence(&payload);
-                let mut note = packet.note;
-                append_packet_note(
-                    &mut note,
-                    binary_payload_diagnostic(
-                        &payload,
-                        &packet.direction,
-                        &decoded_text,
-                        &evidence,
-                    ),
-                );
-                packet_count += 1;
-                let packet = PacketDebug {
-                    timestamp: packet.timestamp_unix,
-                    source: packet.source,
-                    destination: packet.destination,
-                    direction: packet.direction,
-                    payload_len: packet.payload_len,
-                    declared_ids,
-                    parsed_hits: packet.parsed_hits,
-                    note,
-                    payload_preview: packet.payload_preview,
-                    payload_hex: packet.payload_hex,
-                    decoded_text,
-                };
-                for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
-                    events.push((packet.timestamp, 0, EngineEvent::Abyss(event)));
-                }
-                events.push((packet.timestamp, 1, EngineEvent::Packet(packet)));
-            }
-            for hit in document.hits {
-                let timestamp = hit.timestamp_unix;
-                events.push((
-                    timestamp,
-                    2,
-                    EngineEvent::Hit(Hit {
-                        timestamp: hit.timestamp_unix,
-                        char_id: hit.char_id,
-                        char_name: hit.char_name,
-                        char_known: true,
-                        damage: hit.damage,
-                        byte_offset: 0,
-                        bit_shift: 0,
-                        char_source: "export_json".to_owned(),
-                        direction: hit.direction,
-                        target_hp_before: hit.target_hp_before,
-                        target_hp_after: hit.target_hp_after,
-                        target_max_hp: hit.target_max_hp,
-                        target_hp_percent: hit.target_hp_percent,
-                        target_id: hit.target_id,
-                        target_name: hit.target_name,
-                        target_context: hit.target_context,
-                        gameplay_effect_index: hit.gameplay_effect_index,
-                        gameplay_effect_name: hit.gameplay_effect_name,
-                        ability_name: hit.ability_name,
-                        damage_name: hit.damage_name,
-                        attack_type: hit.attack_type,
-                    }),
-                ));
-            }
-            events.sort_by(|left, right| {
-                left.0
-                    .total_cmp(&right.0)
-                    .then_with(|| left.1.cmp(&right.1))
-            });
-            for (_, _, event) in events {
+            while packets.peek().is_some() || hits.peek().is_some() {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                sender.send(event).map_err(|error| error.to_string())?;
+                let take_packet = match (packets.peek(), hits.peek()) {
+                    (Some(packet), Some(hit)) => packet.timestamp_unix <= hit.timestamp_unix,
+                    (Some(_), None) => true,
+                    (None, Some(_)) => false,
+                    (None, None) => break,
+                };
+                if take_packet {
+                    if send_export_packet(
+                        packets.next().expect("peeked packet must exist"),
+                        &sender,
+                    )? {
+                        packet_count += 1;
+                    }
+                } else {
+                    sender
+                        .send(export_hit_event(
+                            hits.next().expect("peeked hit must exist"),
+                        ))
+                        .map_err(|error| error.to_string())?;
+                }
             }
             Ok((hit_count, packet_count))
         })();
@@ -1740,6 +1774,86 @@ pub fn import_capture_json(
                 let _ = sender.send(EngineEvent::Error(format!("JSON 导入失败：{error}")));
             }
         }
+    })
+}
+
+fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Result<bool, String> {
+    let declared_ids = parse_export_ids(&packet.declared_ids);
+    let payload = hex::decode(&packet.payload_hex).unwrap_or_default();
+    let decoded_text = if payload.is_empty() {
+        packet.decoded_text
+    } else {
+        decode_payload_text(&payload)
+    };
+    if !should_keep_debug_packet(&payload, &declared_ids, packet.parsed_hits, &decoded_text) {
+        return Ok(false);
+    }
+    let evidence = find_declared_character_evidence(&payload);
+    let mut note = packet.note;
+    append_packet_note(
+        &mut note,
+        binary_payload_diagnostic(&payload, &packet.direction, &decoded_text, &evidence),
+    );
+    let packet = PacketDebug {
+        timestamp: packet.timestamp_unix,
+        source: packet.source,
+        destination: packet.destination,
+        direction: packet.direction,
+        payload_len: packet.payload_len,
+        declared_ids,
+        parsed_hits: packet.parsed_hits,
+        note,
+        payload_preview: packet.payload_preview,
+        payload_hex: packet.payload_hex,
+        decoded_text,
+    };
+    for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
+        sender
+            .send(EngineEvent::Abyss(event))
+            .map_err(|error| error.to_string())?;
+    }
+    for scene in crate::scene::detect_scenes(packet.timestamp, &packet.decoded_text) {
+        sender
+            .send(EngineEvent::Scene(scene))
+            .map_err(|error| error.to_string())?;
+    }
+    sender
+        .send(EngineEvent::Packet(packet))
+        .map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+fn export_hit_event(hit: ExportHit) -> EngineEvent {
+    EngineEvent::Hit(Hit {
+        timestamp: hit.timestamp_unix,
+        char_id: hit.char_id,
+        char_name: hit.char_name,
+        char_known: true,
+        damage: hit.damage,
+        byte_offset: 0,
+        bit_shift: 0,
+        char_source: "export_json".to_owned(),
+        direction: hit.direction,
+        target_hp_before: hit.target_hp_before,
+        target_hp_after: hit.target_hp_after,
+        target_max_hp: hit.target_max_hp,
+        target_hp_percent: hit.target_hp_percent,
+        target_id: hit.target_id,
+        target_name: hit.target_name,
+        target_context: hit.target_context,
+        gameplay_effect_index: hit.gameplay_effect_index,
+        gameplay_effect_name: hit.gameplay_effect_name,
+        ability_name: hit.ability_name,
+        damage_name: hit.damage_name.map(|name| normalize_damage_name(&name)),
+        attack_type: hit.attack_type.map(|attack_type| {
+            if attack_type == "QTE" {
+                "环合".to_owned()
+            } else if let Some(reaction_type) = attack_type.strip_prefix("QTE·") {
+                format!("环合·{reaction_type}")
+            } else {
+                attack_type
+            }
+        }),
     })
 }
 
@@ -1847,7 +1961,83 @@ mod tests {
                 .wooden_damage_names
                 .get("GE_Player_Nanally_Melee1_Damage")
                 .map(String::as_str),
-            Some("娜娜莉普攻1")
+            Some("娜娜莉普攻")
+        );
+    }
+
+    #[test]
+    fn resolves_missing_damage_name_from_unique_name_in_same_ability() {
+        let skills = HashMap::from([
+            (
+                "GE_Player_Daffodill_Skill2_Damage".to_owned(),
+                GameplayEffectSkill {
+                    damage_source_category: Some("E".to_owned()),
+                    ability_name: Some("GA_Daffodill_Skill".to_owned()),
+                    attack_type: "E技能".to_owned(),
+                },
+            ),
+            (
+                "GE_Player_Daffodill_Skill6_Damage".to_owned(),
+                GameplayEffectSkill {
+                    damage_source_category: Some("E".to_owned()),
+                    ability_name: Some("GA_Daffodill_Skill".to_owned()),
+                    attack_type: "E技能".to_owned(),
+                },
+            ),
+        ]);
+        let names = HashMap::from([(
+            "GE_Player_Daffodill_Skill2_Damage".to_owned(),
+            "达芙蒂尔技能".to_owned(),
+        )]);
+
+        assert_eq!(
+            resolve_damage_name("GE_Player_Daffodill_Skill6_Damage", &skills, &names,).as_deref(),
+            Some("达芙蒂尔技能")
+        );
+    }
+
+    #[test]
+    fn does_not_merge_ambiguous_names_from_same_ability() {
+        let skills = HashMap::from([
+            (
+                "GE_Test_Skill1_Damage".to_owned(),
+                GameplayEffectSkill {
+                    damage_source_category: Some("E".to_owned()),
+                    ability_name: Some("GA_Test_Skill".to_owned()),
+                    attack_type: "E技能".to_owned(),
+                },
+            ),
+            (
+                "GE_Test_Skill2_Damage".to_owned(),
+                GameplayEffectSkill {
+                    damage_source_category: Some("E".to_owned()),
+                    ability_name: Some("GA_Test_Skill".to_owned()),
+                    attack_type: "E技能".to_owned(),
+                },
+            ),
+            (
+                "GE_Test_Skill3_Damage".to_owned(),
+                GameplayEffectSkill {
+                    damage_source_category: Some("E".to_owned()),
+                    ability_name: Some("GA_Test_Skill".to_owned()),
+                    attack_type: "E技能".to_owned(),
+                },
+            ),
+        ]);
+        let names = HashMap::from([
+            (
+                "GE_Test_Skill1_Damage".to_owned(),
+                "测试技能短按".to_owned(),
+            ),
+            (
+                "GE_Test_Skill2_Damage".to_owned(),
+                "测试技能长按".to_owned(),
+            ),
+        ]);
+
+        assert_eq!(
+            resolve_damage_name("GE_Test_Skill3_Damage", &skills, &names),
+            None
         );
     }
 
@@ -1942,6 +2132,118 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual real-capture scene analysis"]
+    fn diagnose_actual_capture_scenes() {
+        let path = actual_capture_path();
+        let characters = Arc::new(
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
+                .expect("failed to load characters.json"),
+        );
+        let (sender, receiver) = unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+
+        import_pcapng(path.clone(), characters, true, sender, stop)
+            .join()
+            .expect("capture import thread failed");
+
+        let mut observations = Vec::new();
+        let mut accepted_scenes = Vec::new();
+        let mut scene_state = crate::model::SceneState::default();
+        let mut scene_lines = Vec::new();
+        for event in receiver.try_iter() {
+            match event {
+                EngineEvent::Scene(scene) => {
+                    let previous = scene_state.display_name().to_owned();
+                    scene_state.apply(scene.clone());
+                    let current = scene_state.display_name();
+                    if current != previous {
+                        accepted_scenes.push((scene.timestamp, current.to_owned()));
+                    }
+                    if observations.last().is_none_or(
+                        |previous: &crate::model::SceneObservation| previous.id != scene.id,
+                    ) {
+                        observations.push(scene);
+                    }
+                }
+                EngineEvent::Packet(packet) => {
+                    for line in packet
+                        .decoded_text
+                        .lines()
+                        .filter(|line| line.contains("DataLayer_") || line.contains("/Map_DLC/"))
+                    {
+                        scene_lines.push((packet.timestamp, line.to_owned()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        println!("capture={}", path.display());
+        for (timestamp, line) in &scene_lines {
+            println!("token t={timestamp:.3} {line}");
+        }
+        for scene in &observations {
+            println!(
+                "scene t={:.3} id={} name={} category={} priority={}",
+                scene.timestamp, scene.id, scene.display_name, scene.category, scene.priority
+            );
+        }
+        for (timestamp, display_name) in &accepted_scenes {
+            println!("accepted_scene t={timestamp:.3} name={display_name}");
+        }
+        assert!(
+            !observations.is_empty() || !scene_lines.is_empty(),
+            "no scene tokens detected"
+        );
+    }
+
+    #[test]
+    #[ignore = "manual real-capture target analysis"]
+    fn diagnose_actual_capture_targets() {
+        let path = actual_capture_path();
+        let characters = Arc::new(
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
+                .expect("failed to load characters.json"),
+        );
+        let (sender, receiver) = unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+
+        import_pcapng(path.clone(), characters, true, sender, stop)
+            .join()
+            .expect("capture import thread failed");
+
+        let mut targets = HashMap::<(String, String, String), usize>::new();
+        let mut observed_targets = Vec::new();
+        let mut unresolved = 0;
+        for event in receiver.try_iter() {
+            match event {
+                EngineEvent::Hit(hit) => match (hit.target_id, hit.target_name) {
+                    (Some(id), Some(name)) => {
+                        *targets
+                            .entry((id, name, hit.target_context.join("|")))
+                            .or_default() += 1
+                    }
+                    _ => unresolved += 1,
+                },
+                EngineEvent::Packet(packet) => {
+                    if let Ok(payload) = hex::decode(&packet.payload_hex) {
+                        for (id, name) in detect_monster_targets(&payload) {
+                            observed_targets.push((packet.timestamp, id, name));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        observed_targets.dedup();
+        println!("observed_targets={observed_targets:?}");
+        println!(
+            "target_summary capture={} targets={targets:?} unresolved={unresolved}",
+            path.display()
+        );
+        assert!(!targets.is_empty(), "no monster targets resolved");
+    }
+
+    #[test]
     #[ignore = "manual real-capture attack type analysis"]
     fn diagnose_actual_capture_attack_types() {
         let path = actual_capture_path();
@@ -1983,7 +2285,7 @@ mod tests {
                 EngineEvent::Hit(hit) => hit,
                 _ => continue,
             };
-            if hit.attack_type.as_deref() == Some("QTE") {
+            if hit.attack_type.as_deref() == Some("环合") {
                 println!(
                     "qte_timeline t={:.6} char={}({}) damage={:.0} effect={} recent={:?}",
                     hit.timestamp,

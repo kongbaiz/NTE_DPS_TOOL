@@ -66,6 +66,51 @@ pub struct PacketDebug {
     pub decoded_text: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SceneObservation {
+    pub timestamp: f64,
+    pub id: String,
+    pub display_name: String,
+    pub category: String,
+    pub priority: u8,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SceneState {
+    pub current: Option<SceneObservation>,
+    transition_pending: bool,
+}
+
+impl SceneState {
+    pub fn apply(&mut self, observation: SceneObservation) {
+        if observation.category == "transition" {
+            self.transition_pending = true;
+            return;
+        }
+        let should_replace = self.current.as_ref().is_none_or(|current| {
+            self.transition_pending
+                || observation.id == current.id
+                || observation.priority > current.priority
+                || observation.timestamp - current.timestamp >= 30.0
+        });
+        self.transition_pending = false;
+        if should_replace {
+            self.current = Some(observation);
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.current = None;
+        self.transition_pending = false;
+    }
+
+    pub fn display_name(&self) -> &str {
+        self.current
+            .as_ref()
+            .map_or("大世界", |scene| scene.display_name.as_str())
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CharacterStats {
     pub char_id: u32,
@@ -341,6 +386,7 @@ pub struct CombatState {
     pub total_damage: f64,
     pub total_damage_taken: f64,
     pub abyss: AbyssRunState,
+    pub scene: SceneState,
 }
 
 impl CombatState {
@@ -385,6 +431,10 @@ impl CombatState {
     pub fn apply_abyss_event(&mut self, event: AbyssEvent) {
         self.abyss.apply_event(event);
     }
+
+    pub fn apply_scene_observation(&mut self, observation: SceneObservation) {
+        self.scene.apply(observation);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -392,6 +442,7 @@ pub enum EngineEvent {
     Hit(Hit),
     Packet(PacketDebug),
     Abyss(AbyssEvent),
+    Scene(SceneObservation),
     Status(String),
     Error(String),
     CaptureStopped,
