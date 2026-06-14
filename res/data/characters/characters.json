@@ -63,15 +63,6 @@
       "name_zh": "埃德嘉",
       "verified": true
     },
-    "1022": {
-      "attribute": "魂",
-      "avatar": "res/images/characters/player_027_256.png",
-      "codename": "Fadia",
-      "color": "#8903c6",
-      "name_en": "Fadia",
-      "name_zh": "法帝娅",
-      "verified": false
-    },
     "1023": {
       "attribute": "咒",
       "avatar": "res/images/characters/player_028_256.png",
@@ -106,7 +97,7 @@
       "color": "#8903c6",
       "name_en": "Fadia",
       "name_zh": "法帝娅",
-      "verified": false
+      "verified": true
     },
     "1046": {
       "attribute": "光",

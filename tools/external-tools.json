@@ -1,0 +1,11 @@
+{
+  "cue4parse": {
+    "repository": "https://github.com/FabianFG/CUE4Parse.git",
+    "commit": "d7e00fa7670e9ddd0d5b009f539785e5b96771f2",
+    "commit_date": "2026-06-13T21:35:07Z"
+  },
+  "dotnet": {
+    "version": "10.0.301",
+    "install_scope": "tools/external/dotnet10"
+  }
+}

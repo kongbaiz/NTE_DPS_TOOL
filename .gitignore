@@ -9,4 +9,14 @@ uv.lock
 /logs/
 /data/
 /NTE_Assets/
+/tools/external/
+/tools/cue4parse_probe/bin/
+/tools/cue4parse_probe/obj/
+/Output/
+/zlib-ng2.dll
+/oodle-data-shared.dll
 *.i64
+*.tmp
+*.key
+*aes*.txt
+/5.6.1-0+UE5-HT.usmap

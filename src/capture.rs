@@ -1852,6 +1852,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
     fn actual_capture_contains_udp_traffic() {
         let path = actual_capture_path();
         let file = File::open(&path).expect("无法打开真实抓包文件");
@@ -1893,6 +1894,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
     fn actual_capture_runs_through_the_decoder() {
         let path = actual_capture_path();
         let characters = Arc::new(
@@ -2078,6 +2080,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
     fn actual_capture_contains_server_boss_hp_updates() {
         let path = actual_capture_path();
         let file = File::open(&path).expect("无法打开真实抓包文件");
