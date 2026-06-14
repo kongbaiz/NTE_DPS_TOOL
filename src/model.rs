@@ -46,6 +46,8 @@ pub struct Hit {
     #[serde(default)]
     pub ability_name: Option<String>,
     #[serde(default)]
+    pub damage_name: Option<String>,
+    #[serde(default)]
     pub attack_type: Option<String>,
 }
 

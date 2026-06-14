@@ -10,7 +10,8 @@ Rust + egui 实现的 NTE 队伍实时 DPS 统计工具。直接通过 Npcap 捕
 - 独立 Debug 面板，显示封包端点、角色声明、解析结果和载荷预览
 - 实时流式保存完整 Ethernet 帧为 `logs/nte_raw_*.pcapng`
 - 支持另存完整 PCAPNG，以及单独导出筛选后的解析 JSON
-- Debug 窗口按封包、角色数据、环境分栏，并可编辑或新增 `characters.json` 记录
+- Debug 窗口按封包、角色数据、环境分栏，并可编辑或新增
+  `res/data/characters/characters.json` 记录
 - 动态加载 Npcap，不需要安装 Npcap SDK
 - 根据 `HTGame.exe` 的活动连接自动选择网卡和本机 IP
 
@@ -37,6 +38,22 @@ cargo run --release
 原始文件写入失败时，现有伤害和场景解析仍会继续运行。
 
 Debug 面板支持导入完整 PCAPNG 或解析 JSON，并使用与实时抓包相同的解析流程。
+
+## 资源目录
+
+程序运行时资源统一放在 `res`：
+
+```text
+res/
+  data/characters/   角色配置
+  data/skills/       技能与伤害映射表
+  images/characters/ 角色头像
+  images/attributes/ 属性图标
+  icons/             应用图标
+```
+
+程序会从当前目录或可执行文件的上级目录查找 `res`。角色及属性图片也会在
+编译时内嵌，作为外部图片缺失时的降级资源。
 
 ## 算法文档
 

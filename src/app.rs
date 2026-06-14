@@ -31,7 +31,7 @@ use crate::model::{
     PartyCombatState,
 };
 use crate::network::{GameNetwork, detect_game_device};
-use crate::parser::load_characters;
+use crate::parser::{CHARACTER_DATA_PATH, load_characters};
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
 const MAX_DETAIL_HITS: usize = 10_000;
@@ -84,12 +84,12 @@ struct CharacterEditForm {
 
 const CHARACTER_ATTRIBUTES: [&str; 6] = ["灵", "咒", "光", "魂", "暗", "相"];
 const ATTRIBUTE_ICON_PATHS: [(&str, &str); 6] = [
-    ("灵", "res/UI_avatarbg_Icon_01.png"),
-    ("咒", "res/UI_avatarbg_Icon_06.png"),
-    ("光", "res/UI_avatarbg_Icon_04.png"),
-    ("魂", "res/UI_avatarbg_Icon_05.png"),
-    ("暗", "res/UI_avatarbg_Icon_03.png"),
-    ("相", "res/UI_avatarbg_Icon_02.png"),
+    ("灵", "res/images/attributes/UI_avatarbg_Icon_01.png"),
+    ("咒", "res/images/attributes/UI_avatarbg_Icon_06.png"),
+    ("光", "res/images/attributes/UI_avatarbg_Icon_04.png"),
+    ("魂", "res/images/attributes/UI_avatarbg_Icon_05.png"),
+    ("暗", "res/images/attributes/UI_avatarbg_Icon_03.png"),
+    ("相", "res/images/attributes/UI_avatarbg_Icon_02.png"),
 ];
 
 struct CharacterEditorState {
@@ -276,6 +276,7 @@ pub struct DpsApp {
     abyss_compact_mode: bool,
     hit_detail_char_id: Option<u32>,
     hit_detail_filter: HitDetailFilter,
+    hit_detail_skill_filter: String,
     team_hit_detail_open: bool,
     team_hit_detail_filter: HitDetailFilter,
     devices: Vec<CaptureDevice>,
@@ -320,7 +321,7 @@ impl DpsApp {
         let (hotkey, hotkey_receiver) = HotkeyHandle::start(cc.egui_ctx.clone());
         let (sender, receiver) = unbounded();
         let data_root = data_root();
-        let characters_path = data_root.join("characters.json");
+        let characters_path = data_root.join(CHARACTER_DATA_PATH);
         let characters = load_characters(characters_path.as_path()).unwrap_or_default();
         let avatar_textures = load_character_avatars(&cc.egui_ctx, &data_root, &characters);
         let attribute_textures = load_attribute_icons(&cc.egui_ctx, &data_root);
@@ -361,6 +362,7 @@ impl DpsApp {
             abyss_compact_mode: false,
             hit_detail_char_id: None,
             hit_detail_filter: HitDetailFilter::All,
+            hit_detail_skill_filter: String::new(),
             team_hit_detail_open: false,
             team_hit_detail_filter: HitDetailFilter::All,
             devices,
@@ -637,6 +639,7 @@ impl DpsApp {
         self.selected_abyss_half = AbyssHalf::First;
         self.abyss_compact_mode = false;
         self.hit_detail_char_id = None;
+        self.hit_detail_skill_filter.clear();
         self.team_hit_detail_open = false;
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_pcapng(
@@ -657,6 +660,7 @@ impl DpsApp {
         self.selected_abyss_half = AbyssHalf::First;
         self.abyss_compact_mode = false;
         self.hit_detail_char_id = None;
+        self.hit_detail_skill_filter.clear();
         self.team_hit_detail_open = false;
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
@@ -1065,6 +1069,15 @@ impl DpsApp {
             .ok();
             writeln!(
                 &mut out,
+                "      \"damage_name\": {},",
+                hit.damage_name
+                    .as_deref()
+                    .map(json_string)
+                    .unwrap_or_else(|| "null".to_owned())
+            )
+            .ok();
+            writeln!(
+                &mut out,
                 "      \"direction\": {},",
                 json_string(&hit.direction)
             )
@@ -1341,6 +1354,7 @@ impl DpsApp {
                 self.selected_abyss_half = AbyssHalf::First;
                 self.abyss_compact_mode = false;
                 self.hit_detail_char_id = None;
+                self.hit_detail_skill_filter.clear();
                 self.team_hit_detail_open = false;
             }
             if ui
@@ -1702,10 +1716,17 @@ impl DpsApp {
         if response.on_hover_text("在独立窗口查看战斗明细").clicked() {
             self.hit_detail_char_id = Some(row.char_id);
             self.hit_detail_filter = HitDetailFilter::All;
+            self.hit_detail_skill_filter.clear();
         }
     }
 
-    fn character_hits(&self, ui: &mut egui::Ui, char_id: u32, filter: HitDetailFilter) {
+    fn character_hits(
+        &self,
+        ui: &mut egui::Ui,
+        char_id: u32,
+        filter: HitDetailFilter,
+        skill_filter: &str,
+    ) {
         let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
         let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
         let layout = CharacterHitLayout::new(content_width);
@@ -1718,7 +1739,11 @@ impl DpsApp {
         let mut character_hits: Vec<_> = hits
             .iter()
             .rev()
-            .filter(|hit| hit.char_id == char_id && filter.matches(hit))
+            .filter(|hit| {
+                hit.char_id == char_id
+                    && filter.matches(hit)
+                    && (skill_filter.is_empty() || hit_specific_type(hit) == skill_filter)
+            })
             .take(MAX_DETAIL_HITS)
             .collect();
         character_hits.sort_by(|left, right| compare_hit_display_order(left, right));
@@ -1983,6 +2008,14 @@ impl DpsApp {
             .iter()
             .filter(|hit| hit.char_id == char_id && hit.direction == "incoming")
             .count();
+        let skill_summaries = aggregate_character_skill_damage(hits, char_id);
+        if !self.hit_detail_skill_filter.is_empty()
+            && !skill_summaries
+                .iter()
+                .any(|summary| summary.name == self.hit_detail_skill_filter)
+        {
+            self.hit_detail_skill_filter.clear();
+        }
         let avatar_texture = self
             .characters
             .get(&char_id)
@@ -1998,8 +2031,8 @@ impl DpsApp {
             hit_detail_viewport_id(),
             egui::ViewportBuilder::default()
                 .with_title(&title)
-                .with_inner_size([900.0, 620.0])
-                .with_min_inner_size([680.0, 420.0])
+                .with_inner_size([1120.0, 760.0])
+                .with_min_inner_size([860.0, 560.0])
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
                 .with_transparent(true)
@@ -2145,10 +2178,50 @@ impl DpsApp {
                                 HitDetailFilter::Incoming,
                                 format!("受击 {incoming_count}"),
                             );
+                            ui.separator();
+                            ui.label(
+                                RichText::new("具体招式")
+                                    .strong()
+                                    .color(ui.visuals().weak_text_color()),
+                            );
+                            egui::ComboBox::from_id_salt(("hit_skill_filter", char_id))
+                                .width(240.0)
+                                .selected_text(if self.hit_detail_skill_filter.is_empty() {
+                                    "全部招式".to_owned()
+                                } else {
+                                    self.hit_detail_skill_filter.clone()
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.hit_detail_skill_filter,
+                                        String::new(),
+                                        "全部招式",
+                                    );
+                                    for summary in &skill_summaries {
+                                        ui.selectable_value(
+                                            &mut self.hit_detail_skill_filter,
+                                            summary.name.clone(),
+                                            format!("{}  {}次", summary.name, summary.hits),
+                                        );
+                                    }
+                                });
                         });
                         ui.add_space(4.0);
+                        draw_skill_damage_summary(
+                            ui,
+                            &skill_summaries,
+                            stats.damage,
+                            &mut self.hit_detail_skill_filter,
+                            self.dark_mode,
+                        );
+                        ui.add_space(4.0);
                         ui.separator();
-                        self.character_hits(ui, char_id, self.hit_detail_filter);
+                        self.character_hits(
+                            ui,
+                            char_id,
+                            self.hit_detail_filter,
+                            &self.hit_detail_skill_filter,
+                        );
                     });
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
@@ -2430,7 +2503,7 @@ impl DpsApp {
                 self.character_editor.message = error;
             }
             if ui.button("重新载入").clicked() {
-                let path = data_root().join("characters.json");
+                let path = data_root().join(CHARACTER_DATA_PATH);
                 match CharacterEditorState::load(&path) {
                     Ok(editor) => {
                         self.character_editor = editor;
@@ -2632,7 +2705,7 @@ impl DpsApp {
                 return;
             }
         };
-        let path = data_root().join("characters.json");
+        let path = data_root().join(CHARACTER_DATA_PATH);
         let text = match serde_json::to_string_pretty(&self.character_editor.document) {
             Ok(text) => format!("{text}\n"),
             Err(error) => {
@@ -2861,7 +2934,7 @@ fn load_image_texture(
     let disk_bytes = std::fs::read(&path).ok();
     let bytes = disk_bytes
         .as_deref()
-        .or_else(|| embedded_character_avatar(resource_path))?;
+        .or_else(|| embedded_image_resource(resource_path))?;
     let image = image::load_from_memory(bytes).ok()?.to_rgba8();
     let size = [image.width() as usize, image.height() as usize];
     let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
@@ -3043,11 +3116,129 @@ fn apply_rounding_to_process_windows() {
     }
 }
 
+#[derive(Clone)]
+struct SkillDamageSummary {
+    name: String,
+    category: String,
+    hits: u64,
+    damage: f64,
+}
+
+fn hit_specific_type(hit: &crate::model::Hit) -> &str {
+    hit.damage_name
+        .as_deref()
+        .or(hit.attack_type.as_deref())
+        .unwrap_or("未知招式")
+}
+
+fn aggregate_character_skill_damage(
+    hits: &std::collections::VecDeque<crate::model::Hit>,
+    char_id: u32,
+) -> Vec<SkillDamageSummary> {
+    let mut summaries = HashMap::<String, SkillDamageSummary>::new();
+    for hit in hits
+        .iter()
+        .filter(|hit| hit.char_id == char_id && hit.direction != "incoming")
+    {
+        let name = hit_specific_type(hit).to_owned();
+        let row = summaries
+            .entry(name.clone())
+            .or_insert_with(|| SkillDamageSummary {
+                name,
+                category: hit.attack_type.clone().unwrap_or_else(|| "未知".to_owned()),
+                hits: 0,
+                damage: 0.0,
+            });
+        row.hits += 1;
+        row.damage += hit.damage;
+    }
+    let mut rows: Vec<_> = summaries.into_values().collect();
+    rows.sort_by(|left, right| {
+        right
+            .damage
+            .total_cmp(&left.damage)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    rows
+}
+
+fn draw_skill_damage_summary(
+    ui: &mut egui::Ui,
+    summaries: &[SkillDamageSummary],
+    total_damage: f64,
+    selected_skill: &mut String,
+    dark_mode: bool,
+) {
+    egui::CollapsingHeader::new(
+        RichText::new("招式输出构成")
+            .strong()
+            .color(shadcn_foreground(dark_mode)),
+    )
+    .default_open(true)
+    .show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("具体招式").strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new("伤害占比 / 总伤害 / 次数").strong());
+            });
+        });
+        egui::ScrollArea::vertical()
+            .id_salt("skill_damage_summary")
+            .max_height(145.0)
+            .show(ui, |ui| {
+                for summary in summaries {
+                    let share = if total_damage > 0.0 {
+                        summary.damage / total_damage * 100.0
+                    } else {
+                        0.0
+                    };
+                    let selected = selected_skill == &summary.name;
+                    let response = ui
+                        .horizontal(|ui| {
+                            let response = ui.selectable_label(
+                                selected,
+                                format!("{}  [{}]", summary.name, summary.category),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(format!(
+                                        "{share:.1}%  ·  {}  ·  {}次",
+                                        format_number(summary.damage),
+                                        summary.hits
+                                    ));
+                                },
+                            );
+                            response
+                        })
+                        .inner;
+                    let bar_rect = egui::Rect::from_min_size(
+                        egui::pos2(ui.min_rect().left(), response.rect.bottom() - 2.0),
+                        egui::vec2(
+                            ui.available_width() * (share as f32 / 100.0).clamp(0.0, 1.0),
+                            2.0,
+                        ),
+                    );
+                    ui.painter()
+                        .rect_filled(bar_rect, 1.0, theme_accent(dark_mode));
+                    if response.clicked() {
+                        if selected {
+                            selected_skill.clear();
+                        } else {
+                            selected_skill.clone_from(&summary.name);
+                        }
+                    }
+                }
+            });
+    });
+}
+
 #[derive(Clone, Copy)]
 struct CharacterHitLayout {
     row_width: f32,
     time_x: f32,
     type_x: f32,
+    type_width: f32,
     damage_x: f32,
     hp_x: f32,
     separators: [f32; 3],
@@ -3059,6 +3250,7 @@ struct TeamHitLayout {
     time_x: f32,
     character_x: f32,
     type_x: f32,
+    type_width: f32,
     damage_x: f32,
     hp_x: f32,
     separators: [f32; 4],
@@ -3069,8 +3261,8 @@ impl TeamHitLayout {
         const LEFT_INSET: f32 = 4.0;
         const TIME_WIDTH: f32 = 92.0;
         const CHARACTER_WIDTH: f32 = 132.0;
-        const TYPE_WIDTH: f32 = 84.0;
-        const DAMAGE_WIDTH: f32 = 132.0;
+        const TYPE_WIDTH: f32 = 210.0;
+        const DAMAGE_WIDTH: f32 = 120.0;
         const CELL_PADDING: f32 = 10.0;
 
         let time_x = LEFT_INSET + CELL_PADDING;
@@ -3088,6 +3280,7 @@ impl TeamHitLayout {
             time_x,
             character_x,
             type_x,
+            type_width: TYPE_WIDTH,
             damage_x,
             hp_x,
             separators: [
@@ -3104,8 +3297,8 @@ impl CharacterHitLayout {
     fn new(available_width: f32) -> Self {
         const LEFT_INSET: f32 = 4.0;
         const TIME_WIDTH: f32 = 92.0;
-        const TYPE_WIDTH: f32 = 84.0;
-        const DAMAGE_WIDTH: f32 = 150.0;
+        const TYPE_WIDTH: f32 = 250.0;
+        const DAMAGE_WIDTH: f32 = 130.0;
         const CELL_PADDING: f32 = 10.0;
 
         let time_x = LEFT_INSET + CELL_PADDING;
@@ -3120,6 +3313,7 @@ impl CharacterHitLayout {
             row_width: available_width,
             time_x,
             type_x,
+            type_width: TYPE_WIDTH,
             damage_x,
             hp_x,
             separators: [type_separator, damage_separator, hp_separator],
@@ -3213,7 +3407,7 @@ fn draw_character_hit_row(
     let hit_type = if incoming {
         "受击"
     } else {
-        hit.attack_type.as_deref().unwrap_or("未知")
+        hit_specific_type(hit)
     };
     let time = format_short_time(hit.timestamp);
     let damage = format_number(hit.damage);
@@ -3233,17 +3427,17 @@ fn draw_character_hit_row(
     );
     painter.rect_filled(
         egui::Rect::from_center_size(
-            egui::pos2(x + layout.type_x + 36.0, y),
-            egui::vec2(68.0, 20.0),
+            egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
+            egui::vec2(layout.type_width - 20.0, 20.0),
         ),
         10.0,
         type_color,
     );
     painter.text(
-        egui::pos2(x + layout.type_x + 36.0, y),
+        egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
         hit_type,
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
     painter.text(
@@ -3298,7 +3492,10 @@ fn draw_character_hit_row(
             format!("攻击类型：{hit_type}")
         };
         if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\n技能：{ability_name}"));
+            details.push_str(&format!("\nGA：{ability_name}"));
+        }
+        if let Some(damage_name) = hit.damage_name.as_deref() {
+            details.push_str(&format!("\n招式：{damage_name}"));
         }
         if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
             details.push_str(&format!("\nGameplayEffect：{effect_name}"));
@@ -3426,21 +3623,21 @@ fn draw_team_hit_row(
     );
     painter.rect_filled(
         egui::Rect::from_center_size(
-            egui::pos2(x + layout.type_x + 36.0, y),
-            egui::vec2(68.0, 20.0),
+            egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
+            egui::vec2(layout.type_width - 20.0, 20.0),
         ),
         10.0,
         type_color,
     );
     painter.text(
-        egui::pos2(x + layout.type_x + 36.0, y),
+        egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
         if incoming {
             "受击"
         } else {
-            hit.attack_type.as_deref().unwrap_or("未知")
+            hit_specific_type(hit)
         },
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
     painter.text(
@@ -3501,7 +3698,10 @@ fn draw_team_hit_row(
             }
         );
         if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\n技能：{ability_name}"));
+            details.push_str(&format!("\nGA：{ability_name}"));
+        }
+        if let Some(damage_name) = hit.damage_name.as_deref() {
+            details.push_str(&format!("\n招式：{damage_name}"));
         }
         if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
             details.push_str(&format!("\nGameplayEffect：{effect_name}"));
@@ -4047,13 +4247,13 @@ fn parse_hex_color(value: &str) -> Option<Color32> {
 }
 
 fn data_root() -> PathBuf {
-    if PathBuf::from("characters.json").is_file() {
+    if PathBuf::from(CHARACTER_DATA_PATH).is_file() {
         return PathBuf::from(".");
     }
     std::env::current_exe()
         .ok()
         .into_iter()
         .flat_map(|path| path.ancestors().map(PathBuf::from).collect::<Vec<_>>())
-        .find(|path| path.join("characters.json").is_file())
+        .find(|path| path.join(CHARACTER_DATA_PATH).is_file())
         .unwrap_or_else(|| PathBuf::from("."))
 }

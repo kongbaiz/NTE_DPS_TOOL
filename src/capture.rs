@@ -26,10 +26,12 @@ use serde::Deserialize;
 
 use crate::model::{AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, PacketDebug};
 use crate::parser::{
-    GameplayEffectSkill, ParsedGameplayEffect, classify_attack_type,
-    declared_character_ids_from_evidence, find_data_file, find_declared_character_evidence,
-    load_gameplay_effect_mapping, load_gameplay_effect_skills, parse_boss_hp_updates,
-    parse_current_hp_updates, parse_damage_payload, parse_gameplay_effects, qte_reaction_type,
+    GAMEPLAY_EFFECT_MAPPING_PATH, GameplayEffectSkill, ParsedGameplayEffect,
+    SKILL_DAMAGE_DATA_PATH, WOODEN_DAMAGE_DESCRIPTIONS_PATH, classify_attack_type,
+    classify_attack_type_from_description, declared_character_ids_from_evidence, find_data_file,
+    find_declared_character_evidence, load_gameplay_effect_mapping, load_gameplay_effect_skills,
+    load_wooden_damage_names, parse_boss_hp_updates, parse_current_hp_updates,
+    parse_damage_payload, parse_gameplay_effects, qte_reaction_type,
 };
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 
@@ -944,6 +946,7 @@ impl FollowUpDamageTracker {
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
+            damage_name: Some("覆纹追加攻击".to_owned()),
             attack_type: Some("覆纹".to_owned()),
         })
     }
@@ -983,15 +986,16 @@ struct PacketDecoder {
     follow_up_damage: FollowUpDamageTracker,
     gameplay_effect_names: HashMap<u32, String>,
     gameplay_effect_skills: HashMap<String, GameplayEffectSkill>,
+    wooden_damage_names: HashMap<String, String>,
     resource_warnings: Vec<String>,
     character_declarations: HashMap<u32, f64>,
 }
 
 impl Default for PacketDecoder {
     fn default() -> Self {
-        let mapping_relative =
-            Path::new("NTE_Assets/DataTable/Skill/DT_GameplayEffectMappingData.json");
-        let skills_relative = Path::new("NTE_Assets/DataTable/Skill/DT_SkillDamageData.json");
+        let mapping_relative = Path::new(GAMEPLAY_EFFECT_MAPPING_PATH);
+        let skills_relative = Path::new(SKILL_DAMAGE_DATA_PATH);
+        let wooden_relative = Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH);
         let mut resource_warnings = Vec::new();
         let gameplay_effect_names = find_data_file(mapping_relative)
             .ok_or_else(|| format!("找不到 {}", mapping_relative.display()))
@@ -1007,12 +1011,20 @@ impl Default for PacketDecoder {
                 resource_warnings.push(format!("技能分类表加载失败：{error}"));
                 HashMap::new()
             });
+        let wooden_damage_names = find_data_file(wooden_relative)
+            .ok_or_else(|| format!("找不到 {}", wooden_relative.display()))
+            .and_then(|path| load_wooden_damage_names(&path).map_err(|error| error.to_string()))
+            .unwrap_or_else(|error| {
+                resource_warnings.push(format!("木桩伤害描述表加载失败：{error}"));
+                HashMap::new()
+            });
         Self {
             session_characters: HashMap::new(),
             client_endpoints: HashSet::new(),
             follow_up_damage: FollowUpDamageTracker::default(),
             gameplay_effect_names,
             gameplay_effect_skills,
+            wooden_damage_names,
             resource_warnings,
             character_declarations: HashMap::new(),
         }
@@ -1047,6 +1059,7 @@ fn enrich_hit_with_gameplay_effect(
     effects: &[ParsedGameplayEffect],
     names: &HashMap<u32, String>,
     skills: &HashMap<String, GameplayEffectSkill>,
+    wooden_names: &HashMap<String, String>,
 ) {
     let Some(effect) = matching_gameplay_effect(hit, effects) else {
         return;
@@ -1056,9 +1069,16 @@ fn enrich_hit_with_gameplay_effect(
         return;
     };
     hit.gameplay_effect_name = Some(effect_name.clone());
+    hit.damage_name = wooden_names.get(effect_name).cloned();
     if let Some(skill) = skills.get(effect_name) {
         hit.ability_name = skill.ability_name.clone();
         hit.attack_type = Some(skill.attack_type.clone());
+    } else if let Some(attack_type) = hit
+        .damage_name
+        .as_deref()
+        .and_then(classify_attack_type_from_description)
+    {
+        hit.attack_type = Some(attack_type);
     } else {
         hit.attack_type = Some(classify_attack_type(None, effect_name, None));
     }
@@ -1119,6 +1139,7 @@ impl PacketDecoder {
                 &gameplay_effects,
                 &self.gameplay_effect_names,
                 &self.gameplay_effect_skills,
+                &self.wooden_damage_names,
             );
             if hit
                 .attack_type
@@ -1573,6 +1594,8 @@ struct ExportHit {
     #[serde(default)]
     ability_name: Option<String>,
     #[serde(default)]
+    damage_name: Option<String>,
+    #[serde(default)]
     attack_type: Option<String>,
 }
 
@@ -1687,6 +1710,7 @@ pub fn import_capture_json(
                         gameplay_effect_index: hit.gameplay_effect_index,
                         gameplay_effect_name: hit.gameplay_effect_name,
                         ability_name: hit.ability_name,
+                        damage_name: hit.damage_name,
                         attack_type: hit.attack_type,
                     }),
                 ));
@@ -1818,6 +1842,13 @@ mod tests {
                 .map(|skill| skill.attack_type.as_str()),
             Some("普攻")
         );
+        assert_eq!(
+            decoder
+                .wooden_damage_names
+                .get("GE_Player_Nanally_Melee1_Damage")
+                .map(String::as_str),
+            Some("娜娜莉普攻1")
+        );
     }
 
     #[test]
@@ -1865,7 +1896,7 @@ mod tests {
     fn actual_capture_runs_through_the_decoder() {
         let path = actual_capture_path();
         let characters = Arc::new(
-            crate::parser::load_characters(Path::new("characters.json"))
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
                 .expect("无法加载实际 characters.json"),
         );
         let (sender, receiver) = unbounded();
@@ -1913,7 +1944,7 @@ mod tests {
     fn diagnose_actual_capture_attack_types() {
         let path = actual_capture_path();
         let characters = Arc::new(
-            crate::parser::load_characters(Path::new("characters.json"))
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
                 .expect("无法加载实际 characters.json"),
         );
         let (sender, receiver) = unbounded();
@@ -1932,6 +1963,7 @@ mod tests {
         let mut last_declared_at = HashMap::<u32, f64>::new();
         let mut total_hits = 0_usize;
         let mut classified_hits = 0_usize;
+        let mut named_hits = 0_usize;
         for event in receiver.try_iter() {
             let hit = match event {
                 EngineEvent::Packet(packet) => {
@@ -1997,6 +2029,9 @@ mod tests {
                     hit.gameplay_effect_index,
                 ));
             }
+            if hit.damage_name.is_some() {
+                named_hits += 1;
+            }
             if hit.attack_type.as_deref() == Some("其他") && other_hits.len() < 12 {
                 other_hits.push((
                     hit.char_name.clone(),
@@ -2025,10 +2060,11 @@ mod tests {
         let mut effect_rows: Vec<_> = effects.into_iter().collect();
         effect_rows.sort_by(|left, right| right.1.0.cmp(&left.1.0));
         println!(
-            "attack_type_summary capture={} hits={} classified={} types={:?}",
+            "attack_type_summary capture={} hits={} classified={} named={} types={:?}",
             path.display(),
             total_hits,
             classified_hits,
+            named_hits,
             count_rows
         );
         println!("unknown_hits={unknown_hits:?}");
@@ -2096,10 +2132,8 @@ mod tests {
         }
 
         let path = actual_capture_path();
-        let names = load_gameplay_effect_mapping(Path::new(
-            "NTE_Assets/DataTable/Skill/DT_GameplayEffectMappingData.json",
-        ))
-        .expect("无法加载 GameplayEffect 映射");
+        let names = load_gameplay_effect_mapping(Path::new(GAMEPLAY_EFFECT_MAPPING_PATH))
+            .expect("无法加载 GameplayEffect 映射");
         let file = File::open(&path).expect("无法打开真实抓包文件");
         let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
         let mut stats = HashMap::<u32, EffectStats>::new();
@@ -2220,7 +2254,7 @@ mod tests {
     fn diagnose_actual_capture_follow_up_damage() {
         let path = actual_capture_path();
         let characters = Arc::new(
-            crate::parser::load_characters(Path::new("characters.json"))
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
                 .expect("无法加载实际 characters.json"),
         );
         let (sender, receiver) = unbounded();
@@ -2996,7 +3030,7 @@ mod tests {
     fn diagnose_actual_capture_follow_up_settlements() {
         let path = actual_capture_path();
         let characters = Arc::new(
-            crate::parser::load_characters(Path::new("characters.json"))
+            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
                 .expect("无法加载实际 characters.json"),
         );
         let (sender, receiver) = unbounded();

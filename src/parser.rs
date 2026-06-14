@@ -20,6 +20,11 @@ const ACTIVE_GAMEPLAY_EFFECT_ANCHOR: &[u8] = b"FHTClientActiveGE";
 const ACTIVE_GAMEPLAY_EFFECT_VALUE_OFFSET: usize = 5;
 const ACTIVE_GAMEPLAY_EFFECT_MARKER: u32 = 12;
 
+pub const CHARACTER_DATA_PATH: &str = "res/data/characters/characters.json";
+pub const GAMEPLAY_EFFECT_MAPPING_PATH: &str = "res/data/skills/gameplay_effect_mapping.json";
+pub const SKILL_DAMAGE_DATA_PATH: &str = "res/data/skills/skill_damage.json";
+pub const WOODEN_DAMAGE_DESCRIPTIONS_PATH: &str = "res/data/skills/wooden_damage_descriptions.json";
+
 #[derive(Deserialize)]
 struct CharacterDocument {
     characters: HashMap<String, CharacterInfo>,
@@ -172,6 +177,30 @@ pub fn load_gameplay_effect_skills(path: &Path) -> Result<HashMap<String, Gamepl
         .collect())
 }
 
+pub fn load_wooden_damage_names(path: &Path) -> Result<HashMap<String, String>> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("无法读取木桩伤害描述表 {}", path.display()))?;
+    let document: serde_json::Value =
+        serde_json::from_str(&text).context("木桩伤害描述表 JSON 无效")?;
+    let rows = document
+        .as_array()
+        .and_then(|entries| entries.first())
+        .and_then(|entry| entry.get("Rows"))
+        .and_then(serde_json::Value::as_object)
+        .context("木桩伤害描述表缺少 Rows")?;
+
+    Ok(rows
+        .iter()
+        .filter_map(|(effect_name, row)| {
+            row.get("Desc")
+                .and_then(|desc| desc.get("CultureInvariantString"))
+                .and_then(serde_json::Value::as_str)
+                .filter(|description| !description.trim().is_empty())
+                .map(|description| (effect_name.clone(), description.trim().to_owned()))
+        })
+        .collect())
+}
+
 fn damage_source_category_code(value: &str) -> Option<&str> {
     value
         .strip_prefix("EExecutionDamageSourceCategory::DAMAGE_SOURCE_CATEGORY_")
@@ -224,6 +253,20 @@ pub fn classify_attack_type(
         "E技能".to_owned()
     } else {
         "其他".to_owned()
+    }
+}
+
+pub fn classify_attack_type_from_description(description: &str) -> Option<String> {
+    if description.contains("QTE") {
+        Some("QTE".to_owned())
+    } else if description.contains("大招") {
+        Some("Q技能".to_owned())
+    } else if description.contains("普攻") {
+        Some("普攻".to_owned())
+    } else if description.contains("技能") {
+        Some("E技能".to_owned())
+    } else {
+        None
     }
 }
 
@@ -676,6 +719,7 @@ pub fn parse_damage_payload(
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
+            damage_name: None,
             attack_type: None,
         });
     }
@@ -818,10 +862,8 @@ mod character_tests {
 
     #[test]
     fn loads_gameplay_effect_names_from_assets() {
-        let mapping = load_gameplay_effect_mapping(Path::new(
-            "NTE_Assets/DataTable/Skill/DT_GameplayEffectMappingData.json",
-        ))
-        .unwrap();
+        let mapping =
+            load_gameplay_effect_mapping(Path::new(GAMEPLAY_EFFECT_MAPPING_PATH)).unwrap();
 
         assert_eq!(
             mapping.get(&1012).map(String::as_str),
@@ -831,10 +873,7 @@ mod character_tests {
 
     #[test]
     fn loads_attack_types_from_skill_damage_assets() {
-        let skills = load_gameplay_effect_skills(Path::new(
-            "NTE_Assets/DataTable/Skill/DT_SkillDamageData.json",
-        ))
-        .unwrap();
+        let skills = load_gameplay_effect_skills(Path::new(SKILL_DAMAGE_DATA_PATH)).unwrap();
 
         for (effect, expected_type, expected_ability) in [
             (
@@ -863,6 +902,28 @@ mod character_tests {
             assert_eq!(skill.attack_type, expected_type);
             assert_eq!(skill.ability_name.as_deref(), Some(expected_ability));
         }
+    }
+
+    #[test]
+    fn loads_chinese_damage_names_from_wooden_assets() {
+        let names = load_wooden_damage_names(Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH)).unwrap();
+
+        assert_eq!(
+            names
+                .get("GE_Player_Sagiri_QTE1_Damage")
+                .map(String::as_str),
+            Some("早雾QTE")
+        );
+        assert_eq!(
+            names
+                .get("GE_Player_Nanally_Melee1_Damage")
+                .map(String::as_str),
+            Some("娜娜莉普攻1")
+        );
+        assert_eq!(
+            classify_attack_type_from_description("早雾大招1").as_deref(),
+            Some("Q技能")
+        );
     }
 
     #[test]

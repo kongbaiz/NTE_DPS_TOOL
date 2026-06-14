@@ -37,7 +37,7 @@ fn main() -> Result<()> {
 }
 
 fn app_icon() -> egui::IconData {
-    let image = image::load_from_memory(include_bytes!("../assets/app-icon.png"))
+    let image = image::load_from_memory(include_bytes!("../res/icons/app-icon.png"))
         .expect("embedded application icon must be valid")
         .into_rgba8();
     let (width, height) = image.dimensions();

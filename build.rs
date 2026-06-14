@@ -7,7 +7,7 @@ const IMAGE_EXTENSIONS: &[&str] = &["jpeg", "jpg", "png", "webp"];
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let resource_dir = manifest_dir.join("res");
-    let icon_path = manifest_dir.join("assets/app-icon.ico");
+    let icon_path = manifest_dir.join("res/icons/app-icon.ico");
     let output_path = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("embedded_resources.rs");
 
     println!("cargo:rerun-if-changed={}", resource_dir.display());
@@ -18,7 +18,7 @@ fn main() {
     images.sort();
 
     let mut generated = String::from(
-        "fn embedded_character_avatar(path: &str) -> Option<&'static [u8]> {\n\
+        "fn embedded_image_resource(path: &str) -> Option<&'static [u8]> {\n\
          \x20   let normalized = path.replace('\\\\', \"/\");\n\
          \x20   match normalized.as_str() {\n",
     );
