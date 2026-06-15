@@ -1533,7 +1533,7 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
 
         let mut decoder = PacketDecoder::default();
         if let Some(warning) = decoder.resource_warning() {
-            let _ = sender.send(EngineEvent::Error(warning));
+            let _ = sender.send(EngineEvent::Warning(warning));
         }
         while !stop.load(Ordering::Relaxed) {
             let mut header = ptr::null();
@@ -1589,7 +1589,7 @@ pub fn import_pcapng(
             let mut reader = PcapNgReader::new(file).map_err(|error| error.to_string())?;
             let mut decoder = PacketDecoder::default();
             if let Some(warning) = decoder.resource_warning() {
-                let _ = sender.send(EngineEvent::Error(warning));
+                let _ = sender.send(EngineEvent::Warning(warning));
             }
             let mut packet_count = 0;
             let mut supported_count = 0;
@@ -1933,6 +1933,18 @@ mod tests {
         assert_eq!(
             corrected_follow_up_damage(2_115.0, 1_714.0, Some(145)),
             None
+        );
+    }
+
+    #[test]
+    fn parses_export_ids_from_array_and_legacy_string() {
+        assert_eq!(
+            parse_export_ids(&serde_json::json!([1001, 1002])),
+            [1001, 1002]
+        );
+        assert_eq!(
+            parse_export_ids(&serde_json::json!("[1001, 1002]")),
+            [1001, 1002]
         );
     }
 

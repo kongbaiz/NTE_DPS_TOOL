@@ -4,6 +4,8 @@ const ABYSS_RESTART_STAGE_WINDOW_SECONDS: f64 = 10.0;
 
 use serde::{Deserialize, Serialize};
 
+const MAX_COMBAT_HITS: usize = 50_000;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterInfo {
     #[serde(default)]
@@ -174,6 +176,31 @@ fn update_combat_totals(
     row.damage += hit.damage;
 }
 
+fn rebuild_combat_totals(
+    hits: &VecDeque<Hit>,
+    stats: &mut HashMap<u32, CharacterStats>,
+    started_at: &mut Option<f64>,
+    ended_at: &mut Option<f64>,
+    total_damage: &mut f64,
+    total_damage_taken: &mut f64,
+) {
+    stats.clear();
+    *started_at = None;
+    *ended_at = None;
+    *total_damage = 0.0;
+    *total_damage_taken = 0.0;
+    for hit in hits {
+        update_combat_totals(
+            stats,
+            started_at,
+            ended_at,
+            total_damage,
+            total_damage_taken,
+            hit,
+        );
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AbyssHalf {
     #[default]
@@ -229,8 +256,20 @@ impl PartyCombatState {
             &hit,
         );
         self.hits.push_back(hit);
-        while self.hits.len() > 50_000 {
+        let mut trimmed = false;
+        while self.hits.len() > MAX_COMBAT_HITS {
             self.hits.pop_front();
+            trimmed = true;
+        }
+        if trimmed {
+            rebuild_combat_totals(
+                &self.hits,
+                &mut self.stats,
+                &mut self.started_at,
+                &mut self.ended_at,
+                &mut self.total_damage,
+                &mut self.total_damage_taken,
+            );
         }
     }
 
@@ -401,8 +440,20 @@ impl CombatState {
             &hit,
         );
         self.hits.push_back(hit);
-        while self.hits.len() > 50_000 {
+        let mut trimmed = false;
+        while self.hits.len() > MAX_COMBAT_HITS {
             self.hits.pop_front();
+            trimmed = true;
+        }
+        if trimmed {
+            rebuild_combat_totals(
+                &self.hits,
+                &mut self.stats,
+                &mut self.started_at,
+                &mut self.ended_at,
+                &mut self.total_damage,
+                &mut self.total_damage_taken,
+            );
         }
     }
 
@@ -444,6 +495,161 @@ pub enum EngineEvent {
     Abyss(AbyssEvent),
     Scene(SceneObservation),
     Status(String),
+    Warning(String),
     Error(String),
     CaptureStopped,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_hit(timestamp: f64, char_id: u32, direction: &str, damage: f64) -> Hit {
+        Hit {
+            timestamp,
+            char_id,
+            char_name: format!("角色{char_id}"),
+            char_known: true,
+            damage,
+            byte_offset: 0,
+            bit_shift: 0,
+            char_source: "test".to_owned(),
+            direction: direction.to_owned(),
+            target_hp_before: 0.0,
+            target_hp_after: 0.0,
+            target_max_hp: 0.0,
+            target_hp_percent: 0.0,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
+            gameplay_effect_index: None,
+            gameplay_effect_name: None,
+            ability_name: None,
+            damage_name: None,
+            attack_type: None,
+        }
+    }
+
+    fn assert_totals_match_hits(
+        hits: &VecDeque<Hit>,
+        stats: &HashMap<u32, CharacterStats>,
+        total_damage: f64,
+        total_damage_taken: f64,
+        duration: f64,
+    ) {
+        assert_eq!(hits.len(), MAX_COMBAT_HITS);
+
+        let expected_damage: f64 = hits
+            .iter()
+            .filter(|hit| hit.direction != "incoming")
+            .map(|hit| hit.damage)
+            .sum();
+        let expected_damage_taken: f64 = hits
+            .iter()
+            .filter(|hit| hit.direction == "incoming")
+            .map(|hit| hit.damage)
+            .sum();
+        assert_eq!(total_damage, expected_damage);
+        assert_eq!(total_damage_taken, expected_damage_taken);
+
+        for hit in hits {
+            assert!(stats.contains_key(&hit.char_id));
+        }
+        for (&char_id, row) in stats {
+            let char_hits: Vec<_> = hits.iter().filter(|hit| hit.char_id == char_id).collect();
+            assert_eq!(
+                row.hits,
+                char_hits
+                    .iter()
+                    .filter(|hit| hit.direction != "incoming")
+                    .count() as u64
+            );
+            assert_eq!(
+                row.damage,
+                char_hits
+                    .iter()
+                    .filter(|hit| hit.direction != "incoming")
+                    .map(|hit| hit.damage)
+                    .sum::<f64>()
+            );
+            assert_eq!(
+                row.hits_taken,
+                char_hits
+                    .iter()
+                    .filter(|hit| hit.direction == "incoming")
+                    .count() as u64
+            );
+            assert_eq!(
+                row.damage_taken,
+                char_hits
+                    .iter()
+                    .filter(|hit| hit.direction == "incoming")
+                    .map(|hit| hit.damage)
+                    .sum::<f64>()
+            );
+        }
+
+        let outgoing_timestamps: Vec<_> = hits
+            .iter()
+            .filter(|hit| hit.direction != "incoming")
+            .map(|hit| hit.timestamp)
+            .collect();
+        let expected_duration =
+            (outgoing_timestamps.last().unwrap() - outgoing_timestamps.first().unwrap()).max(0.001);
+        assert_eq!(duration, expected_duration);
+        assert!(duration < 100_000.0);
+    }
+
+    fn overflowing_hits() -> Vec<Hit> {
+        let mut hits = Vec::with_capacity(MAX_COMBAT_HITS + 1);
+        hits.push(test_hit(-100_000.0, 99, "outgoing", 1_000_000.0));
+        for index in 0..MAX_COMBAT_HITS {
+            let direction = if index % 3 == 0 {
+                "incoming"
+            } else {
+                "outgoing"
+            };
+            hits.push(test_hit(
+                index as f64,
+                (index % 4 + 1) as u32,
+                direction,
+                (index % 10 + 1) as f64,
+            ));
+        }
+        hits
+    }
+
+    #[test]
+    fn party_combat_totals_follow_trimmed_hits() {
+        let mut state = PartyCombatState::default();
+        for hit in overflowing_hits() {
+            state.push_hit(hit);
+        }
+
+        assert_totals_match_hits(
+            &state.hits,
+            &state.stats,
+            state.total_damage,
+            state.total_damage_taken,
+            state.duration(),
+        );
+        assert!(!state.stats.contains_key(&99));
+    }
+
+    #[test]
+    fn combat_totals_follow_trimmed_hits() {
+        let mut state = CombatState::default();
+        for hit in overflowing_hits() {
+            state.push_hit(hit);
+        }
+
+        assert_totals_match_hits(
+            &state.hits,
+            &state.stats,
+            state.total_damage,
+            state.total_damage_taken,
+            state.duration(),
+        );
+        assert!(!state.stats.contains_key(&99));
+    }
 }

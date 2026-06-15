@@ -875,6 +875,7 @@ impl DpsApp {
                         self.paused_events.push_back(event);
                     }
                     EngineEvent::Status(_)
+                    | EngineEvent::Warning(_)
                     | EngineEvent::Error(_)
                     | EngineEvent::CaptureStopped => self.apply_engine_event(event),
                 }
@@ -934,6 +935,9 @@ impl DpsApp {
             }
             EngineEvent::Scene(scene) => self.state.apply_scene_observation(scene),
             EngineEvent::Status(status) => self.status = status,
+            EngineEvent::Warning(warning) => {
+                self.diagnostic = Some(format!("部分资源加载失败，功能降级：{warning}"));
+            }
             EngineEvent::Error(error) => {
                 self.status = "运行失败".to_owned();
                 self.last_error = Some(error);
@@ -1375,7 +1379,7 @@ impl DpsApp {
             writeln!(
                 &mut out,
                 "      \"declared_ids\": {},",
-                json_string(&format!("{:?}", packet.declared_ids))
+                serde_json::to_string(&packet.declared_ids).unwrap_or_else(|_| "[]".to_owned())
             )
             .ok();
             writeln!(&mut out, "      \"parsed_hits\": {},", packet.parsed_hits).ok();
