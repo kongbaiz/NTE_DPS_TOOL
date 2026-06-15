@@ -1001,7 +1001,45 @@ struct PacketDecoder {
     wooden_damage_names: HashMap<String, String>,
     resource_warnings: Vec<String>,
     character_declarations: HashMap<u32, f64>,
-    current_monster: Option<(String, String, f64, u8)>,
+    current_monster: Option<InferredMonsterTarget>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MonsterTargetSource {
+    Entity,
+    GameplayEffect,
+}
+
+impl MonsterTargetSource {
+    fn confidence(self) -> u8 {
+        match self {
+            Self::Entity => 1,
+            Self::GameplayEffect => 2,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Entity => "怪物实体特征",
+            Self::GameplayEffect => "GameplayEffect 特征",
+        }
+    }
+
+    fn confidence_label(self) -> &'static str {
+        match self {
+            Self::Entity => "低",
+            Self::GameplayEffect => "高",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct InferredMonsterTarget {
+    id: String,
+    name: String,
+    source: MonsterTargetSource,
+    observed_at: f64,
+    expires_at: f64,
 }
 
 impl Default for PacketDecoder {
@@ -1050,19 +1088,58 @@ impl PacketDecoder {
         &mut self,
         id: String,
         name: String,
+        source: MonsterTargetSource,
         observed_at: f64,
         expires_at: f64,
-        confidence: u8,
     ) {
-        let should_replace = self.current_monster.as_ref().is_none_or(
-            |(current_id, _, current_expires_at, current_confidence)| {
-                id == *current_id
-                    || confidence >= *current_confidence
-                    || observed_at >= *current_expires_at
-            },
-        );
+        let should_replace = self.current_monster.as_ref().is_none_or(|current| {
+            id == current.id
+                || source.confidence() >= current.source.confidence()
+                || observed_at >= current.expires_at
+        });
         if should_replace {
-            self.current_monster = Some((id, name, expires_at, confidence));
+            self.current_monster = Some(InferredMonsterTarget {
+                id,
+                name,
+                source,
+                observed_at,
+                expires_at,
+            });
+        }
+    }
+
+    fn inferred_monster(
+        &self,
+        timestamp: f64,
+        packet_has_multiple_targets: bool,
+    ) -> Option<&InferredMonsterTarget> {
+        if packet_has_multiple_targets {
+            return None;
+        }
+        self.current_monster
+            .as_ref()
+            .filter(|target| timestamp >= target.observed_at && timestamp <= target.expires_at)
+    }
+
+    fn apply_inferred_monster(
+        &self,
+        hits: &mut [Hit],
+        timestamp: f64,
+        packet_has_multiple_targets: bool,
+    ) {
+        let Some(target) = self.inferred_monster(timestamp, packet_has_multiple_targets) else {
+            return;
+        };
+        for hit in hits {
+            if hit.target_name.is_none() {
+                hit.target_id = Some(target.id.clone());
+                hit.target_name = Some(target.name.clone());
+                hit.target_context.push(format!(
+                    "推断目标（非协议直接命中）：来源 {}，置信度{}",
+                    target.source.label(),
+                    target.source.confidence_label()
+                ));
+            }
         }
     }
 
@@ -1166,10 +1243,6 @@ impl PacketDecoder {
         let direction = if outgoing { "C2S" } else { "S2C" };
         let gameplay_effects = parse_gameplay_effects(payload);
         let detected_monsters = detect_monster_targets(payload);
-        if detected_monsters.len() == 1 {
-            let (id, name) = detected_monsters[0].clone();
-            self.observe_monster(id, name, timestamp, timestamp + 1.0, 1);
-        }
         let mut effect_monsters = gameplay_effects
             .iter()
             .filter_map(|effect| self.gameplay_effect_names.get(&effect.unique_index))
@@ -1177,9 +1250,34 @@ impl PacketDecoder {
             .collect::<Vec<_>>();
         effect_monsters.sort();
         effect_monsters.dedup();
-        if effect_monsters.len() == 1 {
-            let (id, name) = effect_monsters.remove(0);
-            self.observe_monster(id, name, timestamp, timestamp + 10.0, 2);
+        let mut packet_target_ids = detected_monsters
+            .iter()
+            .chain(effect_monsters.iter())
+            .map(|(id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        packet_target_ids.sort_unstable();
+        packet_target_ids.dedup();
+        let packet_has_multiple_targets = packet_target_ids.len() > 1;
+        if !packet_has_multiple_targets {
+            if effect_monsters.len() == 1 {
+                let (id, name) = effect_monsters.remove(0);
+                self.observe_monster(
+                    id,
+                    name,
+                    MonsterTargetSource::GameplayEffect,
+                    timestamp,
+                    timestamp + 3.0,
+                );
+            } else if detected_monsters.len() == 1 {
+                let (id, name) = detected_monsters[0].clone();
+                self.observe_monster(
+                    id,
+                    name,
+                    MonsterTargetSource::Entity,
+                    timestamp,
+                    timestamp + 0.25,
+                );
+            }
         }
         let mut hits = if outgoing {
             let packet_char_id = if ids.len() == 1 {
@@ -1203,17 +1301,14 @@ impl PacketDecoder {
         } else {
             Vec::new()
         };
-        if outgoing
-            && let Some((target_id, target_name, expires_at, _)) = &self.current_monster
-            && timestamp <= *expires_at
-        {
-            for hit in &mut hits {
-                if hit.target_name.is_none() {
-                    hit.target_id = Some(target_id.clone());
-                    hit.target_name = Some(target_name.clone());
-                    hit.target_context.push("怪物实体/技能来源特征".to_owned());
-                }
-            }
+        let decoded_text = decode_payload_text(payload);
+        let scene_transition = crate::scene::detect_scenes(timestamp, &decoded_text)
+            .iter()
+            .any(|scene| scene.category == "transition");
+        if scene_transition {
+            self.current_monster = None;
+        } else if outgoing {
+            self.apply_inferred_monster(&mut hits, timestamp, packet_has_multiple_targets);
         }
         for hit in &mut hits {
             enrich_hit_with_gameplay_effect(
@@ -1277,13 +1372,6 @@ impl PacketDecoder {
             .count();
         let preview_len = payload.len().min(96);
         let payload_hex = hex::encode(payload);
-        let decoded_text = decode_payload_text(payload);
-        if crate::scene::detect_scenes(timestamp, &decoded_text)
-            .iter()
-            .any(|scene| scene.category == "transition")
-        {
-            self.current_monster = None;
-        }
         let current_hp_updates = if outgoing {
             Vec::new()
         } else {
@@ -1881,7 +1969,7 @@ fn parse_export_ids(value: &serde_json::Value) -> Vec<u32> {
         serde_json::Value::Array(values) => values
             .iter()
             .filter_map(serde_json::Value::as_u64)
-            .map(|value| value as u32)
+            .filter_map(|value| u32::try_from(value).ok())
             .collect(),
         serde_json::Value::String(value) => value
             .trim_matches(['[', ']'])
@@ -1946,6 +2034,86 @@ mod tests {
             parse_export_ids(&serde_json::json!("[1001, 1002]")),
             [1001, 1002]
         );
+        assert!(parse_export_ids(&serde_json::json!([4294967296_u64])).is_empty());
+    }
+
+    fn inferred_target(
+        source: MonsterTargetSource,
+        observed_at: f64,
+        expires_at: f64,
+    ) -> InferredMonsterTarget {
+        InferredMonsterTarget {
+            id: "monster-1".to_owned(),
+            name: "测试怪物".to_owned(),
+            source,
+            observed_at,
+            expires_at,
+        }
+    }
+
+    fn targetless_hit() -> Hit {
+        Hit {
+            timestamp: 0.0,
+            char_id: 1,
+            char_name: "测试角色".to_owned(),
+            char_known: true,
+            damage: 100.0,
+            byte_offset: 0,
+            bit_shift: 0,
+            char_source: "test".to_owned(),
+            direction: "outgoing".to_owned(),
+            target_hp_before: 0.0,
+            target_hp_after: 0.0,
+            target_max_hp: 0.0,
+            target_hp_percent: 0.0,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
+            gameplay_effect_index: None,
+            gameplay_effect_name: None,
+            ability_name: None,
+            damage_name: None,
+            attack_type: None,
+        }
+    }
+
+    #[test]
+    fn applies_only_current_unambiguous_inferred_monster() {
+        let mut decoder = PacketDecoder::default();
+        decoder.current_monster = Some(inferred_target(
+            MonsterTargetSource::GameplayEffect,
+            10.0,
+            13.0,
+        ));
+
+        let mut hits = [targetless_hit()];
+        decoder.apply_inferred_monster(&mut hits, 12.0, false);
+        assert_eq!(hits[0].target_name.as_deref(), Some("测试怪物"));
+        assert!(hits[0].target_context[0].contains("推断目标"));
+        assert!(hits[0].target_context[0].contains("置信度高"));
+
+        let mut expired = [targetless_hit()];
+        decoder.apply_inferred_monster(&mut expired, 13.1, false);
+        assert!(expired[0].target_name.is_none());
+
+        let mut ambiguous = [targetless_hit()];
+        decoder.apply_inferred_monster(&mut ambiguous, 12.0, true);
+        assert!(ambiguous[0].target_name.is_none());
+    }
+
+    #[test]
+    fn low_confidence_entity_target_has_short_lifetime() {
+        let mut decoder = PacketDecoder::default();
+        decoder.current_monster = Some(inferred_target(MonsterTargetSource::Entity, 20.0, 20.25));
+
+        let mut near_hits = [targetless_hit()];
+        decoder.apply_inferred_monster(&mut near_hits, 20.2, false);
+        assert_eq!(near_hits[0].target_name.as_deref(), Some("测试怪物"));
+        assert!(near_hits[0].target_context[0].contains("置信度低"));
+
+        let mut later_hits = [targetless_hit()];
+        decoder.apply_inferred_monster(&mut later_hits, 20.3, false);
+        assert!(later_hits[0].target_name.is_none());
     }
 
     #[test]

@@ -460,6 +460,20 @@ impl DpsApp {
         self.drain_pending_events();
     }
 
+    fn reset_combat_session(&mut self) {
+        self.state.clear();
+        self.selected_abyss_half = AbyssHalf::First;
+        self.abyss_compact_mode = false;
+        self.hit_detail_char_id = None;
+        self.hit_detail_filter = HitDetailFilter::All;
+        self.hit_detail_skill_filter.clear();
+        self.team_hit_detail_open = false;
+        self.team_hit_detail_filter = HitDetailFilter::All;
+        self.paused = false;
+        self.paused_events.clear();
+        self.dropped_debug_packets = 0;
+    }
+
     fn drain_hotkeys(&mut self, ctx: &egui::Context) {
         let home_pressed = ctx.input(|input| input.key_pressed(egui::Key::Home));
         let import_pressed =
@@ -660,6 +674,7 @@ impl DpsApp {
             return;
         };
         let local_ip = self.game_network.as_ref().map(|network| network.local_ip);
+        self.reset_combat_session();
         let capture = start_capture(
             device,
             local_ip,
@@ -691,12 +706,7 @@ impl DpsApp {
     fn start_pcapng_import(&mut self, path: PathBuf) {
         self.stop_engine();
         self.raw_capture = None;
-        self.state.clear();
-        self.selected_abyss_half = AbyssHalf::First;
-        self.abyss_compact_mode = false;
-        self.hit_detail_char_id = None;
-        self.hit_detail_skill_filter.clear();
-        self.team_hit_detail_open = false;
+        self.reset_combat_session();
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_pcapng(
             path,
@@ -712,12 +722,7 @@ impl DpsApp {
     fn start_capture_json_import(&mut self, path: PathBuf) {
         self.stop_engine();
         self.raw_capture = None;
-        self.state.clear();
-        self.selected_abyss_half = AbyssHalf::First;
-        self.abyss_compact_mode = false;
-        self.hit_detail_char_id = None;
-        self.hit_detail_skill_filter.clear();
-        self.team_hit_detail_open = false;
+        self.reset_combat_session();
         let stop = Arc::new(AtomicBool::new(false));
         self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
         self.replay_stop = Some(stop);
@@ -1560,12 +1565,7 @@ impl DpsApp {
                 self.drain_pending_events();
             }
             if ui.button("重置").clicked() {
-                self.state.clear();
-                self.selected_abyss_half = AbyssHalf::First;
-                self.abyss_compact_mode = false;
-                self.hit_detail_char_id = None;
-                self.hit_detail_skill_filter.clear();
-                self.team_hit_detail_open = false;
+                self.reset_combat_session();
             }
             if ui
                 .button("导入 PCAPNG")
@@ -1998,22 +1998,25 @@ impl DpsApp {
         let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
         let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
         let layout = CharacterHitLayout::new(content_width);
-        draw_character_hit_header(ui, layout);
         let hits = if let Some(party) = self.selected_party_state() {
             &party.hits
         } else {
             &self.state.hits
         };
-        let mut character_hits: Vec<_> = hits
-            .iter()
-            .rev()
-            .filter(|hit| {
-                hit.char_id == char_id
-                    && filter.matches(hit)
-                    && (skill_filter.is_empty() || hit_specific_type(hit) == skill_filter)
-            })
-            .take(MAX_DETAIL_HITS)
-            .collect();
+        let mut filtered_count = 0;
+        let mut character_hits = Vec::with_capacity(MAX_DETAIL_HITS.min(hits.len()));
+        for hit in hits.iter().rev().filter(|hit| {
+            hit.char_id == char_id
+                && filter.matches(hit)
+                && (skill_filter.is_empty() || hit_specific_type(hit) == skill_filter)
+        }) {
+            filtered_count += 1;
+            if character_hits.len() < MAX_DETAIL_HITS {
+                character_hits.push(hit);
+            }
+        }
+        show_detail_limit_notice(ui, filtered_count);
+        draw_character_hit_header(ui, layout);
         character_hits.sort_by(|left, right| compare_hit_display_order(left, right));
         let hit_count = character_hits.len();
         if hit_count == 0 {
@@ -2049,18 +2052,21 @@ impl DpsApp {
         let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
         let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
         let layout = TeamHitLayout::new(content_width);
-        draw_team_hit_header(ui, layout);
         let hits = if let Some(party) = self.selected_party_state() {
             &party.hits
         } else {
             &self.state.hits
         };
-        let mut team_hits = hits
-            .iter()
-            .rev()
-            .filter(|hit| filter.matches(hit))
-            .take(MAX_DETAIL_HITS)
-            .collect::<Vec<_>>();
+        let mut filtered_count = 0;
+        let mut team_hits = Vec::with_capacity(MAX_DETAIL_HITS.min(hits.len()));
+        for hit in hits.iter().rev().filter(|hit| filter.matches(hit)) {
+            filtered_count += 1;
+            if team_hits.len() < MAX_DETAIL_HITS {
+                team_hits.push(hit);
+            }
+        }
+        show_detail_limit_notice(ui, filtered_count);
+        draw_team_hit_header(ui, layout);
         team_hits.sort_by(|left, right| compare_team_hit_chronological(left, right));
         if team_hits.is_empty() {
             ui.allocate_ui_with_layout(
@@ -4553,6 +4559,21 @@ fn compare_team_hit_chronological(
 
 fn hit_zero_hp_order(hit: &crate::model::Hit) -> u8 {
     u8::from(hit.target_hp_after <= 0.0 || hit.target_hp_percent <= 0.0)
+}
+
+fn show_detail_limit_notice(ui: &mut egui::Ui, filtered_count: usize) {
+    if filtered_count > MAX_DETAIL_HITS {
+        ui.label(
+            RichText::new(format!(
+                "仅显示最近 {} 条，当前筛选共 {} 条；完整保留范围内统计已计入上方汇总。",
+                format_number(MAX_DETAIL_HITS as f64),
+                format_number(filtered_count as f64)
+            ))
+            .size(11.0)
+            .color(ui.visuals().weak_text_color()),
+        );
+        ui.add_space(4.0);
+    }
 }
 
 fn hit_direction_order(hit: &crate::model::Hit) -> u8 {
