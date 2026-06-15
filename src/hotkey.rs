@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
-use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
 #[cfg(not(feature = "no_debug"))]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F12;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
@@ -23,12 +23,12 @@ static HOME_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(not(feature = "no_debug"))]
 static F12_DOWN: AtomicBool = AtomicBool::new(false);
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum HotkeyEvent {
     TogglePassthrough,
     #[cfg(not(feature = "no_debug"))]
     ToggleDebug,
-    RegistrationFailed(&'static str),
+    RegistrationFailed(String),
 }
 
 fn send_hotkey(event: HotkeyEvent) {
@@ -106,9 +106,14 @@ impl HotkeyHandle {
                 )
             };
             if hook.is_null() {
-                let _ = sender.send(HotkeyEvent::RegistrationFailed(
-                    "Home / F12（低级键盘钩子）",
-                ));
+                let error = unsafe { GetLastError() };
+                #[cfg(not(feature = "no_debug"))]
+                let shortcut = "Home / F12（低级键盘钩子）";
+                #[cfg(feature = "no_debug")]
+                let shortcut = "Home（低级键盘钩子）";
+                let _ = sender.send(HotkeyEvent::RegistrationFailed(format!(
+                    "{shortcut}，GetLastError={error}"
+                )));
                 return;
             }
 

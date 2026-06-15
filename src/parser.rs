@@ -29,6 +29,8 @@ const MONSTER_INDEX_JSON: &str = include_str!("../res/data/monsters/monster_inde
 
 #[derive(Debug, Deserialize)]
 struct MonsterIndexDocument {
+    #[serde(default)]
+    icons: HashMap<String, String>,
     aliases: HashMap<String, MonsterIndexEntry>,
 }
 
@@ -38,13 +40,87 @@ struct MonsterIndexEntry {
     display_name: String,
 }
 
-fn monster_index() -> &'static HashMap<String, MonsterIndexEntry> {
-    static INDEX: OnceLock<HashMap<String, MonsterIndexEntry>> = OnceLock::new();
+fn monster_document() -> &'static MonsterIndexDocument {
+    static INDEX: OnceLock<MonsterIndexDocument> = OnceLock::new();
     INDEX.get_or_init(|| {
-        serde_json::from_str::<MonsterIndexDocument>(MONSTER_INDEX_JSON)
-            .expect("embedded monster index must be valid")
-            .aliases
+        serde_json::from_str(MONSTER_INDEX_JSON).expect("embedded monster index must be valid")
     })
+}
+
+fn monster_index() -> &'static HashMap<String, MonsterIndexEntry> {
+    &monster_document().aliases
+}
+
+pub fn monster_icon_paths() -> impl Iterator<Item = &'static str> {
+    monster_document().icons.values().map(String::as_str)
+}
+
+pub fn monster_icon_path(
+    target_id: Option<&str>,
+    target_name: Option<&str>,
+) -> Option<&'static str> {
+    if let Some(target_id) = target_id
+        && let Some(path) = match_monster_icon(target_id)
+    {
+        return Some(path);
+    }
+    let target_name = target_name?;
+    monster_index()
+        .iter()
+        .filter(|(_, monster)| monster.display_name == target_name)
+        .filter_map(|(alias, monster)| {
+            match_monster_icon(alias).or_else(|| match_monster_icon(&monster.id))
+        })
+        .next()
+}
+
+fn match_monster_icon(value: &str) -> Option<&'static str> {
+    let normalized = value
+        .strip_suffix("_C")
+        .or_else(|| value.strip_suffix("_c"))
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    monster_document()
+        .icons
+        .iter()
+        .filter_map(|(family, path)| {
+            monster_icon_match_score(&normalized, family).map(|score| (score, path.as_str()))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, path)| path)
+}
+
+fn monster_icon_match_score(value: &str, family: &str) -> Option<usize> {
+    if value == family {
+        return Some(10_000 + family.len());
+    }
+    if value.starts_with(&format!("{family}_")) {
+        return Some(3_000 + family.split('_').count() * 100 + family.len());
+    }
+
+    let (value_kind, value_number) = monster_family_number(value)?;
+    let (family_kind, family_number) = monster_family_number(family)?;
+    if value_kind != family_kind || value_number != family_number {
+        return None;
+    }
+    let suffix_matches = family
+        .split('_')
+        .skip(2)
+        .filter(|part| !part.is_empty() && value.split('_').any(|value_part| value_part == *part))
+        .count();
+    Some(4_000 + suffix_matches * 100 + family.len())
+}
+
+fn monster_family_number(value: &str) -> Option<(&str, u32)> {
+    let (kind, tail) = value.split_once('_')?;
+    if !matches!(kind, "boss" | "mon") {
+        return None;
+    }
+    let digits = tail
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>();
+    Some((kind, digits.parse().ok()?))
 }
 
 #[derive(Deserialize)]
@@ -1234,6 +1310,26 @@ mod character_tests {
         assert_eq!(
             monster_target_from_identifier("boss_07"),
             Some(("Boss_07_BP".to_owned(), "塞润尼缇".to_owned()))
+        );
+    }
+
+    #[test]
+    fn resolves_monster_icons_for_family_variants() {
+        assert_eq!(
+            monster_icon_path(Some("Boss_07_BP_Abyss"), Some("塞润尼缇")),
+            Some("res/images/monsters/Boss_07.png")
+        );
+        assert_eq!(
+            monster_icon_path(Some("Boss_017_BP_Abyss"), Some("玛门")),
+            Some("res/images/monsters/Boss_17.png")
+        );
+        assert_eq!(
+            monster_icon_path(Some("mon_18_2_BP_Abyss"), Some("棉绒绒(变身)")),
+            Some("res/images/monsters/mon_18_2.png")
+        );
+        assert_eq!(
+            monster_icon_path(Some("mon_35_BP_Red_Abyss"), None),
+            Some("res/images/monsters/mon_35_red.png")
         );
     }
 }

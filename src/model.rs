@@ -274,6 +274,15 @@ fn normalize_hit_target_name(
     }
 }
 
+fn rebuild_target_names(hits: &VecDeque<Hit>, target_names: &mut HashMap<String, String>) {
+    target_names.clear();
+    for hit in hits.iter().filter(|hit| hit.direction != "incoming") {
+        if let (Some(target_id), Some(target_name)) = (&hit.target_id, &hit.target_name) {
+            target_names.insert(target_id.clone(), target_name.clone());
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AbyssHalf {
     #[default]
@@ -339,6 +348,7 @@ impl PartyCombatState {
             trimmed = true;
         }
         if trimmed {
+            rebuild_target_names(&self.hits, &mut self.target_names);
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -527,6 +537,7 @@ impl CombatState {
             trimmed = true;
         }
         if trimmed {
+            rebuild_target_names(&self.hits, &mut self.target_names);
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -751,6 +762,60 @@ mod tests {
         assert_eq!(summary.incoming_damage, 25.0);
         assert_eq!(summary.incoming_hits, 1);
         assert!((summary.unknown_share() - 28.571_428_571).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trimmed_target_names_drop_stale_ids_and_keep_retained_names() {
+        let mut state = CombatState::default();
+        let mut stale = test_hit(-1.0, 1, "outgoing", 1.0);
+        stale.target_id = Some("stale-target".to_owned());
+        stale.target_name = Some("已裁剪目标".to_owned());
+        state.push_hit(stale);
+
+        for index in 0..MAX_COMBAT_HITS {
+            let mut hit = test_hit(index as f64, 1, "outgoing", 1.0);
+            hit.target_id = Some("retained-target".to_owned());
+            if index == 0 {
+                hit.target_name = Some("保留目标".to_owned());
+            }
+            state.push_hit(hit);
+        }
+
+        assert!(!state.target_names.contains_key("stale-target"));
+        assert_eq!(
+            state
+                .target_names
+                .get("retained-target")
+                .map(String::as_str),
+            Some("保留目标")
+        );
+
+        let mut later = test_hit(MAX_COMBAT_HITS as f64, 1, "outgoing", 1.0);
+        later.target_id = Some("retained-target".to_owned());
+        state.push_hit(later);
+        assert_eq!(
+            state.hits.back().and_then(|hit| hit.target_name.as_deref()),
+            Some("保留目标")
+        );
+
+        let mut party = PartyCombatState::default();
+        let mut stale = test_hit(-1.0, 1, "outgoing", 1.0);
+        stale.target_id = Some("party-stale".to_owned());
+        stale.target_name = Some("已裁剪半场目标".to_owned());
+        party.push_hit(stale);
+        for index in 0..MAX_COMBAT_HITS {
+            let mut hit = test_hit(index as f64, 1, "outgoing", 1.0);
+            hit.target_id = Some("party-retained".to_owned());
+            if index == 0 {
+                hit.target_name = Some("保留半场目标".to_owned());
+            }
+            party.push_hit(hit);
+        }
+        assert!(!party.target_names.contains_key("party-stale"));
+        assert_eq!(
+            party.target_names.get("party-retained").map(String::as_str),
+            Some("保留半场目标")
+        );
     }
 
     #[test]

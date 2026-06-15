@@ -790,6 +790,7 @@ fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
 const INFERRED_FOLLOW_UP_CHAR_ID: u32 = u32::MAX;
 const NANALLY_MELEE1_GAMEPLAY_EFFECT_INDEX: u32 = 241;
 const MAX_DISPLAY_DAMAGE_CORRECTION_RATIO: f64 = 0.03;
+const MAX_PENDING_FOLLOW_UP_HITS: usize = 256;
 
 #[derive(Clone)]
 struct PendingHit {
@@ -869,6 +870,9 @@ impl FollowUpDamageTracker {
             hit: hit.clone(),
             gameplay_effect_index,
         });
+        while self.pending_hits.len() > MAX_PENDING_FOLLOW_UP_HITS {
+            self.pending_hits.pop_front();
+        }
     }
 
     fn observe_server_hp(&mut self, timestamp: f64, current_hp: f64) -> Option<Hit> {
@@ -1832,11 +1836,19 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
 pub fn import_pcapng(
     path: PathBuf,
     characters: Arc<HashMap<u32, CharacterInfo>>,
+    local_ip_hint: Option<Ipv4Addr>,
     include_incoming: bool,
     sender: Sender<EngineEvent>,
     stop: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
+        let direction_mode = local_ip_hint.map_or_else(
+            || "启发式判向".to_owned(),
+            |ip| format!("本机 IP {ip} 过滤/判向"),
+        );
+        let _ = sender.send(EngineEvent::Status(format!(
+            "正在导入 pcapng：{direction_mode}"
+        )));
         let result = (|| -> Result<(usize, usize), String> {
             let file = File::open(&path).map_err(|error| error.to_string())?;
             let mut reader = PcapNgReader::new(file).map_err(|error| error.to_string())?;
@@ -1872,7 +1884,7 @@ pub fn import_pcapng(
                 decoder.process_ethernet_frame(
                     &data,
                     timestamp,
-                    None,
+                    local_ip_hint,
                     include_incoming,
                     &characters,
                     &sender,
@@ -1888,7 +1900,7 @@ pub fn import_pcapng(
         match result {
             Ok((packet_count, supported_count)) => {
                 let _ = sender.send(EngineEvent::Status(format!(
-                    "pcapng 导入完成：读取 {packet_count} 包，解析 {supported_count} 个 Ethernet 包"
+                    "pcapng 导入完成：读取 {packet_count} 包，解析 {supported_count} 个 Ethernet 包；{direction_mode}"
                 )));
             }
             Err(error) => {
@@ -2236,6 +2248,61 @@ mod tests {
     }
 
     #[test]
+    fn follow_up_pending_hits_are_bounded_and_recent_hits_still_resolve() {
+        let characters = HashMap::from([
+            (
+                1,
+                CharacterInfo {
+                    name_zh: "角色1".to_owned(),
+                    name_en: String::new(),
+                    color: None,
+                    avatar: None,
+                    attribute: Some("灵".to_owned()),
+                },
+            ),
+            (
+                2,
+                CharacterInfo {
+                    name_zh: "角色2".to_owned(),
+                    name_en: String::new(),
+                    color: None,
+                    avatar: None,
+                    attribute: Some("咒".to_owned()),
+                },
+            ),
+        ]);
+        let mut tracker = FollowUpDamageTracker::default();
+        tracker.observe_characters([1, 2], &characters);
+        let mut hit = targetless_hit();
+        hit.char_id = 1;
+        hit.char_name = "角色1".to_owned();
+        hit.target_max_hp = 1_000_000.0;
+        hit.target_hp_before = 1_000_000.0;
+        hit.damage = 3_177.0;
+        for index in 0..MAX_PENDING_FOLLOW_UP_HITS + 20 {
+            hit.timestamp = index as f64 / 1_000.0;
+            tracker.observe_hit(
+                &hit,
+                Some(NANALLY_MELEE1_GAMEPLAY_EFFECT_INDEX),
+                &characters,
+            );
+        }
+        assert_eq!(tracker.pending_hits.len(), MAX_PENDING_FOLLOW_UP_HITS);
+
+        hit.timestamp = 2.0;
+        tracker.observe_hit(
+            &hit,
+            Some(NANALLY_MELEE1_GAMEPLAY_EFFECT_INDEX),
+            &characters,
+        );
+        assert_eq!(tracker.pending_hits.len(), 1);
+        let follow_up = tracker
+            .observe_server_hp(2.1, 996_150.0)
+            .expect("recent pending hit should still resolve follow-up damage");
+        assert_eq!(follow_up.damage, 641.0);
+    }
+
+    #[test]
     fn parses_export_ids_from_array_and_legacy_string() {
         assert_eq!(
             parse_export_ids(&serde_json::json!([1001, 1002])),
@@ -2246,6 +2313,38 @@ mod tests {
             [1001, 1002]
         );
         assert!(parse_export_ids(&serde_json::json!([4294967296_u64])).is_empty());
+    }
+
+    #[test]
+    fn local_ip_hint_controls_import_direction_inference() {
+        let local_ip = Ipv4Addr::new(10, 0, 0, 2);
+        let remote_ip = Ipv4Addr::new(10, 0, 0, 3);
+        let endpoints = HashSet::new();
+
+        assert!(infer_outgoing(
+            local_ip,
+            50_000,
+            remote_ip,
+            Some(local_ip),
+            &[],
+            &endpoints,
+        ));
+        assert!(!infer_outgoing(
+            remote_ip,
+            40_000,
+            local_ip,
+            Some(local_ip),
+            &[1001],
+            &endpoints,
+        ));
+        assert!(infer_outgoing(
+            remote_ip,
+            40_000,
+            local_ip,
+            None,
+            &[1001],
+            &endpoints,
+        ));
     }
 
     #[test]
@@ -2553,7 +2652,7 @@ mod tests {
         let (sender, receiver) = unbounded();
         let stop = Arc::new(AtomicBool::new(false));
 
-        import_pcapng(path.clone(), characters, true, sender, stop)
+        import_pcapng(path.clone(), characters, None, true, sender, stop)
             .join()
             .expect("真实抓包导入线程异常退出");
 
@@ -2601,7 +2700,7 @@ mod tests {
         let (sender, receiver) = unbounded();
         let stop = Arc::new(AtomicBool::new(false));
 
-        import_pcapng(path.clone(), characters, true, sender, stop)
+        import_pcapng(path.clone(), characters, None, true, sender, stop)
             .join()
             .expect("capture import thread failed");
 
@@ -2666,7 +2765,7 @@ mod tests {
         let (sender, receiver) = unbounded();
         let stop = Arc::new(AtomicBool::new(false));
 
-        import_pcapng(path.clone(), characters, true, sender, stop)
+        import_pcapng(path.clone(), characters, None, true, sender, stop)
             .join()
             .expect("capture import thread failed");
 
@@ -2713,7 +2812,7 @@ mod tests {
         let (sender, receiver) = unbounded();
         let stop = Arc::new(AtomicBool::new(false));
 
-        import_pcapng(path.clone(), characters, true, sender, stop)
+        import_pcapng(path.clone(), characters, None, true, sender, stop)
             .join()
             .expect("真实抓包导入线程异常退出");
 
@@ -3025,6 +3124,7 @@ mod tests {
         import_pcapng(
             path.clone(),
             characters,
+            None,
             true,
             sender,
             Arc::new(AtomicBool::new(false)),
@@ -3801,6 +3901,7 @@ mod tests {
         import_pcapng(
             path.clone(),
             characters.clone(),
+            None,
             true,
             sender,
             Arc::new(AtomicBool::new(false)),
