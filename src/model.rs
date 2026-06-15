@@ -125,6 +125,50 @@ pub struct CharacterStats {
     pub last_hit: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HitDirectionSummary {
+    pub outgoing_damage: f64,
+    pub outgoing_hits: u64,
+    pub unknown_damage: f64,
+    pub unknown_hits: u64,
+    pub incoming_damage: f64,
+    pub incoming_hits: u64,
+}
+
+impl HitDirectionSummary {
+    pub fn unknown_share(&self) -> f64 {
+        let total_output = self.outgoing_damage + self.unknown_damage;
+        if total_output > 0.0 {
+            self.unknown_damage / total_output * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+pub fn summarize_hit_directions<'a>(
+    hits: impl IntoIterator<Item = &'a Hit>,
+) -> HitDirectionSummary {
+    let mut summary = HitDirectionSummary::default();
+    for hit in hits {
+        match hit.direction.as_str() {
+            "incoming" => {
+                summary.incoming_damage += hit.damage;
+                summary.incoming_hits += 1;
+            }
+            "outgoing" => {
+                summary.outgoing_damage += hit.damage;
+                summary.outgoing_hits += 1;
+            }
+            _ => {
+                summary.unknown_damage += hit.damage;
+                summary.unknown_hits += 1;
+            }
+        }
+    }
+    summary
+}
+
 impl CharacterStats {
     pub fn duration(&self) -> f64 {
         if self.hits > 1 {
@@ -688,6 +732,25 @@ mod tests {
         }));
         assert_eq!(state.total_damage, 600.0);
         assert_eq!(state.abyss.first_half.total_damage, 600.0);
+    }
+
+    #[test]
+    fn unknown_hits_remain_output_and_directions_are_summarized_separately() {
+        let mut state = CombatState::default();
+        state.push_hit(test_hit(1.0, 1, "outgoing", 100.0));
+        state.push_hit(test_hit(2.0, 1, "unknown", 40.0));
+        state.push_hit(test_hit(3.0, 1, "incoming", 25.0));
+
+        assert_eq!(state.total_damage, 140.0);
+        assert_eq!(state.total_damage_taken, 25.0);
+        let summary = summarize_hit_directions(&state.hits);
+        assert_eq!(summary.outgoing_damage, 100.0);
+        assert_eq!(summary.outgoing_hits, 1);
+        assert_eq!(summary.unknown_damage, 40.0);
+        assert_eq!(summary.unknown_hits, 1);
+        assert_eq!(summary.incoming_damage, 25.0);
+        assert_eq!(summary.incoming_hits, 1);
+        assert!((summary.unknown_share() - 28.571_428_571).abs() < 1e-6);
     }
 
     #[test]

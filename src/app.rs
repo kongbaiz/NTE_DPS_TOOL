@@ -30,7 +30,7 @@ use crate::file_drop::NativeFileDrop;
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, CharacterStats, CombatState, EngineEvent,
-    PartyCombatState,
+    HitDirectionSummary, PartyCombatState, summarize_hit_directions,
 };
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, load_characters};
@@ -2345,6 +2345,9 @@ impl DpsApp {
     }
 
     fn team_hit_detail_panel(&mut self, ctx: &egui::Context) {
+        let (detail_source, _) = self.detail_source();
+        let direction_summary =
+            summarize_hit_directions(detail_hits_for_source(&self.state, detail_source));
         let (total_damage, total_damage_taken, duration, dps, outgoing_count, incoming_count) =
             if let Some(party) = self.selected_party_state() {
                 (
@@ -2460,6 +2463,7 @@ impl DpsApp {
                                         duration_color,
                                     );
                                 });
+                                draw_direction_summary(ui, direction_summary);
                             });
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
@@ -2510,6 +2514,12 @@ impl DpsApp {
         };
         let outgoing_count = stats.hits as usize;
         let incoming_count = stats.hits_taken as usize;
+        let (detail_source, _) = self.detail_source();
+        let direction_summary = summarize_hit_directions(
+            detail_hits_for_source(&self.state, detail_source)
+                .iter()
+                .filter(|hit| hit.char_id == char_id),
+        );
         let skill_summaries = self.cached_skill_summaries(char_id);
         if !self.hit_detail_skill_filter.is_empty()
             && !skill_summaries
@@ -2659,6 +2669,7 @@ impl DpsApp {
                                             duration_color,
                                         );
                                     });
+                                    draw_direction_summary(ui, direction_summary);
                                 });
                             });
                         ui.add_space(8.0);
@@ -3685,6 +3696,14 @@ fn hit_specific_type(hit: &crate::model::Hit) -> &str {
         .unwrap_or("未知招式")
 }
 
+fn hit_type_label(hit: &crate::model::Hit) -> &str {
+    match hit.direction.as_str() {
+        "incoming" => "受击",
+        "unknown" => "候选输出",
+        _ => hit_specific_type(hit),
+    }
+}
+
 fn hit_target_label(hit: &crate::model::Hit) -> &str {
     if hit.direction == "incoming" {
         return hit.char_name.as_str();
@@ -4106,10 +4125,10 @@ fn draw_character_hit_row(
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(layout.row_width, 30.0), egui::Sense::hover());
     let incoming = hit.direction == "incoming";
-    let type_color = if incoming {
-        semantic_danger(ui.visuals().dark_mode)
-    } else {
-        hit_output_badge_color(ui.visuals().dark_mode)
+    let type_color = match hit.direction.as_str() {
+        "incoming" => semantic_danger(ui.visuals().dark_mode),
+        "unknown" => semantic_warning(ui.visuals().dark_mode),
+        _ => hit_output_badge_color(ui.visuals().dark_mode),
     };
     ui.painter().rect_filled(
         rect,
@@ -4158,11 +4177,7 @@ fn draw_character_hit_row(
     painter.text(
         egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
-        if incoming {
-            "受击"
-        } else {
-            hit_specific_type(hit)
-        },
+        hit_type_label(hit),
         egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
@@ -4217,9 +4232,15 @@ fn draw_character_hit_row(
     if response.hovered() {
         let mut details = if incoming {
             "角色受到的伤害".to_owned()
+        } else if hit.direction == "unknown" {
+            "候选输出：方向尚未确认".to_owned()
         } else {
             format!("攻击类型：{}", hit_specific_type(hit))
         };
+        details.push_str(&format!(
+            "\ndirection={}\nchar_source={}",
+            hit.direction, hit.char_source
+        ));
         details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
         for context in &hit.target_context {
             details.push_str(&format!("\n目标说明：{context}"));
@@ -4275,10 +4296,10 @@ fn draw_team_hit_row(
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(layout.row_width, 30.0), egui::Sense::hover());
     let incoming = hit.direction == "incoming";
-    let type_color = if incoming {
-        semantic_danger(ui.visuals().dark_mode)
-    } else {
-        hit_output_badge_color(ui.visuals().dark_mode)
+    let type_color = match hit.direction.as_str() {
+        "incoming" => semantic_danger(ui.visuals().dark_mode),
+        "unknown" => semantic_warning(ui.visuals().dark_mode),
+        _ => hit_output_badge_color(ui.visuals().dark_mode),
     };
     ui.painter().rect_filled(
         rect,
@@ -4365,11 +4386,7 @@ fn draw_team_hit_row(
     painter.text(
         egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
-        if incoming {
-            "受击"
-        } else {
-            hit_specific_type(hit)
-        },
+        hit_type_label(hit),
         egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
@@ -4433,10 +4450,16 @@ fn draw_team_hit_row(
             hit.char_id,
             if incoming {
                 "角色受到的伤害"
+            } else if hit.direction == "unknown" {
+                "候选输出：方向尚未确认"
             } else {
                 hit.attack_type.as_deref().unwrap_or("攻击类型未知")
             }
         );
+        details.push_str(&format!(
+            "\ndirection={}\nchar_source={}",
+            hit.direction, hit.char_source
+        ));
         details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
         for context in &hit.target_context {
             details.push_str(&format!("\n目标说明：{context}"));
@@ -4476,6 +4499,22 @@ fn hit_metric_card(ui: &mut egui::Ui, label: &str, value: String, color: Color32
                 );
             });
         });
+}
+
+fn draw_direction_summary(ui: &mut egui::Ui, summary: HitDirectionSummary) {
+    ui.add_space(5.0);
+    ui.label(
+        RichText::new(format!(
+            "已确认输出 {}（{} 次） · 候选输出 {}（{} 次，占总输出 {:.1}%）",
+            format_number(summary.outgoing_damage),
+            summary.outgoing_hits,
+            format_number(summary.unknown_damage),
+            summary.unknown_hits,
+            summary.unknown_share()
+        ))
+        .size(10.5)
+        .color(ui.visuals().weak_text_color()),
+    );
 }
 
 fn draw_hit_column_separators(
@@ -4961,7 +5000,34 @@ fn parse_hex_color(value: &str) -> Option<Color32> {
 
 #[cfg(test)]
 mod tests {
-    use super::adjusted_cached_index;
+    use super::{adjusted_cached_index, hit_type_label};
+    use crate::model::Hit;
+
+    fn hit_with_direction(direction: &str) -> Hit {
+        Hit {
+            timestamp: 0.0,
+            char_id: 1,
+            char_name: "测试角色".to_owned(),
+            char_known: true,
+            damage: 1.0,
+            byte_offset: 0,
+            bit_shift: 0,
+            char_source: "unknown".to_owned(),
+            direction: direction.to_owned(),
+            target_hp_before: 0.0,
+            target_hp_after: 0.0,
+            target_max_hp: 0.0,
+            target_hp_percent: 0.0,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
+            gameplay_effect_index: None,
+            gameplay_effect_name: None,
+            ability_name: None,
+            damage_name: Some("测试招式".to_owned()),
+            attack_type: None,
+        }
+    }
 
     #[test]
     fn cached_index_tracks_front_trimming_during_deferred_refresh() {
@@ -4974,6 +5040,13 @@ mod tests {
             adjusted_cached_index(9_000, 10_000, 10_020, 20),
             Some(9_000)
         );
+    }
+
+    #[test]
+    fn unknown_hit_uses_candidate_output_label() {
+        assert_eq!(hit_type_label(&hit_with_direction("outgoing")), "测试招式");
+        assert_eq!(hit_type_label(&hit_with_direction("incoming")), "受击");
+        assert_eq!(hit_type_label(&hit_with_direction("unknown")), "候选输出");
     }
 }
 
