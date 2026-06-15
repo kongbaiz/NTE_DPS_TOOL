@@ -36,6 +36,9 @@ use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, load_characters};
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
+const MAX_UI_EVENTS_WHILE_SCROLLING: usize = 256;
+const UI_EVENT_BUDGET: Duration = Duration::from_millis(4);
+const DETAIL_CACHE_REFRESH_DELAY: Duration = Duration::from_millis(200);
 const MAX_PAUSED_EVENTS: usize = 50_000;
 const MAX_ENGINE_QUEUE_BACKLOG: usize = 20_000;
 const MAX_DETAIL_HITS: usize = 10_000;
@@ -84,26 +87,18 @@ enum HitDetailSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct HitDetailCacheKey {
     source: HitDetailSource,
-    generation: u64,
     char_id: Option<u32>,
     filter: HitDetailFilter,
     skill_filter: String,
     limit: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct CachedHitRow {
-    time_text: String,
-    damage_text: String,
-    hp_text: String,
-    type_text: String,
-    target_text: Option<String>,
-    hover_text: String,
+    index: usize,
     is_incoming: bool,
     damage: f64,
     char_id: u32,
-    char_name: String,
-    avatar_initial: String,
     hp_fraction: f32,
     timestamp: f64,
     byte_offset: usize,
@@ -115,15 +110,13 @@ struct CachedHitRow {
 #[derive(Default)]
 struct HitDetailCache {
     key: Option<HitDetailCacheKey>,
-    rows: Arc<Vec<CachedHitRow>>,
+    generation: u64,
+    source_len: usize,
+    rows: Vec<CachedHitRow>,
     filtered_count: usize,
     max_damage: f64,
-    #[cfg(debug_assertions)]
-    filter_collect_duration: Duration,
-    #[cfg(debug_assertions)]
-    sort_duration: Duration,
-    #[cfg(debug_assertions)]
-    max_damage_duration: Duration,
+    dirty_since: Option<Instant>,
+    last_scroll_offset: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -137,6 +130,7 @@ struct SkillSummaryCacheKey {
 struct SkillSummaryCache {
     key: Option<SkillSummaryCacheKey>,
     rows: Vec<SkillDamageSummary>,
+    dirty_since: Option<Instant>,
 }
 
 #[derive(Clone, Default)]
@@ -351,6 +345,7 @@ pub struct DpsApp {
     character_hit_cache: HitDetailCache,
     team_hit_cache: HitDetailCache,
     skill_summary_cache: SkillSummaryCache,
+    detail_last_scroll_activity: Option<Instant>,
     devices: Vec<CaptureDevice>,
     selected_device: usize,
     local_ip: String,
@@ -473,6 +468,7 @@ impl DpsApp {
             character_hit_cache: HitDetailCache::default(),
             team_hit_cache: HitDetailCache::default(),
             skill_summary_cache: SkillSummaryCache::default(),
+            detail_last_scroll_activity: None,
             devices,
             selected_device,
             local_ip,
@@ -543,6 +539,7 @@ impl DpsApp {
         self.character_hit_cache = HitDetailCache::default();
         self.team_hit_cache = HitDetailCache::default();
         self.skill_summary_cache = SkillSummaryCache::default();
+        self.detail_last_scroll_activity = None;
         self.paused = false;
         self.paused_events.clear();
         self.dropped_debug_packets = 0;
@@ -941,8 +938,21 @@ impl DpsApp {
     }
 
     fn drain_events(&mut self) {
+        let started = Instant::now();
+        let scrolling = self.detail_scroll_active();
+        let event_limit = if scrolling {
+            MAX_UI_EVENTS_WHILE_SCROLLING
+        } else {
+            MAX_UI_EVENTS_PER_FRAME
+        };
         if self.paused {
-            while let Ok(event) = self.receiver.try_recv() {
+            for _ in 0..event_limit {
+                if started.elapsed() >= UI_EVENT_BUDGET {
+                    break;
+                }
+                let Ok(event) = self.receiver.try_recv() else {
+                    break;
+                };
                 match event {
                     EngineEvent::Packet(_) => {
                         self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
@@ -961,7 +971,10 @@ impl DpsApp {
             }
             return;
         }
-        for _ in 0..MAX_UI_EVENTS_PER_FRAME {
+        for _ in 0..event_limit {
+            if started.elapsed() >= UI_EVENT_BUDGET {
+                break;
+            }
             let event = if let Some(event) = self.paused_events.pop_front() {
                 event
             } else if let Ok(event) = self.receiver.try_recv() {
@@ -971,11 +984,14 @@ impl DpsApp {
             };
             self.apply_engine_event(event);
         }
-        self.shed_event_backlog();
+        if !scrolling && started.elapsed() < UI_EVENT_BUDGET {
+            self.shed_event_backlog(started);
+        }
     }
 
-    fn shed_event_backlog(&mut self) {
-        while self.receiver.len() > MAX_ENGINE_QUEUE_BACKLOG {
+    fn shed_event_backlog(&mut self, started: Instant) {
+        while self.receiver.len() > MAX_ENGINE_QUEUE_BACKLOG && started.elapsed() < UI_EVENT_BUDGET
+        {
             let Ok(event) = self.receiver.try_recv() else {
                 break;
             };
@@ -1001,6 +1017,9 @@ impl DpsApp {
             EngineEvent::Hit(hit) => self.state.push_hit(hit),
             EngineEvent::Packet(packet) => self.state.push_packet(packet),
             EngineEvent::Abyss(event) => {
+                self.character_hit_cache = HitDetailCache::default();
+                self.team_hit_cache = HitDetailCache::default();
+                self.skill_summary_cache = SkillSummaryCache::default();
                 if let AbyssEvent::Stage { half, .. } = &event {
                     self.selected_abyss_half = *half;
                     self.abyss_compact_mode = true;
@@ -1500,35 +1519,68 @@ impl DpsApp {
             .then(|| self.state.abyss.half(self.selected_abyss_half))
     }
 
-    fn detail_hits(&self) -> (HitDetailSource, u64, &VecDeque<crate::model::Hit>) {
+    fn detail_source(&self) -> (HitDetailSource, u64) {
         if self.state.abyss.is_active() {
             let party = self.state.abyss.half(self.selected_abyss_half);
             let source = match self.selected_abyss_half {
                 AbyssHalf::First => HitDetailSource::AbyssFirst,
                 AbyssHalf::Second => HitDetailSource::AbyssSecond,
             };
-            (source, party.hits_generation, &party.hits)
+            (source, party.hits_generation)
         } else {
-            (
-                HitDetailSource::Global,
-                self.state.hits_generation,
-                &self.state.hits,
-            )
+            (HitDetailSource::Global, self.state.hits_generation)
         }
     }
 
+    fn note_detail_scroll_activity(&mut self, ctx: &egui::Context) {
+        let scrolling = ctx.input(|input| {
+            input.raw_scroll_delta != egui::Vec2::ZERO
+                || input.smooth_scroll_delta != egui::Vec2::ZERO
+                || ((self.hit_detail_char_id.is_some() || self.team_hit_detail_open)
+                    && input.pointer.primary_down())
+        });
+        if scrolling {
+            self.detail_last_scroll_activity = Some(Instant::now());
+        }
+    }
+
+    fn detail_scroll_active(&self) -> bool {
+        self.detail_last_scroll_activity
+            .is_some_and(|last| last.elapsed() < DETAIL_CACHE_REFRESH_DELAY)
+    }
+
     fn cached_skill_summaries(&mut self, char_id: u32) -> Vec<SkillDamageSummary> {
-        let (source, generation, hits) = self.detail_hits();
+        let (source, generation) = self.detail_source();
         let key = SkillSummaryCacheKey {
             source,
             generation,
             char_id,
         };
-        if self.skill_summary_cache.key.as_ref() != Some(&key) {
-            let rows = aggregate_character_skill_damage(hits, char_id);
+        let structural_change = self
+            .skill_summary_cache
+            .key
+            .as_ref()
+            .is_none_or(|current| current.source != source || current.char_id != char_id);
+        let generation_changed = self.skill_summary_cache.key.as_ref() != Some(&key);
+        if generation_changed && self.skill_summary_cache.dirty_since.is_none() {
+            self.skill_summary_cache.dirty_since = Some(Instant::now());
+        }
+        let refresh_due = structural_change
+            || (generation_changed
+                && !self.detail_scroll_active()
+                && self
+                    .skill_summary_cache
+                    .dirty_since
+                    .is_some_and(|dirty| dirty.elapsed() >= DETAIL_CACHE_REFRESH_DELAY));
+        if refresh_due {
+            let rows = aggregate_character_skill_damage(
+                detail_hits_for_source(&self.state, source),
+                char_id,
+            );
             self.skill_summary_cache = SkillSummaryCache {
                 key: Some(key),
                 rows,
+                dirty_since: None,
             };
         }
         self.skill_summary_cache.rows.clone()
@@ -2103,40 +2155,42 @@ impl DpsApp {
         filter: HitDetailFilter,
         skill_filter: &str,
     ) {
-        #[cfg(debug_assertions)]
-        let frame_started = Instant::now();
         let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
         let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
         let layout = CharacterHitLayout::new(content_width);
-        let (source, generation, hits) = self.detail_hits();
+        let (source, generation) = self.detail_source();
         let key = HitDetailCacheKey {
             source,
-            generation,
             char_id: Some(char_id),
             filter,
             skill_filter: skill_filter.to_owned(),
             limit: MAX_DETAIL_HITS,
         };
-        let rebuilt = self.character_hit_cache.key.as_ref() != Some(&key);
-        if rebuilt {
-            self.character_hit_cache = build_hit_detail_cache(hits, key);
+        let structural_change = self.character_hit_cache.key.as_ref() != Some(&key);
+        let generation_changed = self.character_hit_cache.generation != generation;
+        if generation_changed && self.character_hit_cache.dirty_since.is_none() {
+            self.character_hit_cache.dirty_since = Some(Instant::now());
         }
-        let rows = self.character_hit_cache.rows.clone();
+        let refresh_due = structural_change
+            || (generation_changed
+                && !self.detail_scroll_active()
+                && self
+                    .character_hit_cache
+                    .dirty_since
+                    .is_some_and(|dirty| dirty.elapsed() >= DETAIL_CACHE_REFRESH_DELAY));
+        if refresh_due {
+            self.character_hit_cache = build_hit_detail_cache(
+                detail_hits_for_source(&self.state, source),
+                generation,
+                key,
+            );
+        }
+        let hits = detail_hits_for_source(&self.state, source);
         let filtered_count = self.character_hit_cache.filtered_count;
         let max_damage = self.character_hit_cache.max_damage;
-        #[cfg(debug_assertions)]
-        let (filter_duration, sort_duration, max_duration) = if rebuilt {
-            (
-                self.character_hit_cache.filter_collect_duration,
-                self.character_hit_cache.sort_duration,
-                self.character_hit_cache.max_damage_duration,
-            )
-        } else {
-            (Duration::ZERO, Duration::ZERO, Duration::ZERO)
-        };
         show_detail_limit_notice(ui, filtered_count);
         draw_character_hit_header(ui, layout);
-        let hit_count = rows.len();
+        let hit_count = self.character_hit_cache.rows.len();
         if hit_count == 0 {
             ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), 72.0),
@@ -2150,64 +2204,72 @@ impl DpsApp {
             );
             return;
         }
-        #[cfg(debug_assertions)]
-        let draw_started = Instant::now();
-        egui::ScrollArea::vertical()
+        let output = egui::ScrollArea::vertical()
             .id_salt(("character_hits", char_id))
             .max_height(ui.available_height())
             .show_rows(ui, 30.0, hit_count, |ui, visible_rows| {
                 let visible_count = visible_rows.end.saturating_sub(visible_rows.start);
-                for row in rows[visible_rows].iter().take(visible_count) {
-                    draw_character_hit_row(ui, layout, row, max_damage);
+                for row in self.character_hit_cache.rows[visible_rows]
+                    .iter()
+                    .take(visible_count)
+                {
+                    if let Some(hit) = resolve_cached_hit(
+                        hits,
+                        row,
+                        self.character_hit_cache.source_len,
+                        generation.saturating_sub(self.character_hit_cache.generation),
+                    ) {
+                        draw_character_hit_row(ui, layout, hit, max_damage);
+                    }
                 }
             });
-        #[cfg(debug_assertions)]
-        log_slow_detail_frame(
-            "character",
-            frame_started.elapsed(),
-            rebuilt,
-            filter_duration,
-            sort_duration,
-            max_duration,
-            draw_started.elapsed(),
-        );
+        if self
+            .character_hit_cache
+            .last_scroll_offset
+            .is_some_and(|previous| (previous - output.state.offset.y).abs() > 0.5)
+        {
+            self.detail_last_scroll_activity = Some(Instant::now());
+        }
+        self.character_hit_cache.last_scroll_offset = Some(output.state.offset.y);
     }
 
     fn team_hits(&mut self, ui: &mut egui::Ui, filter: HitDetailFilter) {
-        #[cfg(debug_assertions)]
-        let frame_started = Instant::now();
         let scrollbar_width = ui.style().spacing.scroll.allocated_width().max(10.0);
         let content_width = (ui.available_width() - scrollbar_width - 4.0).max(0.0);
         let layout = TeamHitLayout::new(content_width);
-        let (source, generation, hits) = self.detail_hits();
+        let (source, generation) = self.detail_source();
         let key = HitDetailCacheKey {
             source,
-            generation,
             char_id: None,
             filter,
             skill_filter: String::new(),
             limit: MAX_DETAIL_HITS,
         };
-        let rebuilt = self.team_hit_cache.key.as_ref() != Some(&key);
-        if rebuilt {
-            self.team_hit_cache = build_hit_detail_cache(hits, key);
+        let structural_change = self.team_hit_cache.key.as_ref() != Some(&key);
+        let generation_changed = self.team_hit_cache.generation != generation;
+        if generation_changed && self.team_hit_cache.dirty_since.is_none() {
+            self.team_hit_cache.dirty_since = Some(Instant::now());
         }
-        let rows = self.team_hit_cache.rows.clone();
+        let refresh_due = structural_change
+            || (generation_changed
+                && !self.detail_scroll_active()
+                && self
+                    .team_hit_cache
+                    .dirty_since
+                    .is_some_and(|dirty| dirty.elapsed() >= DETAIL_CACHE_REFRESH_DELAY));
+        if refresh_due {
+            self.team_hit_cache = build_hit_detail_cache(
+                detail_hits_for_source(&self.state, source),
+                generation,
+                key,
+            );
+        }
+        let hits = detail_hits_for_source(&self.state, source);
         let filtered_count = self.team_hit_cache.filtered_count;
         let max_damage = self.team_hit_cache.max_damage;
-        #[cfg(debug_assertions)]
-        let (filter_duration, sort_duration, max_duration) = if rebuilt {
-            (
-                self.team_hit_cache.filter_collect_duration,
-                self.team_hit_cache.sort_duration,
-                self.team_hit_cache.max_damage_duration,
-            )
-        } else {
-            (Duration::ZERO, Duration::ZERO, Duration::ZERO)
-        };
         show_detail_limit_notice(ui, filtered_count);
         draw_team_hit_header(ui, layout);
-        if rows.is_empty() {
+        if self.team_hit_cache.rows.is_empty() {
             ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), 72.0),
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
@@ -2220,10 +2282,8 @@ impl DpsApp {
             );
             return;
         }
-        let hit_count = rows.len();
-        #[cfg(debug_assertions)]
-        let draw_started = Instant::now();
-        egui::ScrollArea::vertical()
+        let hit_count = self.team_hit_cache.rows.len();
+        let output = egui::ScrollArea::vertical()
             .id_salt((
                 "team_hits",
                 matches!(self.selected_abyss_half, AbyssHalf::Second),
@@ -2231,29 +2291,38 @@ impl DpsApp {
             .max_height(ui.available_height())
             .show_rows(ui, 30.0, hit_count, |ui, visible_rows| {
                 let visible_count = visible_rows.end.saturating_sub(visible_rows.start);
-                for row in rows[visible_rows].iter().take(visible_count) {
+                for row in self.team_hit_cache.rows[visible_rows]
+                    .iter()
+                    .take(visible_count)
+                {
+                    let Some(hit) = resolve_cached_hit(
+                        hits,
+                        row,
+                        self.team_hit_cache.source_len,
+                        generation.saturating_sub(self.team_hit_cache.generation),
+                    ) else {
+                        continue;
+                    };
                     let color = readable_accent(
-                        character_color(row.char_id, &self.characters, 0),
+                        character_color(hit.char_id, &self.characters, 0),
                         self.dark_mode,
                     );
                     let avatar_texture = self
                         .characters
-                        .get(&row.char_id)
+                        .get(&hit.char_id)
                         .and_then(|character| character.avatar.as_deref())
                         .and_then(|avatar| self.avatar_textures.get(avatar));
-                    draw_team_hit_row(ui, layout, row, max_damage, color, avatar_texture);
+                    draw_team_hit_row(ui, layout, hit, max_damage, color, avatar_texture);
                 }
             });
-        #[cfg(debug_assertions)]
-        log_slow_detail_frame(
-            "team",
-            frame_started.elapsed(),
-            rebuilt,
-            filter_duration,
-            sort_duration,
-            max_duration,
-            draw_started.elapsed(),
-        );
+        if self
+            .team_hit_cache
+            .last_scroll_offset
+            .is_some_and(|previous| (previous - output.state.offset.y).abs() > 0.5)
+        {
+            self.detail_last_scroll_activity = Some(Instant::now());
+        }
+        self.team_hit_cache.last_scroll_offset = Some(output.state.offset.y);
     }
 
     fn team_hit_detail_panel(&mut self, ctx: &egui::Context) {
@@ -3152,6 +3221,7 @@ impl DpsApp {
 impl eframe::App for DpsApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         configure_style(ctx, self.dark_mode);
+        self.note_detail_scroll_activity(ctx);
         self.drain_events();
         self.drain_hotkeys(ctx);
         self.process_file_drops(ctx, frame);
@@ -3607,103 +3677,62 @@ fn aggregate_character_skill_damage(
     rows
 }
 
+fn detail_hits_for_source(
+    state: &CombatState,
+    source: HitDetailSource,
+) -> &VecDeque<crate::model::Hit> {
+    match source {
+        HitDetailSource::Global => &state.hits,
+        HitDetailSource::AbyssFirst => &state.abyss.first_half.hits,
+        HitDetailSource::AbyssSecond => &state.abyss.second_half.hits,
+    }
+}
+
 fn build_hit_detail_cache(
     hits: &VecDeque<crate::model::Hit>,
+    generation: u64,
     key: HitDetailCacheKey,
 ) -> HitDetailCache {
-    #[cfg(debug_assertions)]
-    let filter_started = Instant::now();
     let mut filtered_count = 0;
     let mut rows = Vec::with_capacity(key.limit.min(hits.len()));
-    for hit in hits.iter().rev().filter(|hit| {
+    for (index, hit) in hits.iter().enumerate().rev().filter(|(_, hit)| {
         key.char_id.is_none_or(|char_id| hit.char_id == char_id)
             && key.filter.matches(hit)
             && (key.skill_filter.is_empty() || hit_specific_type(hit) == key.skill_filter.as_str())
     }) {
         filtered_count += 1;
         if rows.len() < key.limit {
-            rows.push(cached_hit_row(hit));
+            rows.push(cached_hit_row(index, hit));
         }
     }
-    #[cfg(debug_assertions)]
-    let filter_collect_duration = filter_started.elapsed();
 
-    #[cfg(debug_assertions)]
-    let sort_started = Instant::now();
     if key.char_id.is_some() {
         rows.sort_by(compare_cached_character_hits);
     } else {
         rows.sort_by(compare_cached_team_hits);
     }
-    #[cfg(debug_assertions)]
-    let sort_duration = sort_started.elapsed();
 
-    #[cfg(debug_assertions)]
-    let max_damage_started = Instant::now();
     let max_damage = rows.iter().map(|row| row.damage).fold(1.0_f64, f64::max);
-    #[cfg(debug_assertions)]
-    let max_damage_duration = max_damage_started.elapsed();
 
     HitDetailCache {
         key: Some(key),
-        rows: Arc::new(rows),
+        generation,
+        source_len: hits.len(),
+        rows,
         filtered_count,
         max_damage,
-        #[cfg(debug_assertions)]
-        filter_collect_duration,
-        #[cfg(debug_assertions)]
-        sort_duration,
-        #[cfg(debug_assertions)]
-        max_damage_duration,
+        dirty_since: None,
+        last_scroll_offset: None,
     }
 }
 
-fn cached_hit_row(hit: &crate::model::Hit) -> CachedHitRow {
+fn cached_hit_row(index: usize, hit: &crate::model::Hit) -> CachedHitRow {
     let is_incoming = hit.direction == "incoming";
-    let type_text = if is_incoming {
-        "受击".to_owned()
-    } else {
-        hit_specific_type(hit).to_owned()
-    };
-    let mut hover_text = format!(
-        "{} · 角色 ID {} · {}",
-        hit.char_name,
-        hit.char_id,
-        if is_incoming {
-            "角色受到的伤害".to_owned()
-        } else {
-            format!(
-                "攻击类型：{}",
-                hit.attack_type.as_deref().unwrap_or("攻击类型未知")
-            )
-        }
-    );
-    if let Some(ability_name) = hit.ability_name.as_deref() {
-        hover_text.push_str(&format!("\nGA：{ability_name}"));
-    }
-    if let Some(damage_name) = hit.damage_name.as_deref() {
-        hover_text.push_str(&format!("\n招式：{damage_name}"));
-    }
-    if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-        hover_text.push_str(&format!("\nGameplayEffect：{effect_name}"));
-    }
     CachedHitRow {
-        time_text: format_short_time(hit.timestamp),
-        damage_text: format_number(hit.damage),
-        hp_text: format!(
-            "{} / {}  {:.1}%",
-            format_number(hit.target_hp_after),
-            format_number(hit.target_max_hp),
-            hit.target_hp_percent
-        ),
-        type_text,
-        target_text: hit.target_name.clone(),
-        hover_text,
+        index,
         is_incoming,
         damage: hit.damage,
         char_id: hit.char_id,
-        char_name: hit.char_name.clone(),
-        avatar_initial: hit.char_name.chars().next().unwrap_or('?').to_string(),
         hp_fraction: (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32,
         timestamp: hit.timestamp,
         byte_offset: hit.byte_offset,
@@ -3711,6 +3740,29 @@ fn cached_hit_row(hit: &crate::model::Hit) -> CachedHitRow {
         target_hp_after: hit.target_hp_after,
         target_max_hp: hit.target_max_hp,
     }
+}
+
+fn resolve_cached_hit<'a>(
+    hits: &'a VecDeque<crate::model::Hit>,
+    row: &CachedHitRow,
+    source_len: usize,
+    appended: u64,
+) -> Option<&'a crate::model::Hit> {
+    let appended = usize::try_from(appended).unwrap_or(usize::MAX);
+    adjusted_cached_index(row.index, source_len, hits.len(), appended)
+        .and_then(|index| hits.get(index))
+}
+
+fn adjusted_cached_index(
+    index: usize,
+    source_len: usize,
+    current_len: usize,
+    appended: usize,
+) -> Option<usize> {
+    let popped = source_len
+        .saturating_add(appended)
+        .saturating_sub(current_len);
+    index.checked_sub(popped)
 }
 
 fn compare_cached_character_hits(left: &CachedHitRow, right: &CachedHitRow) -> std::cmp::Ordering {
@@ -3746,28 +3798,6 @@ fn cached_health_pool_key(row: &CachedHitRow) -> i64 {
         row.target_max_hp.round() as i64
     } else {
         i64::MIN
-    }
-}
-
-#[cfg(debug_assertions)]
-fn log_slow_detail_frame(
-    kind: &str,
-    total: Duration,
-    rebuilt: bool,
-    filter_collect: Duration,
-    sort: Duration,
-    max_damage: Duration,
-    draw: Duration,
-) {
-    if total >= Duration::from_millis(12) {
-        eprintln!(
-            "[detail-ui:{kind}] total={:.2}ms rebuilt={rebuilt} filter={:.2}ms sort={:.2}ms max={:.2}ms draw={:.2}ms",
-            total.as_secs_f64() * 1_000.0,
-            filter_collect.as_secs_f64() * 1_000.0,
-            sort.as_secs_f64() * 1_000.0,
-            max_damage.as_secs_f64() * 1_000.0,
-            draw.as_secs_f64() * 1_000.0,
-        );
     }
 }
 
@@ -4021,12 +4051,12 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
 fn draw_character_hit_row(
     ui: &mut egui::Ui,
     layout: CharacterHitLayout,
-    hit: &CachedHitRow,
+    hit: &crate::model::Hit,
     max_damage: f64,
 ) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(layout.row_width, 30.0), egui::Sense::hover());
-    let incoming = hit.is_incoming;
+    let incoming = hit.direction == "incoming";
     let type_color = if incoming {
         semantic_danger(ui.visuals().dark_mode)
     } else {
@@ -4064,7 +4094,7 @@ fn draw_character_hit_row(
     painter.text(
         egui::pos2(x + layout.time_x, y),
         egui::Align2::LEFT_CENTER,
-        &hit.time_text,
+        format_short_time(hit.timestamp),
         mono.clone(),
         text_color,
     );
@@ -4079,18 +4109,22 @@ fn draw_character_hit_row(
     painter.text(
         egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
-        &hit.type_text,
+        if incoming {
+            "受击"
+        } else {
+            hit_specific_type(hit)
+        },
         egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
         egui::Align2::LEFT_CENTER,
-        &hit.damage_text,
+        format_number(hit.damage),
         egui::FontId::monospace(14.0),
         damage_color,
     );
-    let hp_fraction = hit.hp_fraction;
+    let hp_fraction = (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32;
     let hp_bar_left = x + layout.hp_x;
     let hp_bar_right = (rect.right() - 10.0).min(ui.clip_rect().right() - 10.0);
     let hp_bar_rect = egui::Rect::from_min_max(
@@ -4115,11 +4149,16 @@ fn draw_character_hit_row(
     painter.text(
         egui::pos2(x + layout.hp_x, y - 3.0),
         egui::Align2::LEFT_CENTER,
-        &hit.hp_text,
+        format!(
+            "{} / {}  {:.1}%",
+            format_number(hit.target_hp_after),
+            format_number(hit.target_max_hp),
+            hit.target_hp_percent
+        ),
         mono.clone(),
         text_color,
     );
-    if let Some(target_name) = hit.target_text.as_deref() {
+    if let Some(target_name) = hit.target_name.as_deref() {
         painter.text(
             egui::pos2(rect.right() - 10.0, y - 3.0),
             egui::Align2::RIGHT_CENTER,
@@ -4129,7 +4168,21 @@ fn draw_character_hit_row(
         );
     }
     if response.hovered() {
-        response.on_hover_text(&hit.hover_text);
+        let mut details = if incoming {
+            "角色受到的伤害".to_owned()
+        } else {
+            format!("攻击类型：{}", hit_specific_type(hit))
+        };
+        if let Some(ability_name) = hit.ability_name.as_deref() {
+            details.push_str(&format!("\nGA：{ability_name}"));
+        }
+        if let Some(damage_name) = hit.damage_name.as_deref() {
+            details.push_str(&format!("\n招式：{damage_name}"));
+        }
+        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
+            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
+        }
+        response.on_hover_text(details);
     }
 }
 
@@ -4163,14 +4216,14 @@ fn draw_team_hit_header(ui: &mut egui::Ui, layout: TeamHitLayout) {
 fn draw_team_hit_row(
     ui: &mut egui::Ui,
     layout: TeamHitLayout,
-    hit: &CachedHitRow,
+    hit: &crate::model::Hit,
     max_damage: f64,
     character_color: Color32,
     avatar_texture: Option<&egui::TextureHandle>,
 ) {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(layout.row_width, 30.0), egui::Sense::hover());
-    let incoming = hit.is_incoming;
+    let incoming = hit.direction == "incoming";
     let type_color = if incoming {
         semantic_danger(ui.visuals().dark_mode)
     } else {
@@ -4204,7 +4257,7 @@ fn draw_team_hit_row(
     painter.text(
         egui::pos2(x + layout.time_x, y),
         egui::Align2::LEFT_CENTER,
-        &hit.time_text,
+        format_short_time(hit.timestamp),
         mono.clone(),
         text_color,
     );
@@ -4232,7 +4285,7 @@ fn draw_team_hit_row(
         painter.text(
             avatar_rect.center(),
             egui::Align2::CENTER_CENTER,
-            &hit.avatar_initial,
+            hit.char_name.chars().next().unwrap_or('?').to_string(),
             egui::FontId::proportional(11.0),
             Color32::WHITE,
         );
@@ -4261,14 +4314,18 @@ fn draw_team_hit_row(
     painter.text(
         egui::pos2(x + layout.type_x + (layout.type_width - 20.0) * 0.5, y),
         egui::Align2::CENTER_CENTER,
-        &hit.type_text,
+        if incoming {
+            "受击"
+        } else {
+            hit_specific_type(hit)
+        },
         egui::FontId::proportional(10.5),
         contrast_text(type_color),
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
         egui::Align2::LEFT_CENTER,
-        &hit.damage_text,
+        format_number(hit.damage),
         egui::FontId::monospace(14.0),
         if incoming {
             semantic_danger(ui.visuals().dark_mode)
@@ -4277,7 +4334,7 @@ fn draw_team_hit_row(
         },
     );
 
-    let hp_fraction = hit.hp_fraction;
+    let hp_fraction = (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32;
     let hp_bar_left = x + layout.hp_x;
     let hp_bar_right = (rect.right() - 10.0).min(ui.clip_rect().right() - 10.0);
     let hp_bar_rect = egui::Rect::from_min_max(
@@ -4302,12 +4359,36 @@ fn draw_team_hit_row(
     painter.text(
         egui::pos2(x + layout.hp_x, y - 3.0),
         egui::Align2::LEFT_CENTER,
-        &hit.hp_text,
+        format!(
+            "{} / {}  {:.1}%",
+            format_number(hit.target_hp_after),
+            format_number(hit.target_max_hp),
+            hit.target_hp_percent
+        ),
         mono,
         text_color,
     );
     if response.hovered() {
-        response.on_hover_text(&hit.hover_text);
+        let mut details = format!(
+            "{} · 角色 ID {} · {}",
+            hit.char_name,
+            hit.char_id,
+            if incoming {
+                "角色受到的伤害"
+            } else {
+                hit.attack_type.as_deref().unwrap_or("攻击类型未知")
+            }
+        );
+        if let Some(ability_name) = hit.ability_name.as_deref() {
+            details.push_str(&format!("\nGA：{ability_name}"));
+        }
+        if let Some(damage_name) = hit.damage_name.as_deref() {
+            details.push_str(&format!("\n招式：{damage_name}"));
+        }
+        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
+            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
+        }
+        response.on_hover_text(details);
     }
 }
 
@@ -4814,6 +4895,24 @@ fn parse_hex_color(value: &str) -> Option<Color32> {
         u8::from_str_radix(&value[2..4], 16).ok()?,
         u8::from_str_radix(&value[4..6], 16).ok()?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::adjusted_cached_index;
+
+    #[test]
+    fn cached_index_tracks_front_trimming_during_deferred_refresh() {
+        assert_eq!(
+            adjusted_cached_index(45_000, 50_000, 50_000, 20),
+            Some(44_980)
+        );
+        assert_eq!(adjusted_cached_index(10, 50_000, 50_000, 20), None);
+        assert_eq!(
+            adjusted_cached_index(9_000, 10_000, 10_020, 20),
+            Some(9_000)
+        );
+    }
 }
 
 fn data_root() -> PathBuf {
