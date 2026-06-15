@@ -743,7 +743,7 @@ pub fn parse_damage_payload(
                 }
             });
         let target_hp_after = (target_hp_before - damage).max(0.0);
-        let (target_id, target_name, target_context) =
+        let (mut target_id, mut target_name, mut target_context) =
             extract_target_metadata(data, byte_offset, bit_shift);
         let direction = if target_max_hp <= MAX_PLAUSIBLE_CHARACTER_HP
             && resolved_packet_char_id.is_some()
@@ -757,6 +757,11 @@ pub fn parse_damage_payload(
         } else {
             "unknown"
         };
+        if direction == "incoming" {
+            target_id = Some(char_id.to_string());
+            target_name = Some(name.clone());
+            target_context = vec!["受击目标：封包内同位角色声明".to_owned()];
+        }
 
         hits.push(Hit {
             timestamp,
@@ -980,6 +985,28 @@ fn metadata_value(value: &str, keys: &[&str]) -> Option<String> {
 mod character_tests {
     use super::*;
 
+    fn encoded_damage_record(damage: f32, target_hp_before: f32, target_max_hp: f32) -> Vec<u8> {
+        let fields = [
+            (12, damage.to_le_bytes().to_vec()),
+            (12, target_hp_before.to_le_bytes().to_vec()),
+            (12, target_max_hp.to_le_bytes().to_vec()),
+            (13, 1.0_f64.to_le_bytes().to_vec()),
+            (12, 1.0_f32.to_le_bytes().to_vec()),
+            (12, damage.to_le_bytes().to_vec()),
+            (6, 0_i32.to_le_bytes().to_vec()),
+            (6, 0_i32.to_le_bytes().to_vec()),
+            (6, 0_i32.to_le_bytes().to_vec()),
+            (12, 0.0_f32.to_le_bytes().to_vec()),
+        ];
+        let mut encoded = Vec::new();
+        for (field_type, value) in fields {
+            encoded.push(field_type);
+            encoded.extend_from_slice(&(value.len() as u32).to_le_bytes());
+            encoded.extend_from_slice(&value);
+        }
+        encoded
+    }
+
     #[test]
     fn character_attribute_is_optional_and_loaded_when_present() {
         let document: CharacterDocument = serde_json::from_str(
@@ -1147,6 +1174,37 @@ mod character_tests {
         assert_eq!(updates[0].target_handle, handle);
         assert_eq!(updates[0].current_hp, 1_927_891.0);
         assert!(parse_object_handles(&payload).contains(&handle));
+    }
+
+    #[test]
+    fn incoming_damage_targets_declared_character() {
+        let mut payload = b"/Game/Blueprints/Character/Monster/boss_07/".to_vec();
+        payload.extend_from_slice(&encoded_damage_record(100.0, 10_000.0, 20_000.0));
+        payload.extend_from_slice(&[5, 0, 0, 0, b'1', b'0', b'0', b'1', 0]);
+        let evidence = find_declared_character_evidence(&payload);
+        let characters = HashMap::from([(
+            1001,
+            CharacterInfo {
+                name_zh: "娜娜莉".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: None,
+            },
+        )]);
+
+        let hits = parse_damage_payload(&payload, 1.0, Some(1001), None, &characters, &evidence);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "incoming");
+        assert_eq!(hits[0].target_id.as_deref(), Some("1001"));
+        assert_eq!(hits[0].target_name.as_deref(), Some("娜娜莉"));
+        assert!(
+            hits[0]
+                .target_context
+                .iter()
+                .all(|context| !context.to_ascii_lowercase().contains("boss"))
+        );
     }
 
     #[test]

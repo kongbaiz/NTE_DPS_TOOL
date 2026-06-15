@@ -3686,16 +3686,13 @@ fn hit_specific_type(hit: &crate::model::Hit) -> &str {
 }
 
 fn hit_target_label(hit: &crate::model::Hit) -> &str {
+    if hit.direction == "incoming" {
+        return hit.char_name.as_str();
+    }
     hit.target_name
         .as_deref()
         .or(hit.target_id.as_deref())
-        .unwrap_or_else(|| {
-            if hit.direction == "incoming" {
-                hit.char_name.as_str()
-            } else {
-                "未知目标"
-            }
-        })
+        .unwrap_or("未知目标")
 }
 
 fn aggregate_character_skill_damage(

@@ -201,6 +201,35 @@ fn rebuild_combat_totals(
     }
 }
 
+fn normalize_hit_target_name(
+    hits: &mut VecDeque<Hit>,
+    target_names: &mut HashMap<String, String>,
+    hit: &mut Hit,
+) {
+    if hit.direction == "incoming" {
+        return;
+    }
+    let Some(target_id) = hit.target_id.clone() else {
+        return;
+    };
+    if let Some(target_name) = hit.target_name.clone() {
+        let newly_known =
+            target_names.get(&target_id).map(String::as_str) != Some(target_name.as_str());
+        target_names.insert(target_id.clone(), target_name.clone());
+        if newly_known {
+            for existing in hits.iter_mut().filter(|existing| {
+                existing.direction != "incoming"
+                    && existing.target_id.as_deref() == Some(target_id.as_str())
+                    && existing.target_name.is_none()
+            }) {
+                existing.target_name = Some(target_name.clone());
+            }
+        }
+    } else if let Some(target_name) = target_names.get(&target_id) {
+        hit.target_name = Some(target_name.clone());
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AbyssHalf {
     #[default]
@@ -239,6 +268,7 @@ pub enum AbyssEvent {
 pub struct PartyCombatState {
     pub hits: VecDeque<Hit>,
     pub hits_generation: u64,
+    target_names: HashMap<String, String>,
     pub stats: HashMap<u32, CharacterStats>,
     pub started_at: Option<f64>,
     pub ended_at: Option<f64>,
@@ -247,7 +277,8 @@ pub struct PartyCombatState {
 }
 
 impl PartyCombatState {
-    pub fn push_hit(&mut self, hit: Hit) {
+    pub fn push_hit(&mut self, mut hit: Hit) {
+        normalize_hit_target_name(&mut self.hits, &mut self.target_names, &mut hit);
         update_combat_totals(
             &mut self.stats,
             &mut self.started_at,
@@ -421,6 +452,7 @@ impl AbyssRunState {
 pub struct CombatState {
     pub hits: VecDeque<Hit>,
     pub hits_generation: u64,
+    target_names: HashMap<String, String>,
     pub packets: VecDeque<PacketDebug>,
     pub stats: HashMap<u32, CharacterStats>,
     pub started_at: Option<f64>,
@@ -432,7 +464,8 @@ pub struct CombatState {
 }
 
 impl CombatState {
-    pub fn push_hit(&mut self, hit: Hit) {
+    pub fn push_hit(&mut self, mut hit: Hit) {
+        normalize_hit_target_name(&mut self.hits, &mut self.target_names, &mut hit);
         self.abyss.push_hit(hit.clone());
         update_combat_totals(
             &mut self.stats,
@@ -621,6 +654,40 @@ mod tests {
             ));
         }
         hits
+    }
+
+    #[test]
+    fn target_name_is_backfilled_in_global_and_abyss_hits() {
+        let mut state = CombatState::default();
+        state.apply_abyss_event(AbyssEvent::Stage {
+            timestamp: 0.0,
+            floor: Some(1),
+            half: AbyssHalf::First,
+        });
+
+        let mut first = test_hit(1.0, 1, "outgoing", 100.0);
+        first.target_id = Some("target-handle".to_owned());
+        state.push_hit(first);
+
+        let mut named = test_hit(2.0, 1, "outgoing", 200.0);
+        named.target_id = Some("target-handle".to_owned());
+        named.target_name = Some("测试 Boss".to_owned());
+        state.push_hit(named);
+
+        let mut later = test_hit(3.0, 1, "outgoing", 300.0);
+        later.target_id = Some("target-handle".to_owned());
+        state.push_hit(later);
+
+        assert!(state.hits.iter().all(|hit| {
+            hit.target_id.as_deref() != Some("target-handle")
+                || hit.target_name.as_deref() == Some("测试 Boss")
+        }));
+        assert!(state.abyss.first_half.hits.iter().all(|hit| {
+            hit.target_id.as_deref() != Some("target-handle")
+                || hit.target_name.as_deref() == Some("测试 Boss")
+        }));
+        assert_eq!(state.total_damage, 600.0);
+        assert_eq!(state.abyss.first_half.total_damage, 600.0);
     }
 
     #[test]

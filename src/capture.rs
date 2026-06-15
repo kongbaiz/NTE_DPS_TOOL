@@ -1068,6 +1068,9 @@ impl TargetHandleTracker {
         debug_assert_eq!(target.target_id, hex::encode(target.handle));
         target.last_seen_at = timestamp;
         for hit in hits {
+            if hit.direction == "incoming" {
+                continue;
+            }
             hit.target_id = Some(target.target_id.clone());
             hit.target_name = target
                 .target_name
@@ -1266,7 +1269,7 @@ impl PacketDecoder {
             return;
         };
         for hit in hits {
-            if hit.target_name.is_none() {
+            if hit.direction != "incoming" && hit.target_name.is_none() {
                 hit.target_id = Some(target.id.clone());
                 hit.target_name = Some(target.name.clone());
                 hit.target_context.push(format!(
@@ -2101,6 +2104,9 @@ fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Res
 }
 
 fn apply_export_target(hit: &mut ExportHit, target: &TargetHandleInfo) {
+    if hit.direction == "incoming" {
+        return;
+    }
     hit.target_id = Some(target.target_id.clone());
     hit.target_name = target
         .target_name
@@ -2271,6 +2277,16 @@ mod tests {
                 .iter()
                 .any(|context| context.contains("协议对象句柄"))
         );
+
+        let mut incoming = targetless_hit();
+        incoming.direction = "incoming".to_owned();
+        incoming.target_id = Some("1001".to_owned());
+        incoming.target_name = Some("测试角色".to_owned());
+        let mut incoming_hits = [incoming];
+
+        assert!(tracker.apply_to_hits(&[handle], &mut incoming_hits, 1.3));
+        assert_eq!(incoming_hits[0].target_id.as_deref(), Some("1001"));
+        assert_eq!(incoming_hits[0].target_name.as_deref(), Some("测试角色"));
     }
 
     fn inferred_target(
@@ -2335,6 +2351,15 @@ mod tests {
         let mut ambiguous = [targetless_hit()];
         decoder.apply_inferred_monster(&mut ambiguous, 12.0, true);
         assert!(ambiguous[0].target_name.is_none());
+
+        let mut incoming = targetless_hit();
+        incoming.direction = "incoming".to_owned();
+        incoming.target_id = Some("1001".to_owned());
+        incoming.target_name = Some("测试角色".to_owned());
+        let mut incoming_hits = [incoming];
+        decoder.apply_inferred_monster(&mut incoming_hits, 12.0, false);
+        assert_eq!(incoming_hits[0].target_id.as_deref(), Some("1001"));
+        assert_eq!(incoming_hits[0].target_name.as_deref(), Some("测试角色"));
     }
 
     #[test]
