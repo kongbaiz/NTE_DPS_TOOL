@@ -340,8 +340,10 @@ pub struct DpsApp {
     hit_detail_char_id: Option<u32>,
     hit_detail_filter: HitDetailFilter,
     hit_detail_skill_filter: String,
+    hit_detail_corner_applied: bool,
     team_hit_detail_open: bool,
     team_hit_detail_filter: HitDetailFilter,
+    team_hit_detail_corner_applied: bool,
     character_hit_cache: HitDetailCache,
     team_hit_cache: HitDetailCache,
     skill_summary_cache: SkillSummaryCache,
@@ -364,6 +366,7 @@ pub struct DpsApp {
     diagnostic: Option<String>,
     last_error: Option<String>,
     debug_open: bool,
+    debug_corner_applied: bool,
     debug_tab: DebugTab,
     debug_only_hits: bool,
     debug_search: String,
@@ -374,6 +377,8 @@ pub struct DpsApp {
     mouse_passthrough: bool,
     opacity: f32,
     applied_opacity: Option<f32>,
+    corner_applied_hwnd: Option<isize>,
+    style_dark_mode_applied: Option<bool>,
     opacity_reapply_frames: u8,
     theme_transition_from: Option<Color32>,
     theme_transition_started_at: Option<f64>,
@@ -383,7 +388,6 @@ pub struct DpsApp {
     ui_config_path: PathBuf,
     native_file_drop: NativeFileDrop,
     last_dropped_file: Option<(PathBuf, Instant)>,
-    last_rounding_apply_at: f64,
     hotkey_receiver: Receiver<HotkeyEvent>,
     _hotkey: HotkeyHandle,
 }
@@ -463,8 +467,10 @@ impl DpsApp {
             hit_detail_char_id: None,
             hit_detail_filter: HitDetailFilter::All,
             hit_detail_skill_filter: String::new(),
+            hit_detail_corner_applied: false,
             team_hit_detail_open: false,
             team_hit_detail_filter: HitDetailFilter::All,
+            team_hit_detail_corner_applied: false,
             character_hit_cache: HitDetailCache::default(),
             team_hit_cache: HitDetailCache::default(),
             skill_summary_cache: SkillSummaryCache::default(),
@@ -487,6 +493,7 @@ impl DpsApp {
             diagnostic,
             last_error: startup_error,
             debug_open: false,
+            debug_corner_applied: false,
             debug_tab: DebugTab::Packets,
             debug_only_hits: false,
             debug_search: String::new(),
@@ -497,6 +504,9 @@ impl DpsApp {
             mouse_passthrough: false,
             opacity: ui_config.opacity,
             applied_opacity: None,
+            corner_applied_hwnd: None,
+            // eframe may replace the context style after app construction.
+            style_dark_mode_applied: None,
             opacity_reapply_frames: 4,
             theme_transition_from: None,
             theme_transition_started_at: None,
@@ -506,7 +516,6 @@ impl DpsApp {
             ui_config_path: config::config_path(),
             native_file_drop: NativeFileDrop::new(),
             last_dropped_file: None,
-            last_rounding_apply_at: f64::NEG_INFINITY,
             hotkey_receiver,
             _hotkey: hotkey,
         }
@@ -534,8 +543,10 @@ impl DpsApp {
         self.hit_detail_char_id = None;
         self.hit_detail_filter = HitDetailFilter::All;
         self.hit_detail_skill_filter.clear();
+        self.hit_detail_corner_applied = false;
         self.team_hit_detail_open = false;
         self.team_hit_detail_filter = HitDetailFilter::All;
+        self.team_hit_detail_corner_applied = false;
         self.character_hit_cache = HitDetailCache::default();
         self.team_hit_cache = HitDetailCache::default();
         self.skill_summary_cache = SkillSummaryCache::default();
@@ -560,6 +571,9 @@ impl DpsApp {
         #[cfg(not(feature = "no_debug"))]
         if f12_pressed {
             self.debug_open = !self.debug_open;
+            if self.debug_open {
+                self.debug_corner_applied = false;
+            }
         }
         while let Ok(event) = self.hotkey_receiver.try_recv() {
             match event {
@@ -569,6 +583,9 @@ impl DpsApp {
                 #[cfg(not(feature = "no_debug"))]
                 HotkeyEvent::ToggleDebug => {
                     self.debug_open = !self.debug_open;
+                    if self.debug_open {
+                        self.debug_corner_applied = false;
+                    }
                 }
                 HotkeyEvent::RegistrationFailed(shortcut) => {
                     self.diagnostic = Some(format!(
@@ -1842,6 +1859,7 @@ impl DpsApp {
                 {
                     self.team_hit_detail_open = true;
                     self.team_hit_detail_filter = HitDetailFilter::All;
+                    self.team_hit_detail_corner_applied = false;
                 }
             });
         });
@@ -2145,6 +2163,7 @@ impl DpsApp {
             self.hit_detail_char_id = Some(row.char_id);
             self.hit_detail_filter = HitDetailFilter::All;
             self.hit_detail_skill_filter.clear();
+            self.hit_detail_corner_applied = false;
         }
     }
 
@@ -2378,7 +2397,10 @@ impl DpsApp {
                 .with_transparent(true)
                 .with_resizable(true),
             |ctx, _class| {
-                configure_style(ctx, self.dark_mode);
+                if !self.team_hit_detail_corner_applied {
+                    apply_rounding_to_process_windows();
+                    self.team_hit_detail_corner_applied = true;
+                }
                 let mut close_clicked = false;
                 egui::TopBottomPanel::top("team_hit_detail_title_bar")
                     .exact_height(34.0)
@@ -2471,6 +2493,7 @@ impl DpsApp {
         );
         if close_requested {
             self.team_hit_detail_open = false;
+            self.team_hit_detail_corner_applied = false;
         }
     }
 
@@ -2482,6 +2505,7 @@ impl DpsApp {
         };
         let Some(stats) = stats else {
             self.hit_detail_char_id = None;
+            self.hit_detail_corner_applied = false;
             return;
         };
         let outgoing_count = stats.hits as usize;
@@ -2516,7 +2540,10 @@ impl DpsApp {
                 .with_transparent(true)
                 .with_resizable(true),
             |ctx, _class| {
-                configure_style(ctx, self.dark_mode);
+                if !self.hit_detail_corner_applied {
+                    apply_rounding_to_process_windows();
+                    self.hit_detail_corner_applied = true;
+                }
                 let mut close_clicked = false;
                 egui::TopBottomPanel::top("hit_detail_title_bar")
                     .exact_height(34.0)
@@ -2710,6 +2737,7 @@ impl DpsApp {
         );
         if close_requested {
             self.hit_detail_char_id = None;
+            self.hit_detail_corner_applied = false;
         }
     }
 
@@ -2725,7 +2753,10 @@ impl DpsApp {
                 .with_transparent(true)
                 .with_resizable(true),
             |ctx, _class| {
-                configure_style(ctx, self.dark_mode);
+                if !self.debug_corner_applied {
+                    apply_rounding_to_process_windows();
+                    self.debug_corner_applied = true;
+                }
                 let mut close_clicked = false;
                 egui::TopBottomPanel::top("debug_title_bar")
                     .exact_height(34.0)
@@ -2752,6 +2783,7 @@ impl DpsApp {
         );
         if close_requested {
             self.debug_open = false;
+            self.debug_corner_applied = false;
         }
     }
 
@@ -3220,7 +3252,10 @@ impl DpsApp {
 
 impl eframe::App for DpsApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        configure_style(ctx, self.dark_mode);
+        if self.style_dark_mode_applied != Some(self.dark_mode) {
+            configure_style(ctx, self.dark_mode);
+            self.style_dark_mode_applied = Some(self.dark_mode);
+        }
         self.note_detail_scroll_activity(ctx);
         self.drain_events();
         self.drain_hotkeys(ctx);
@@ -3232,14 +3267,12 @@ impl eframe::App for DpsApp {
             self.opacity,
             force_opacity,
             &mut self.applied_opacity,
+            &mut self.corner_applied_hwnd,
         );
         self.opacity_reapply_frames = self.opacity_reapply_frames.saturating_sub(1);
-        let repaint_interval = if self.capture.is_some() || self.replay_thread.is_some() {
-            Duration::from_millis(100)
-        } else {
-            Duration::from_millis(500)
-        };
-        ctx.request_repaint_after(repaint_interval);
+        if self.capture.is_some() || self.replay_thread.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
 
         egui::TopBottomPanel::top("custom_title_bar")
             .exact_height(32.0)
@@ -3302,11 +3335,6 @@ impl eframe::App for DpsApp {
                 });
         }
         self.paint_theme_transition(ctx);
-        let now = ctx.input(|input| input.time);
-        if now - self.last_rounding_apply_at >= 1.0 {
-            apply_rounding_to_process_windows();
-            self.last_rounding_apply_at = now;
-        }
         if let Some(error) = self.last_error.clone() {
             egui::Window::new("错误")
                 .collapsible(false)
@@ -3320,6 +3348,12 @@ impl eframe::App for DpsApp {
                 });
         }
         self.persist_ui_config();
+        if self.capture.is_none()
+            && self.replay_thread.is_none()
+            && let Some((_, save_at)) = &self.pending_ui_config
+        {
+            ctx.request_repaint_after(save_at.saturating_duration_since(Instant::now()));
+        }
     }
 }
 
@@ -3577,6 +3611,7 @@ fn apply_window_attributes(
     opacity: f32,
     force_opacity: bool,
     applied_opacity: &mut Option<f32>,
+    corner_applied_hwnd: &mut Option<isize>,
 ) {
     let opacity = opacity.clamp(0.35, 1.0);
     let Ok(window_handle) = frame.window_handle() else {
@@ -3585,14 +3620,18 @@ fn apply_window_attributes(
     let RawWindowHandle::Win32(window_handle) = window_handle.as_raw() else {
         return;
     };
-    let hwnd = window_handle.hwnd.get() as _;
+    let hwnd = window_handle.hwnd.get() as HWND;
+    let hwnd_key = hwnd as isize;
     unsafe {
-        DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-            std::ptr::from_ref(&DWMWCP_ROUND).cast(),
-            std::mem::size_of_val(&DWMWCP_ROUND) as u32,
-        );
+        if *corner_applied_hwnd != Some(hwnd_key) {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                std::ptr::from_ref(&DWMWCP_ROUND).cast(),
+                std::mem::size_of_val(&DWMWCP_ROUND) as u32,
+            );
+            *corner_applied_hwnd = Some(hwnd_key);
+        }
         if force_opacity
             || !applied_opacity.is_some_and(|current| (current - opacity).abs() < f32::EPSILON)
         {
@@ -3644,6 +3683,19 @@ fn hit_specific_type(hit: &crate::model::Hit) -> &str {
         .as_deref()
         .or(hit.attack_type.as_deref())
         .unwrap_or("未知招式")
+}
+
+fn hit_target_label(hit: &crate::model::Hit) -> &str {
+    hit.target_name
+        .as_deref()
+        .or(hit.target_id.as_deref())
+        .unwrap_or_else(|| {
+            if hit.direction == "incoming" {
+                hit.char_name.as_str()
+            } else {
+                "未知目标"
+            }
+        })
 }
 
 fn aggregate_character_skill_damage(
@@ -4042,7 +4094,7 @@ fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitLayout) {
     painter.text(
         egui::pos2(x + layout.hp_x, y),
         egui::Align2::LEFT_CENTER,
-        "角色/目标 HP",
+        "目标 / HP",
         font,
         color,
     );
@@ -4125,29 +4177,36 @@ fn draw_character_hit_row(
         damage_color,
     );
     let hp_fraction = (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32;
-    let hp_bar_left = x + layout.hp_x;
-    let hp_bar_right = (rect.right() - 10.0).min(ui.clip_rect().right() - 10.0);
-    let hp_bar_rect = egui::Rect::from_min_max(
-        egui::pos2(hp_bar_left, rect.bottom() - 7.0),
-        egui::pos2(hp_bar_right.max(hp_bar_left), rect.bottom() - 4.0),
+    let hp_cell_left = x + layout.hp_x - 6.0;
+    let hp_cell_right = (rect.right() - 4.0).min(ui.clip_rect().right() - 4.0);
+    let hp_cell_rect = egui::Rect::from_min_max(
+        egui::pos2(hp_cell_left, rect.top() + 2.0),
+        egui::pos2(hp_cell_right.max(hp_cell_left), rect.bottom() - 2.0),
     );
-    painter.rect_filled(hp_bar_rect, 1.5, ui.visuals().faint_bg_color);
+    painter.rect_filled(hp_cell_rect, 4.0, ui.visuals().faint_bg_color);
     painter.rect_filled(
         egui::Rect::from_min_size(
-            hp_bar_rect.min,
-            egui::vec2(hp_bar_rect.width() * hp_fraction, hp_bar_rect.height()),
+            hp_cell_rect.min,
+            egui::vec2(hp_cell_rect.width() * hp_fraction, hp_cell_rect.height()),
         ),
-        1.5,
+        4.0,
         if hp_fraction > 0.5 {
-            semantic_success(ui.visuals().dark_mode)
+            semantic_success(ui.visuals().dark_mode).gamma_multiply(0.16)
         } else if hp_fraction > 0.2 {
-            semantic_warning(ui.visuals().dark_mode)
+            semantic_warning(ui.visuals().dark_mode).gamma_multiply(0.16)
         } else {
-            semantic_danger(ui.visuals().dark_mode)
+            semantic_danger(ui.visuals().dark_mode).gamma_multiply(0.16)
         },
     );
     painter.text(
-        egui::pos2(x + layout.hp_x, y - 3.0),
+        egui::pos2(x + layout.hp_x, y - 7.0),
+        egui::Align2::LEFT_CENTER,
+        hit_target_label(hit),
+        egui::FontId::proportional(10.5),
+        text_color,
+    );
+    painter.text(
+        egui::pos2(x + layout.hp_x, y + 6.0),
         egui::Align2::LEFT_CENTER,
         format!(
             "{} / {}  {:.1}%",
@@ -4156,23 +4215,18 @@ fn draw_character_hit_row(
             hit.target_hp_percent
         ),
         mono.clone(),
-        text_color,
+        ui.visuals().weak_text_color(),
     );
-    if let Some(target_name) = hit.target_name.as_deref() {
-        painter.text(
-            egui::pos2(rect.right() - 10.0, y - 3.0),
-            egui::Align2::RIGHT_CENTER,
-            target_name,
-            egui::FontId::proportional(10.0),
-            ui.visuals().weak_text_color(),
-        );
-    }
     if response.hovered() {
         let mut details = if incoming {
             "角色受到的伤害".to_owned()
         } else {
             format!("攻击类型：{}", hit_specific_type(hit))
         };
+        details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
+        for context in &hit.target_context {
+            details.push_str(&format!("\n目标说明：{context}"));
+        }
         if let Some(ability_name) = hit.ability_name.as_deref() {
             details.push_str(&format!("\nGA：{ability_name}"));
         }
@@ -4201,7 +4255,7 @@ fn draw_team_hit_header(ui: &mut egui::Ui, layout: TeamHitLayout) {
         (layout.character_x, "角色"),
         (layout.type_x, "类型"),
         (layout.damage_x, "伤害"),
-        (layout.hp_x, "角色/目标 HP"),
+        (layout.hp_x, "目标 / HP"),
     ] {
         painter.text(
             egui::pos2(x + offset, y),
@@ -4335,29 +4389,36 @@ fn draw_team_hit_row(
     );
 
     let hp_fraction = (hit.target_hp_percent / 100.0).clamp(0.0, 1.0) as f32;
-    let hp_bar_left = x + layout.hp_x;
-    let hp_bar_right = (rect.right() - 10.0).min(ui.clip_rect().right() - 10.0);
-    let hp_bar_rect = egui::Rect::from_min_max(
-        egui::pos2(hp_bar_left, rect.bottom() - 7.0),
-        egui::pos2(hp_bar_right.max(hp_bar_left), rect.bottom() - 4.0),
+    let hp_cell_left = x + layout.hp_x - 6.0;
+    let hp_cell_right = (rect.right() - 4.0).min(ui.clip_rect().right() - 4.0);
+    let hp_cell_rect = egui::Rect::from_min_max(
+        egui::pos2(hp_cell_left, rect.top() + 2.0),
+        egui::pos2(hp_cell_right.max(hp_cell_left), rect.bottom() - 2.0),
     );
-    painter.rect_filled(hp_bar_rect, 1.5, ui.visuals().faint_bg_color);
+    painter.rect_filled(hp_cell_rect, 4.0, ui.visuals().faint_bg_color);
     painter.rect_filled(
         egui::Rect::from_min_size(
-            hp_bar_rect.min,
-            egui::vec2(hp_bar_rect.width() * hp_fraction, hp_bar_rect.height()),
+            hp_cell_rect.min,
+            egui::vec2(hp_cell_rect.width() * hp_fraction, hp_cell_rect.height()),
         ),
-        1.5,
+        4.0,
         if hp_fraction > 0.5 {
-            semantic_success(ui.visuals().dark_mode)
+            semantic_success(ui.visuals().dark_mode).gamma_multiply(0.16)
         } else if hp_fraction > 0.2 {
-            semantic_warning(ui.visuals().dark_mode)
+            semantic_warning(ui.visuals().dark_mode).gamma_multiply(0.16)
         } else {
-            semantic_danger(ui.visuals().dark_mode)
+            semantic_danger(ui.visuals().dark_mode).gamma_multiply(0.16)
         },
     );
     painter.text(
-        egui::pos2(x + layout.hp_x, y - 3.0),
+        egui::pos2(x + layout.hp_x, y - 7.0),
+        egui::Align2::LEFT_CENTER,
+        hit_target_label(hit),
+        egui::FontId::proportional(10.5),
+        text_color,
+    );
+    painter.text(
+        egui::pos2(x + layout.hp_x, y + 6.0),
         egui::Align2::LEFT_CENTER,
         format!(
             "{} / {}  {:.1}%",
@@ -4366,7 +4427,7 @@ fn draw_team_hit_row(
             hit.target_hp_percent
         ),
         mono,
-        text_color,
+        ui.visuals().weak_text_color(),
     );
     if response.hovered() {
         let mut details = format!(
@@ -4379,6 +4440,10 @@ fn draw_team_hit_row(
                 hit.attack_type.as_deref().unwrap_or("攻击类型未知")
             }
         );
+        details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
+        for context in &hit.target_context {
+            details.push_str(&format!("\n目标说明：{context}"));
+        }
         if let Some(ability_name) = hit.ability_name.as_deref() {
             details.push_str(&format!("\nGA：{ability_name}"));
         }
