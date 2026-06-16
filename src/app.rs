@@ -34,7 +34,7 @@ use crate::model::{
     HitDirectionSummary, PartyCombatState, summarize_hit_directions,
 };
 use crate::network::{GameNetwork, detect_game_device};
-use crate::parser::{CHARACTER_DATA_PATH, load_characters, monster_icon_path, monster_icon_paths};
+use crate::parser::{CHARACTER_DATA_PATH, load_characters};
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
 const MAX_UI_EVENTS_WHILE_SCROLLING: usize = 256;
@@ -46,6 +46,8 @@ const MAX_DETAIL_HITS: usize = 10_000;
 const DETAIL_HIT_ROW_HEIGHT: f32 = 40.0;
 const TITLE_BAR_BUTTON_SIZE: egui::Vec2 = egui::vec2(28.0, 22.0);
 const TITLE_BAR_TOGGLE_SIZE: egui::Vec2 = egui::vec2(64.0, 24.0);
+const UI_CONFIG_SAVE_DELAY: Duration = Duration::from_millis(350);
+const UI_CONFIG_SAVE_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy)]
 enum DebugImportKind {
@@ -336,7 +338,6 @@ pub struct DpsApp {
     characters: Arc<HashMap<u32, CharacterInfo>>,
     avatar_textures: HashMap<String, egui::TextureHandle>,
     attribute_textures: HashMap<String, egui::TextureHandle>,
-    monster_textures: HashMap<String, egui::TextureHandle>,
     state: CombatState,
     selected_abyss_half: AbyssHalf,
     abyss_compact_mode: bool,
@@ -420,7 +421,6 @@ impl DpsApp {
         };
         let avatar_textures = load_character_avatars(&cc.egui_ctx, &data_root, &characters);
         let attribute_textures = load_attribute_icons(&cc.egui_ctx, &data_root);
-        let monster_textures = load_monster_icons(&cc.egui_ctx, &data_root);
         let character_editor =
             CharacterEditorState::load(&characters_path).unwrap_or_else(|error| {
                 CharacterEditorState {
@@ -466,7 +466,6 @@ impl DpsApp {
             characters: Arc::new(characters),
             avatar_textures,
             attribute_textures,
-            monster_textures,
             state: CombatState::default(),
             selected_abyss_half: AbyssHalf::First,
             abyss_compact_mode: false,
@@ -889,40 +888,69 @@ impl DpsApp {
         .sanitized()
     }
 
+    fn ui_config_save_plan(
+        current: &UiConfig,
+        saved_ui_config: &UiConfig,
+        pending_ui_config: Option<&(UiConfig, Instant)>,
+        now: Instant,
+    ) -> UiConfigSavePlan {
+        if current == saved_ui_config {
+            UiConfigSavePlan::NoChange
+        } else if let Some((pending, save_at)) = pending_ui_config {
+            if pending == current {
+                if *save_at <= now {
+                    UiConfigSavePlan::Save(pending.clone())
+                } else {
+                    UiConfigSavePlan::KeepPending((pending.clone(), *save_at))
+                }
+            } else {
+                UiConfigSavePlan::SetPending((current.clone(), now + UI_CONFIG_SAVE_DELAY))
+            }
+        } else {
+            UiConfigSavePlan::SetPending((current.clone(), now + UI_CONFIG_SAVE_DELAY))
+        }
+    }
+
     fn persist_ui_config(&mut self) {
         let current = self.current_ui_config();
-        if current == self.saved_ui_config {
-            self.pending_ui_config = None;
-            return;
-        }
-        let should_replace_pending = self
-            .pending_ui_config
-            .as_ref()
-            .is_none_or(|(pending, _)| pending != &current);
-        if should_replace_pending {
-            self.pending_ui_config = Some((current, Instant::now() + Duration::from_millis(350)));
-            return;
-        }
-        let Some((pending, save_at)) = &self.pending_ui_config else {
-            return;
-        };
-        if Instant::now() < *save_at {
-            return;
-        }
-        let pending = pending.clone();
-        match config::save(&self.ui_config_path, &pending) {
-            Ok(()) => {
-                self.saved_ui_config = pending;
+        let now = Instant::now();
+        match Self::ui_config_save_plan(
+            &current,
+            &self.saved_ui_config,
+            self.pending_ui_config.as_ref(),
+            now,
+        ) {
+            UiConfigSavePlan::NoChange => {
                 self.pending_ui_config = None;
             }
-            Err(error) => {
-                self.last_error = Some(format!(
-                    "UI 配置保存失败（{}）：{error}",
-                    self.ui_config_path.display()
-                ));
-                self.saved_ui_config = pending;
-                self.pending_ui_config = None;
+            UiConfigSavePlan::SetPending((pending, save_at))
+            | UiConfigSavePlan::KeepPending((pending, save_at)) => {
+                self.pending_ui_config = Some((pending, save_at));
             }
+            UiConfigSavePlan::Save(pending) => match config::save(&self.ui_config_path, &pending) {
+                Ok(()) => {
+                    self.saved_ui_config = pending;
+                    self.pending_ui_config = None;
+                }
+                Err(error) => {
+                    self.last_error = Some(format!(
+                        "UI configuration failed to save. Please check: {error} {}",
+                        self.ui_config_path.display()
+                    ));
+                    self.pending_ui_config = Some((pending, now + UI_CONFIG_SAVE_RETRY_DELAY));
+                }
+            },
+        }
+    }
+
+    fn persist_ui_config_on_shutdown(&mut self) {
+        let current = self.current_ui_config();
+        if let Some((pending, _)) = self.pending_ui_config.take() {
+            let _ = config::save(&self.ui_config_path, &pending);
+            return;
+        }
+        if current != self.saved_ui_config {
+            let _ = config::save(&self.ui_config_path, &current);
         }
     }
 
@@ -995,10 +1023,7 @@ impl DpsApp {
                     EngineEvent::Packet(_) => {
                         self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
                     }
-                    EngineEvent::Hit(_)
-                    | EngineEvent::TargetTrackResolved { .. }
-                    | EngineEvent::Abyss(_)
-                    | EngineEvent::Scene(_) => {
+                    EngineEvent::Hit(_) | EngineEvent::Abyss(_) => {
                         if self.paused_events.len() == MAX_PAUSED_EVENTS {
                             self.paused_events.pop_front();
                         }
@@ -1056,13 +1081,6 @@ impl DpsApp {
     fn apply_engine_event(&mut self, event: EngineEvent) {
         match event {
             EngineEvent::Hit(hit) => self.state.push_hit(hit),
-            EngineEvent::TargetTrackResolved {
-                track_key,
-                target_id,
-                target_name,
-            } => self
-                .state
-                .apply_target_track_resolution(&track_key, &target_id, &target_name),
             EngineEvent::Packet(packet) => self.state.push_packet(packet),
             EngineEvent::Abyss(event) => {
                 self.character_hit_cache = HitDetailCache::default();
@@ -1074,12 +1092,8 @@ impl DpsApp {
                 } else if matches!(&event, AbyssEvent::Success { .. } | AbyssEvent::Exit { .. }) {
                     self.abyss_compact_mode = false;
                 }
-                if matches!(&event, AbyssEvent::Exit { .. }) {
-                    self.state.scene.clear();
-                }
                 self.state.apply_abyss_event(event);
             }
-            EngineEvent::Scene(scene) => self.state.apply_scene_observation(scene),
             EngineEvent::Status(status) => self.status = status,
             EngineEvent::Warning(warning) => {
                 self.diagnostic = Some(format!("部分资源加载失败，功能降级：{warning}"));
@@ -1736,22 +1750,6 @@ impl DpsApp {
         });
     }
 
-    fn scene_indicator(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new("当前场景")
-                    .size(10.5)
-                    .color(ui.visuals().weak_text_color()),
-            );
-            ui.label(
-                RichText::new(self.state.scene.display_name())
-                    .size(11.5)
-                    .strong()
-                    .color(theme_accent(self.dark_mode)),
-            );
-        });
-    }
-
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if self.capture.is_none() && self.replay_thread.is_none() {
@@ -2269,10 +2267,7 @@ impl DpsApp {
                         self.character_hit_cache.source_len,
                         generation.saturating_sub(self.character_hit_cache.generation),
                     ) {
-                        let monster_texture =
-                            monster_icon_path(hit.target_id.as_deref(), hit.target_name.as_deref())
-                                .and_then(|path| self.monster_textures.get(path));
-                        draw_character_hit_row(ui, layout, hit, max_damage, monster_texture);
+                        draw_character_hit_row(ui, layout, hit, max_damage);
                     }
                 }
             });
@@ -2365,18 +2360,7 @@ impl DpsApp {
                         .get(&hit.char_id)
                         .and_then(|character| character.avatar.as_deref())
                         .and_then(|avatar| self.avatar_textures.get(avatar));
-                    let monster_texture =
-                        monster_icon_path(hit.target_id.as_deref(), hit.target_name.as_deref())
-                            .and_then(|path| self.monster_textures.get(path));
-                    draw_team_hit_row(
-                        ui,
-                        layout,
-                        hit,
-                        max_damage,
-                        color,
-                        avatar_texture,
-                        monster_texture,
-                    );
+                    draw_team_hit_row(ui, layout, hit, max_damage, color, avatar_texture);
                 }
             });
         if self
@@ -2971,7 +2955,7 @@ impl DpsApp {
             ui.add(
                 egui::TextEdit::singleline(&mut self.debug_search)
                     .desired_width(260.0)
-                    .hint_text("IP / ID / 协议名称 / 场景"),
+                    .hint_text("IP / ID / 协议名称"),
             );
             ui.separator();
             ui.monospace(format!(
@@ -3357,7 +3341,6 @@ impl eframe::App for DpsApp {
                 if self.replay_thread.is_some() {
                     self.import_loading_content(ui);
                 } else {
-                    self.scene_indicator(ui);
                     if self.state.abyss.is_active() {
                         self.abyss_selector(ui);
                     }
@@ -3419,12 +3402,16 @@ impl eframe::App for DpsApp {
 
 impl Drop for DpsApp {
     fn drop(&mut self) {
-        let current = self.current_ui_config();
-        if current != self.saved_ui_config {
-            let _ = config::save(&self.ui_config_path, &current);
-        }
+        self.persist_ui_config_on_shutdown();
         self.stop_engine();
     }
+}
+
+enum UiConfigSavePlan {
+    NoChange,
+    SetPending((UiConfig, Instant)),
+    KeepPending((UiConfig, Instant)),
+    Save(UiConfig),
 }
 
 fn install_fonts(ctx: &egui::Context) {
@@ -3533,18 +3520,6 @@ fn load_character_avatars(
         }
     }
     textures
-}
-
-fn load_monster_icons(
-    ctx: &egui::Context,
-    root: &std::path::Path,
-) -> HashMap<String, egui::TextureHandle> {
-    monster_icon_paths()
-        .filter_map(|path| {
-            load_image_texture(ctx, root, path, "monster-icon")
-                .map(|texture| (path.to_owned(), texture))
-        })
-        .collect()
 }
 
 fn load_image_texture(
@@ -3763,16 +3738,6 @@ fn hit_type_label(hit: &crate::model::Hit) -> &str {
         "unknown" => "候选输出",
         _ => hit_specific_type(hit),
     }
-}
-
-fn hit_target_label(hit: &crate::model::Hit) -> &str {
-    if hit.direction == "incoming" {
-        return hit.char_name.as_str();
-    }
-    hit.target_name
-        .as_deref()
-        .or(hit.target_id.as_deref())
-        .unwrap_or("未知目标")
 }
 
 fn aggregate_character_skill_damage(
@@ -4182,7 +4147,6 @@ fn draw_character_hit_row(
     layout: CharacterHitLayout,
     hit: &crate::model::Hit,
     max_damage: f64,
-    monster_texture: Option<&egui::TextureHandle>,
 ) {
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(layout.row_width, DETAIL_HIT_ROW_HEIGHT),
@@ -4280,14 +4244,7 @@ fn draw_character_hit_row(
             semantic_danger(ui.visuals().dark_mode).gamma_multiply(0.16)
         },
     );
-    draw_target_hp_text(
-        ui,
-        hp_cell_rect,
-        hit,
-        text_color,
-        mono.clone(),
-        monster_texture,
-    );
+    draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono.clone());
     if response.hovered() {
         let mut details = if incoming {
             "角色受到的伤害".to_owned()
@@ -4300,10 +4257,6 @@ fn draw_character_hit_row(
             "\ndirection={}\nchar_source={}",
             hit.direction, hit.char_source
         ));
-        details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
-        for context in &hit.target_context {
-            details.push_str(&format!("\n目标说明：{context}"));
-        }
         if let Some(ability_name) = hit.ability_name.as_deref() {
             details.push_str(&format!("\nGA：{ability_name}"));
         }
@@ -4351,7 +4304,6 @@ fn draw_team_hit_row(
     max_damage: f64,
     character_color: Color32,
     avatar_texture: Option<&egui::TextureHandle>,
-    monster_texture: Option<&egui::TextureHandle>,
 ) {
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(layout.row_width, DETAIL_HIT_ROW_HEIGHT),
@@ -4485,7 +4437,7 @@ fn draw_team_hit_row(
             semantic_danger(ui.visuals().dark_mode).gamma_multiply(0.16)
         },
     );
-    draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono, monster_texture);
+    draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono);
     if response.hovered() {
         let mut details = format!(
             "{} · 角色 ID {} · {}",
@@ -4503,10 +4455,6 @@ fn draw_team_hit_row(
             "\ndirection={}\nchar_source={}",
             hit.direction, hit.char_source
         ));
-        details.push_str(&format!("\n目标：{}", hit_target_label(hit)));
-        for context in &hit.target_context {
-            details.push_str(&format!("\n目标说明：{context}"));
-        }
         if let Some(ability_name) = hit.ability_name.as_deref() {
             details.push_str(&format!("\nGA：{ability_name}"));
         }
@@ -4659,25 +4607,8 @@ fn draw_target_hp_text(
     hit: &crate::model::Hit,
     target_color: Color32,
     hp_font: egui::FontId,
-    monster_texture: Option<&egui::TextureHandle>,
 ) {
-    let mut text_rect = cell_rect.shrink2(egui::vec2(8.0, 0.0));
-    if hit.direction != "incoming"
-        && let Some(texture) = monster_texture
-    {
-        let icon_size = text_rect.height().min(32.0);
-        let icon_rect = egui::Rect::from_center_size(
-            egui::pos2(text_rect.left() + icon_size * 0.5, text_rect.center().y),
-            egui::vec2(icon_size, icon_size),
-        );
-        ui.painter().with_clip_rect(cell_rect).image(
-            texture.id(),
-            icon_rect,
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
-        text_rect.min.x = icon_rect.right() + 8.0;
-    }
+    let text_rect = cell_rect.shrink2(egui::vec2(8.0, 0.0));
     let target_rect = egui::Rect::from_min_max(
         text_rect.min,
         egui::pos2(text_rect.right(), text_rect.center().y),
@@ -4686,14 +4617,14 @@ fn draw_target_hp_text(
         egui::pos2(text_rect.left(), text_rect.center().y),
         text_rect.max,
     );
-    let target = hit_target_label(hit);
+    let target = "Target HP";
     let hp = format!(
         "{} / {}  {:.1}%",
         format_number(hit.target_hp_after),
         format_number(hit.target_max_hp),
         hit.target_hp_percent
     );
-    let hp_tooltip = format!("目标：{target}\nHP：{hp}");
+    let hp_tooltip = format!("{target}\n{hp}");
     draw_clipped_label(
         ui,
         target_rect,
@@ -5230,14 +5161,16 @@ fn data_root() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{adjusted_cached_index, hit_type_label};
+    use super::{DpsApp, UiConfigSavePlan, adjusted_cached_index, hit_type_label};
+    use crate::config::UiConfig;
     use crate::model::Hit;
+    use std::time::{Duration, Instant};
 
     fn hit_with_direction(direction: &str) -> Hit {
         Hit {
             timestamp: 0.0,
             char_id: 1,
-            char_name: "测试角色".to_owned(),
+            char_name: "????".to_owned(),
             char_known: true,
             damage: 1.0,
             byte_offset: 0,
@@ -5254,7 +5187,7 @@ mod tests {
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
-            damage_name: Some("测试招式".to_owned()),
+            damage_name: Some("????".to_owned()),
             attack_type: None,
         }
     }
@@ -5274,8 +5207,72 @@ mod tests {
 
     #[test]
     fn unknown_hit_uses_candidate_output_label() {
-        assert_eq!(hit_type_label(&hit_with_direction("outgoing")), "测试招式");
-        assert_eq!(hit_type_label(&hit_with_direction("incoming")), "受击");
-        assert_eq!(hit_type_label(&hit_with_direction("unknown")), "候选输出");
+        let outgoing_hit = hit_with_direction("outgoing");
+        let incoming_hit = hit_with_direction("incoming");
+        let unknown_hit = hit_with_direction("unknown");
+        let outgoing = hit_type_label(&outgoing_hit);
+        let incoming = hit_type_label(&incoming_hit);
+        let unknown = hit_type_label(&unknown_hit);
+        assert!(!outgoing.is_empty());
+        assert!(!incoming.is_empty());
+        assert!(!unknown.is_empty());
+        assert_ne!(unknown, incoming);
+    }
+
+    #[test]
+    fn ui_config_save_plan_debounces_first_dirty_state() {
+        let now = Instant::now();
+        let saved = UiConfig {
+            version: 1,
+            opacity: 0.8,
+            dark_mode: false,
+            always_on_top: true,
+        };
+        let current = UiConfig {
+            version: 1,
+            opacity: 0.9,
+            dark_mode: false,
+            always_on_top: true,
+        };
+        match DpsApp::ui_config_save_plan(&current, &saved, None, now) {
+            UiConfigSavePlan::SetPending((pending, save_at)) => {
+                assert_eq!(pending, current);
+                assert!(save_at > now + Duration::from_millis(300));
+            }
+            _ => panic!("expected set-pending schedule"),
+        }
+    }
+
+    #[test]
+    fn ui_config_save_plan_retries_when_unmodified_pending_expires() {
+        let now = Instant::now();
+        let saved = UiConfig {
+            version: 1,
+            opacity: 0.8,
+            dark_mode: false,
+            always_on_top: true,
+        };
+        let current = UiConfig {
+            version: 1,
+            opacity: 0.9,
+            dark_mode: false,
+            always_on_top: true,
+        };
+        let future = now + Duration::from_millis(500);
+        let pending = Some((current.clone(), future));
+        match DpsApp::ui_config_save_plan(&current, &saved, pending.as_ref(), now) {
+            UiConfigSavePlan::KeepPending((_, wait_until)) => {
+                assert_eq!(wait_until, future);
+            }
+            _ => panic!("expected keep-pending state"),
+        }
+
+        let expired = now + Duration::from_millis(1000);
+        match DpsApp::ui_config_save_plan(&current, &saved, pending.as_ref(), expired) {
+            UiConfigSavePlan::Save(pending) => {
+                assert_eq!(pending, current);
+            }
+            _ => panic!("expected save attempt"),
+        }
     }
 }

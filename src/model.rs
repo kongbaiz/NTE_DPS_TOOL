@@ -68,51 +68,6 @@ pub struct PacketDebug {
     pub decoded_text: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct SceneObservation {
-    pub timestamp: f64,
-    pub id: String,
-    pub display_name: String,
-    pub category: String,
-    pub priority: u8,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct SceneState {
-    pub current: Option<SceneObservation>,
-    transition_pending: bool,
-}
-
-impl SceneState {
-    pub fn apply(&mut self, observation: SceneObservation) {
-        if observation.category == "transition" {
-            self.transition_pending = true;
-            return;
-        }
-        let should_replace = self.current.as_ref().is_none_or(|current| {
-            self.transition_pending
-                || observation.id == current.id
-                || observation.priority > current.priority
-                || observation.timestamp - current.timestamp >= 30.0
-        });
-        self.transition_pending = false;
-        if should_replace {
-            self.current = Some(observation);
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.current = None;
-        self.transition_pending = false;
-    }
-
-    pub fn display_name(&self) -> &str {
-        self.current
-            .as_ref()
-            .map_or("大世界", |scene| scene.display_name.as_str())
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct CharacterStats {
     pub char_id: u32,
@@ -245,73 +200,6 @@ fn rebuild_combat_totals(
     }
 }
 
-fn normalize_hit_target_name(
-    hits: &mut VecDeque<Hit>,
-    target_names: &mut HashMap<String, String>,
-    hit: &mut Hit,
-) {
-    if hit.direction == "incoming" {
-        return;
-    }
-    let Some(target_id) = hit.target_id.clone() else {
-        return;
-    };
-    if let Some(target_name) = hit.target_name.clone() {
-        let newly_known =
-            target_names.get(&target_id).map(String::as_str) != Some(target_name.as_str());
-        target_names.insert(target_id.clone(), target_name.clone());
-        if newly_known {
-            for existing in hits.iter_mut().filter(|existing| {
-                existing.direction != "incoming"
-                    && existing.target_id.as_deref() == Some(target_id.as_str())
-                    && existing.target_name.is_none()
-            }) {
-                existing.target_name = Some(target_name.clone());
-            }
-        }
-    } else if let Some(target_name) = target_names.get(&target_id) {
-        hit.target_name = Some(target_name.clone());
-    }
-}
-
-fn rebuild_target_names(hits: &VecDeque<Hit>, target_names: &mut HashMap<String, String>) {
-    target_names.clear();
-    for hit in hits.iter().filter(|hit| hit.direction != "incoming") {
-        if let (Some(target_id), Some(target_name)) = (&hit.target_id, &hit.target_name) {
-            target_names.insert(target_id.clone(), target_name.clone());
-        }
-    }
-}
-
-fn hit_has_target_track(hit: &Hit, track_key: &str) -> bool {
-    let marker = format!("目标轨迹键：{track_key}");
-    hit.target_context.iter().any(|context| context == &marker)
-}
-
-fn apply_target_track_resolution_to_hits(
-    hits: &mut VecDeque<Hit>,
-    track_key: &str,
-    target_id: &str,
-    target_name: &str,
-) -> bool {
-    let mut changed = false;
-    for hit in hits.iter_mut().filter(|hit| {
-        hit.direction != "incoming"
-            && hit.target_id.is_none()
-            && hit_has_target_track(hit, track_key)
-    }) {
-        hit.target_id = Some(target_id.to_owned());
-        hit.target_name = Some(target_name.to_owned());
-        hit.target_context.retain(|context| {
-            !context.contains("协议相关 16 字节值") && !context.contains("对象句柄关联怪物：")
-        });
-        hit.target_context
-            .push("HP 轨迹由后续同轨迹对象实例确认".to_owned());
-        changed = true;
-    }
-    changed
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AbyssHalf {
     #[default]
@@ -322,8 +210,8 @@ pub enum AbyssHalf {
 impl AbyssHalf {
     pub fn label(self) -> &'static str {
         match self {
-            Self::First => "上半",
-            Self::Second => "下半",
+            Self::First => "涓婂崐",
+            Self::Second => "涓嬪崐",
         }
     }
 }
@@ -335,6 +223,7 @@ pub enum AbyssEvent {
     },
     Stage {
         timestamp: f64,
+        #[allow(dead_code)]
         cycle: Option<u32>,
         floor: Option<u32>,
         half: AbyssHalf,
@@ -351,7 +240,6 @@ pub enum AbyssEvent {
 pub struct PartyCombatState {
     pub hits: VecDeque<Hit>,
     pub hits_generation: u64,
-    target_names: HashMap<String, String>,
     pub stats: HashMap<u32, CharacterStats>,
     pub started_at: Option<f64>,
     pub ended_at: Option<f64>,
@@ -360,8 +248,7 @@ pub struct PartyCombatState {
 }
 
 impl PartyCombatState {
-    pub fn push_hit(&mut self, mut hit: Hit) {
-        normalize_hit_target_name(&mut self.hits, &mut self.target_names, &mut hit);
+    pub fn push_hit(&mut self, hit: Hit) {
         update_combat_totals(
             &mut self.stats,
             &mut self.started_at,
@@ -378,7 +265,6 @@ impl PartyCombatState {
             trimmed = true;
         }
         if trimmed {
-            rebuild_target_names(&self.hits, &mut self.target_names);
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -399,18 +285,6 @@ impl PartyCombatState {
 
     pub fn dps(&self) -> f64 {
         self.total_damage / self.duration().max(1.0)
-    }
-
-    fn apply_target_track_resolution(
-        &mut self,
-        track_key: &str,
-        target_id: &str,
-        target_name: &str,
-    ) {
-        if apply_target_track_resolution_to_hits(&mut self.hits, track_key, target_id, target_name)
-        {
-            self.hits_generation = self.hits_generation.wrapping_add(1);
-        }
     }
 }
 
@@ -549,7 +423,6 @@ impl AbyssRunState {
 pub struct CombatState {
     pub hits: VecDeque<Hit>,
     pub hits_generation: u64,
-    target_names: HashMap<String, String>,
     pub packets: VecDeque<PacketDebug>,
     pub stats: HashMap<u32, CharacterStats>,
     pub started_at: Option<f64>,
@@ -557,12 +430,10 @@ pub struct CombatState {
     pub total_damage: f64,
     pub total_damage_taken: f64,
     pub abyss: AbyssRunState,
-    pub scene: SceneState,
 }
 
 impl CombatState {
-    pub fn push_hit(&mut self, mut hit: Hit) {
-        normalize_hit_target_name(&mut self.hits, &mut self.target_names, &mut hit);
+    pub fn push_hit(&mut self, hit: Hit) {
         self.abyss.push_hit(hit.clone());
         update_combat_totals(
             &mut self.stats,
@@ -580,7 +451,6 @@ impl CombatState {
             trimmed = true;
         }
         if trimmed {
-            rebuild_target_names(&self.hits, &mut self.target_names);
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -606,24 +476,6 @@ impl CombatState {
         }
     }
 
-    pub fn apply_target_track_resolution(
-        &mut self,
-        track_key: &str,
-        target_id: &str,
-        target_name: &str,
-    ) {
-        if apply_target_track_resolution_to_hits(&mut self.hits, track_key, target_id, target_name)
-        {
-            self.hits_generation = self.hits_generation.wrapping_add(1);
-        }
-        self.abyss
-            .first_half
-            .apply_target_track_resolution(track_key, target_id, target_name);
-        self.abyss
-            .second_half
-            .apply_target_track_resolution(track_key, target_id, target_name);
-    }
-
     pub fn dps(&self) -> f64 {
         self.total_damage / self.duration().max(1.0)
     }
@@ -635,23 +487,13 @@ impl CombatState {
     pub fn apply_abyss_event(&mut self, event: AbyssEvent) {
         self.abyss.apply_event(event);
     }
-
-    pub fn apply_scene_observation(&mut self, observation: SceneObservation) {
-        self.scene.apply(observation);
-    }
 }
 
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
     Hit(Hit),
-    TargetTrackResolved {
-        track_key: String,
-        target_id: String,
-        target_name: String,
-    },
     Packet(PacketDebug),
     Abyss(AbyssEvent),
-    Scene(SceneObservation),
     Status(String),
     Warning(String),
     Error(String),
@@ -666,7 +508,7 @@ mod tests {
         Hit {
             timestamp,
             char_id,
-            char_name: format!("角色{char_id}"),
+            char_name: format!("瑙掕壊{char_id}"),
             char_known: true,
             damage,
             byte_offset: 0,
@@ -778,41 +620,6 @@ mod tests {
     }
 
     #[test]
-    fn target_name_is_backfilled_in_global_and_abyss_hits() {
-        let mut state = CombatState::default();
-        state.apply_abyss_event(AbyssEvent::Stage {
-            timestamp: 0.0,
-            cycle: None,
-            floor: Some(1),
-            half: AbyssHalf::First,
-        });
-
-        let mut first = test_hit(1.0, 1, "outgoing", 100.0);
-        first.target_id = Some("target-handle".to_owned());
-        state.push_hit(first);
-
-        let mut named = test_hit(2.0, 1, "outgoing", 200.0);
-        named.target_id = Some("target-handle".to_owned());
-        named.target_name = Some("测试 Boss".to_owned());
-        state.push_hit(named);
-
-        let mut later = test_hit(3.0, 1, "outgoing", 300.0);
-        later.target_id = Some("target-handle".to_owned());
-        state.push_hit(later);
-
-        assert!(state.hits.iter().all(|hit| {
-            hit.target_id.as_deref() != Some("target-handle")
-                || hit.target_name.as_deref() == Some("测试 Boss")
-        }));
-        assert!(state.abyss.first_half.hits.iter().all(|hit| {
-            hit.target_id.as_deref() != Some("target-handle")
-                || hit.target_name.as_deref() == Some("测试 Boss")
-        }));
-        assert_eq!(state.total_damage, 600.0);
-        assert_eq!(state.abyss.first_half.total_damage, 600.0);
-    }
-
-    #[test]
     fn unknown_hits_remain_output_and_directions_are_summarized_separately() {
         let mut state = CombatState::default();
         state.push_hit(test_hit(1.0, 1, "outgoing", 100.0));
@@ -829,84 +636,6 @@ mod tests {
         assert_eq!(summary.incoming_damage, 25.0);
         assert_eq!(summary.incoming_hits, 1);
         assert!((summary.unknown_share() - 28.571_428_571).abs() < 1e-6);
-    }
-
-    #[test]
-    fn target_track_resolution_backfills_only_matching_unknown_hits() {
-        let mut state = CombatState::default();
-        let mut matching = test_hit(1.0, 1001, "outgoing", 100.0);
-        matching
-            .target_context
-            .push("目标轨迹键：hp:4:7".to_owned());
-        state.push_hit(matching);
-        let mut unrelated = test_hit(2.0, 1001, "outgoing", 100.0);
-        unrelated
-            .target_context
-            .push("目标轨迹键：hp:4:8".to_owned());
-        state.push_hit(unrelated);
-
-        state.apply_target_track_resolution("hp:4:7", "mon_24_BP_Abyss_C_2147349936", "诡面风筝");
-
-        assert_eq!(
-            state.hits[0].target_id.as_deref(),
-            Some("mon_24_BP_Abyss_C_2147349936")
-        );
-        assert_eq!(state.hits[0].target_name.as_deref(), Some("诡面风筝"));
-        assert!(state.hits[1].target_id.is_none());
-    }
-
-    #[test]
-    fn trimmed_target_names_drop_stale_ids_and_keep_retained_names() {
-        let mut state = CombatState::default();
-        let mut stale = test_hit(-1.0, 1, "outgoing", 1.0);
-        stale.target_id = Some("stale-target".to_owned());
-        stale.target_name = Some("已裁剪目标".to_owned());
-        state.push_hit(stale);
-
-        for index in 0..MAX_COMBAT_HITS {
-            let mut hit = test_hit(index as f64, 1, "outgoing", 1.0);
-            hit.target_id = Some("retained-target".to_owned());
-            if index == 0 {
-                hit.target_name = Some("保留目标".to_owned());
-            }
-            state.push_hit(hit);
-        }
-
-        assert!(!state.target_names.contains_key("stale-target"));
-        assert_eq!(
-            state
-                .target_names
-                .get("retained-target")
-                .map(String::as_str),
-            Some("保留目标")
-        );
-
-        let mut later = test_hit(MAX_COMBAT_HITS as f64, 1, "outgoing", 1.0);
-        later.target_id = Some("retained-target".to_owned());
-        state.push_hit(later);
-        assert_eq!(
-            state.hits.back().and_then(|hit| hit.target_name.as_deref()),
-            Some("保留目标")
-        );
-
-        let mut party = PartyCombatState::default();
-        let mut stale = test_hit(-1.0, 1, "outgoing", 1.0);
-        stale.target_id = Some("party-stale".to_owned());
-        stale.target_name = Some("已裁剪半场目标".to_owned());
-        party.push_hit(stale);
-        for index in 0..MAX_COMBAT_HITS {
-            let mut hit = test_hit(index as f64, 1, "outgoing", 1.0);
-            hit.target_id = Some("party-retained".to_owned());
-            if index == 0 {
-                hit.target_name = Some("保留半场目标".to_owned());
-            }
-            party.push_hit(hit);
-        }
-        assert!(!party.target_names.contains_key("party-stale"));
-        assert_eq!(
-            party.target_names.get("party-retained").map(String::as_str),
-            Some("保留半场目标")
-        );
     }
 
     #[test]

@@ -1,10 +1,8 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
-
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::model::{CharacterInfo, Hit};
 
@@ -25,103 +23,6 @@ pub const CHARACTER_DATA_PATH: &str = "res/data/characters/characters.json";
 pub const GAMEPLAY_EFFECT_MAPPING_PATH: &str = "res/data/skills/gameplay_effect_mapping.json";
 pub const SKILL_DAMAGE_DATA_PATH: &str = "res/data/skills/skill_damage.json";
 pub const WOODEN_DAMAGE_DESCRIPTIONS_PATH: &str = "res/data/skills/wooden_damage_descriptions.json";
-const MONSTER_INDEX_JSON: &str = include_str!("../res/data/monsters/monster_index.json");
-
-#[derive(Debug, Deserialize)]
-struct MonsterIndexDocument {
-    #[serde(default)]
-    icons: HashMap<String, String>,
-    aliases: HashMap<String, MonsterIndexEntry>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-struct MonsterIndexEntry {
-    id: String,
-    display_name: String,
-}
-
-fn monster_document() -> &'static MonsterIndexDocument {
-    static INDEX: OnceLock<MonsterIndexDocument> = OnceLock::new();
-    INDEX.get_or_init(|| {
-        serde_json::from_str(MONSTER_INDEX_JSON).expect("embedded monster index must be valid")
-    })
-}
-
-fn monster_index() -> &'static HashMap<String, MonsterIndexEntry> {
-    &monster_document().aliases
-}
-
-pub fn monster_icon_paths() -> impl Iterator<Item = &'static str> {
-    monster_document().icons.values().map(String::as_str)
-}
-
-pub fn monster_icon_path(
-    target_id: Option<&str>,
-    target_name: Option<&str>,
-) -> Option<&'static str> {
-    if let Some(target_id) = target_id
-        && let Some(path) = match_monster_icon(target_id)
-    {
-        return Some(path);
-    }
-    let target_name = target_name?;
-    monster_index()
-        .iter()
-        .filter(|(_, monster)| monster.display_name == target_name)
-        .filter_map(|(alias, monster)| {
-            match_monster_icon(alias).or_else(|| match_monster_icon(&monster.id))
-        })
-        .next()
-}
-
-fn match_monster_icon(value: &str) -> Option<&'static str> {
-    let normalized = value
-        .strip_suffix("_C")
-        .or_else(|| value.strip_suffix("_c"))
-        .unwrap_or(value)
-        .to_ascii_lowercase();
-    monster_document()
-        .icons
-        .iter()
-        .filter_map(|(family, path)| {
-            monster_icon_match_score(&normalized, family).map(|score| (score, path.as_str()))
-        })
-        .max_by_key(|(score, _)| *score)
-        .map(|(_, path)| path)
-}
-
-fn monster_icon_match_score(value: &str, family: &str) -> Option<usize> {
-    if value == family {
-        return Some(10_000 + family.len());
-    }
-    if value.starts_with(&format!("{family}_")) {
-        return Some(3_000 + family.split('_').count() * 100 + family.len());
-    }
-
-    let (value_kind, value_number) = monster_family_number(value)?;
-    let (family_kind, family_number) = monster_family_number(family)?;
-    if value_kind != family_kind || value_number != family_number {
-        return None;
-    }
-    let suffix_matches = family
-        .split('_')
-        .skip(2)
-        .filter(|part| !part.is_empty() && value.split('_').any(|value_part| value_part == *part))
-        .count();
-    Some(4_000 + suffix_matches * 100 + family.len())
-}
-
-fn monster_family_number(value: &str) -> Option<(&str, u32)> {
-    let (kind, tail) = value.split_once('_')?;
-    if !matches!(kind, "boss" | "mon") {
-        return None;
-    }
-    let digits = tail
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect::<String>();
-    Some((kind, digits.parse().ok()?))
-}
 
 #[derive(Deserialize)]
 struct CharacterDocument {
@@ -331,7 +232,7 @@ pub fn classify_attack_type(
         return "格挡反击".to_owned();
     }
     if effect_name.contains("Reaction_1") || effect_name.contains("Reaction1_") {
-        return "创生花".to_owned();
+        return "创生".to_owned();
     }
     if effect_name.contains("Reaction_2") || effect_name.contains("Reaction2_") {
         return "覆纹".to_owned();
@@ -340,7 +241,7 @@ pub fn classify_attack_type(
         return "延滞".to_owned();
     }
     if effect_name.contains("Reaction_4") || effect_name.contains("Reaction4_") {
-        return "黯星".to_owned();
+        return "默星".to_owned();
     }
     if effect_name.contains("Reaction_5") || effect_name.contains("Reaction5_") {
         return "浊燃".to_owned();
@@ -415,12 +316,12 @@ pub fn qte_reaction_type(
         Some("创生")
     } else if has_pair("灵", "咒") {
         Some("覆纹")
-    } else if has_pair("咒", "暗") {
-        Some("浊燃")
-    } else if has_pair("暗", "魂") {
-        Some("黯星")
     } else if has_pair("光", "相") {
         Some("延滞")
+    } else if has_pair("暗", "魂") {
+        Some("默星")
+    } else if has_pair("暗", "咒") {
+        Some("浊燃")
     } else {
         None
     }
@@ -459,17 +360,8 @@ fn decode_shifted_bytes(
     Some(output)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ParsedMonsterInstance {
-    pub instance_id: String,
-    pub monster_id: String,
-    pub monster_name: String,
-    pub object_name: String,
-    pub byte_offset: usize,
-    pub bit_shift: u8,
-}
-
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn aligned_bytes_for_test(data: &[u8], bit_shift: u8) -> Option<Vec<u8>> {
     decode_shifted_bytes(data, 0, bit_shift, 0, data.len().saturating_sub(1))
 }
@@ -666,33 +558,6 @@ pub fn parse_boss_hp_updates(data: &[u8]) -> Vec<ParsedBossHpUpdate> {
     updates
 }
 
-pub fn parse_object_handles(data: &[u8]) -> Vec<[u8; 16]> {
-    let mut handles = Vec::new();
-    let mut seen = HashSet::new();
-    for bit_shift in 0..8_u8 {
-        let shifted = if bit_shift == 0 {
-            data.to_vec()
-        } else {
-            match decode_shifted_bytes(data, 0, bit_shift, 0, data.len().saturating_sub(1)) {
-                Some(value) => value,
-                None => continue,
-            }
-        };
-        for window in shifted.windows(28) {
-            let handle: [u8; 16] = window[..16]
-                .try_into()
-                .expect("Object handle window has a fixed 16-byte length");
-            if handle.iter().all(|byte| *byte != 0)
-                && window[16..].iter().all(|byte| *byte == 0)
-                && seen.insert(handle)
-            {
-                handles.push(handle);
-            }
-        }
-    }
-    handles
-}
-
 pub fn parse_gameplay_effects(data: &[u8]) -> Vec<ParsedGameplayEffect> {
     let mut effects = Vec::new();
     let mut seen = HashSet::new();
@@ -834,8 +699,6 @@ pub fn parse_damage_payload(
                 }
             });
         let target_hp_after = (target_hp_before - damage).max(0.0);
-        let (mut target_id, mut target_name, mut target_context) =
-            extract_target_metadata(data, byte_offset, bit_shift);
         let direction = if target_max_hp <= MAX_PLAUSIBLE_CHARACTER_HP
             && resolved_packet_char_id.is_some()
             && evidence
@@ -848,12 +711,6 @@ pub fn parse_damage_payload(
         } else {
             "unknown"
         };
-        if direction == "incoming" {
-            target_id = Some(char_id.to_string());
-            target_name = Some(name.clone());
-            target_context = vec!["受击目标：封包内同位角色声明".to_owned()];
-        }
-
         hits.push(Hit {
             timestamp,
             char_id,
@@ -879,9 +736,9 @@ pub fn parse_damage_payload(
             } else {
                 0.0
             },
-            target_id,
-            target_name,
-            target_context,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
@@ -890,234 +747,6 @@ pub fn parse_damage_payload(
         });
     }
     hits
-}
-
-fn extract_target_metadata(
-    data: &[u8],
-    byte_offset: usize,
-    bit_shift: u8,
-) -> (Option<String>, Option<String>, Vec<String>) {
-    let start = byte_offset.saturating_sub(1_024);
-    let end = data.len().min(byte_offset.saturating_add(1_024));
-    let mut shifted = vec![0; end - start];
-    if decode_shifted_into(data, start, bit_shift, 0, &mut shifted).is_none() {
-        return (None, None, Vec::new());
-    }
-    let mut all_strings = Vec::new();
-    let mut strings = Vec::new();
-    let mut cursor = 0;
-    while cursor < shifted.len() {
-        if shifted[cursor].is_ascii_graphic() || shifted[cursor] == b' ' {
-            let begin = cursor;
-            while cursor < shifted.len()
-                && (shifted[cursor].is_ascii_graphic() || shifted[cursor] == b' ')
-            {
-                cursor += 1;
-            }
-            if cursor - begin >= 4 {
-                let value = String::from_utf8_lossy(&shifted[begin..cursor])
-                    .trim()
-                    .to_owned();
-                if !all_strings.contains(&value) {
-                    all_strings.push(value.clone());
-                }
-                let lower = value.to_ascii_lowercase();
-                if [
-                    "target",
-                    "boss",
-                    "enemy",
-                    "monster",
-                    "actor",
-                    "entity",
-                    "npc",
-                    "characterfornet",
-                ]
-                .iter()
-                .any(|marker| lower.contains(marker))
-                    && !strings.contains(&value)
-                {
-                    strings.push(value);
-                }
-            }
-        } else {
-            cursor += 1;
-        }
-    }
-
-    let target_id = strings
-        .iter()
-        .find_map(|value| metadata_value(value, &["targetid", "target_id", "entityid", "actorid"]));
-    let mut target_name = strings.iter().find_map(|value| {
-        metadata_value(
-            value,
-            &[
-                "targetname",
-                "target_name",
-                "enemyname",
-                "monstername",
-                "bossname",
-            ],
-        )
-    });
-    let mut resolved_monsters = all_strings
-        .iter()
-        .flat_map(|value| {
-            value
-                .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
-                .filter(|token| !token.is_empty())
-        })
-        .filter_map(monster_entry)
-        .collect::<Vec<_>>();
-    resolved_monsters.sort_by(|left, right| left.id.cmp(&right.id));
-    resolved_monsters.dedup_by(|left, right| left.id == right.id);
-    let mut target_id = target_id;
-    if resolved_monsters.len() == 1 {
-        let monster = resolved_monsters.remove(0);
-        target_id.get_or_insert(monster.id);
-        target_name.get_or_insert(monster.display_name);
-    }
-    (target_id, target_name, strings)
-}
-
-fn monster_entry(value: &str) -> Option<MonsterIndexEntry> {
-    let normalized = value
-        .strip_suffix("_C")
-        .or_else(|| value.strip_suffix("_c"))
-        .unwrap_or(value)
-        .to_ascii_lowercase();
-    monster_index().get(&normalized).cloned()
-}
-
-pub fn detect_monster_targets(data: &[u8]) -> Vec<(String, String)> {
-    let mut monsters = Vec::new();
-    for bit_shift in 0..8_u8 {
-        let shifted = if bit_shift == 0 {
-            data.to_vec()
-        } else {
-            match decode_shifted_bytes(data, 0, bit_shift, 0, data.len().saturating_sub(1)) {
-                Some(value) => value,
-                None => continue,
-            }
-        };
-        let text = String::from_utf8_lossy(&shifted);
-        for token in
-            text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
-        {
-            let Some((id, display_name)) = monster_entry(token)
-                .map(|monster| (monster.id, monster.display_name))
-                .or_else(|| monster_target_from_identifier(token))
-            else {
-                continue;
-            };
-            let entry = (id, display_name);
-            if !monsters.contains(&entry) {
-                monsters.push(entry);
-            }
-        }
-    }
-    monsters
-}
-
-pub fn detect_monster_instances(data: &[u8]) -> Vec<ParsedMonsterInstance> {
-    let mut instances = BTreeSet::new();
-    for bit_shift in 0..8_u8 {
-        let shifted = if bit_shift == 0 {
-            data.to_vec()
-        } else {
-            match decode_shifted_bytes(data, 0, bit_shift, 0, data.len().saturating_sub(1)) {
-                Some(value) => value,
-                None => continue,
-            }
-        };
-        let mut cursor = 0;
-        while cursor < shifted.len() {
-            if !(shifted[cursor].is_ascii_alphanumeric() || shifted[cursor] == b'_') {
-                cursor += 1;
-                continue;
-            }
-            let start = cursor;
-            while cursor < shifted.len()
-                && (shifted[cursor].is_ascii_alphanumeric() || shifted[cursor] == b'_')
-            {
-                cursor += 1;
-            }
-            let Ok(token) = std::str::from_utf8(&shifted[start..cursor]) else {
-                continue;
-            };
-            let Some((base, instance_id)) = token.rsplit_once("_C_") else {
-                continue;
-            };
-            if instance_id.is_empty() || !instance_id.bytes().all(|byte| byte.is_ascii_digit()) {
-                continue;
-            }
-            let Some(monster) = monster_entry(base) else {
-                continue;
-            };
-            instances.insert(ParsedMonsterInstance {
-                instance_id: instance_id.to_owned(),
-                monster_id: monster.id,
-                monster_name: monster.display_name,
-                object_name: token.to_owned(),
-                byte_offset: start,
-                bit_shift,
-            });
-        }
-    }
-    instances.into_iter().collect()
-}
-
-pub fn monster_target_from_identifier(value: &str) -> Option<(String, String)> {
-    if let Some(monster) = monster_entry(value) {
-        return Some((monster.id, monster.display_name));
-    }
-    let lower = value.to_ascii_lowercase();
-    for marker in ["boss_", "mon_"] {
-        let Some(start) = lower.find(marker) else {
-            continue;
-        };
-        let raw_digits = lower[start + marker.len()..]
-            .chars()
-            .take_while(char::is_ascii_digit)
-            .collect::<String>();
-        if raw_digits.is_empty() {
-            continue;
-        }
-        let normalized_digits = raw_digits.trim_start_matches('0');
-        for family in [
-            format!("{marker}{raw_digits}"),
-            format!("{marker}{raw_digits}_bp"),
-            format!("{marker}{normalized_digits}"),
-            format!("{marker}{normalized_digits}_bp"),
-        ] {
-            if let Some(monster) = monster_index().get(&family) {
-                return Some((monster.id.clone(), monster.display_name.clone()));
-            }
-        }
-    }
-    None
-}
-
-fn metadata_value(value: &str, keys: &[&str]) -> Option<String> {
-    let lower = value.to_ascii_lowercase();
-    for key in keys {
-        let Some(index) = lower.find(key) else {
-            continue;
-        };
-        let tail = value[index + key.len()..]
-            .trim_start_matches(|character: char| {
-                character.is_ascii_whitespace() || matches!(character, ':' | '=' | '#')
-            })
-            .split(|character: char| {
-                character.is_ascii_whitespace() || matches!(character, ',' | ';' | '|' | '\0')
-            })
-            .next()
-            .unwrap_or_default()
-            .trim();
-        if !tail.is_empty() && tail.len() <= 96 {
-            return Some(tail.to_owned());
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -1312,11 +941,10 @@ mod character_tests {
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].target_handle, handle);
         assert_eq!(updates[0].current_hp, 1_927_891.0);
-        assert!(parse_object_handles(&payload).contains(&handle));
     }
 
     #[test]
-    fn incoming_damage_targets_declared_character() {
+    fn incoming_damage_keeps_legacy_target_fields_empty() {
         let mut payload = b"/Game/Blueprints/Character/Monster/boss_07/".to_vec();
         payload.extend_from_slice(&encoded_damage_record(100.0, 10_000.0, 20_000.0));
         payload.extend_from_slice(&[5, 0, 0, 0, b'1', b'0', b'0', b'1', 0]);
@@ -1324,7 +952,7 @@ mod character_tests {
         let characters = HashMap::from([(
             1001,
             CharacterInfo {
-                name_zh: "娜娜莉".to_owned(),
+                name_zh: "Nanally".to_owned(),
                 name_en: String::new(),
                 color: None,
                 avatar: None,
@@ -1336,14 +964,10 @@ mod character_tests {
 
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].direction, "incoming");
-        assert_eq!(hits[0].target_id.as_deref(), Some("1001"));
-        assert_eq!(hits[0].target_name.as_deref(), Some("娜娜莉"));
-        assert!(
-            hits[0]
-                .target_context
-                .iter()
-                .all(|context| !context.to_ascii_lowercase().contains("boss"))
-        );
+        assert_eq!(hits[0].char_id, 1001);
+        assert!(hits[0].target_id.is_none());
+        assert!(hits[0].target_name.is_none());
+        assert!(hits[0].target_context.is_empty());
     }
 
     #[test]
@@ -1353,56 +977,5 @@ mod character_tests {
         assert_eq!(declared_character_for_shift(&evidence, 3), Some(1004));
         assert_eq!(declared_character_for_shift(&evidence, 2), Some(1003));
         assert_eq!(declared_character_for_shift(&evidence, 5), None);
-    }
-
-    #[test]
-    fn resolves_monster_class_near_damage_record() {
-        let payload = b"/Game/Blueprints/Character/Monster/Boss_017_BP_Abyss.Boss_017_BP_Abyss_C";
-        let (target_id, target_name, _) = extract_target_metadata(payload, payload.len() / 2, 0);
-
-        assert_eq!(target_id.as_deref(), Some("Boss_017_BP_Abyss"));
-        assert_eq!(target_name.as_deref(), Some("玛门"));
-        assert_eq!(
-            detect_monster_targets(payload),
-            vec![("Boss_017_BP_Abyss".to_owned(), "玛门".to_owned())]
-        );
-        assert_eq!(
-            monster_target_from_identifier("GE_Boss_017_act01_Dmg_05a_Steal_BP"),
-            Some(("Boss_017_BP_Abyss".to_owned(), "玛门".to_owned()))
-        );
-        assert_eq!(
-            monster_target_from_identifier("boss_07"),
-            Some(("Boss_07_BP".to_owned(), "塞润尼缇".to_owned()))
-        );
-    }
-
-    #[test]
-    fn resolves_monster_icons_for_family_variants() {
-        assert_eq!(
-            monster_icon_path(Some("Boss_07_BP_Abyss"), Some("塞润尼缇")),
-            Some("res/images/monsters/Boss_07.png")
-        );
-        assert_eq!(
-            monster_icon_path(Some("Boss_017_BP_Abyss"), Some("玛门")),
-            Some("res/images/monsters/Boss_17.png")
-        );
-        assert_eq!(
-            monster_icon_path(Some("mon_18_2_BP_Abyss"), Some("棉绒绒(变身)")),
-            Some("res/images/monsters/mon_18_2.png")
-        );
-        assert_eq!(
-            monster_icon_path(Some("mon_35_BP_Red_Abyss"), None),
-            Some("res/images/monsters/mon_35_red.png")
-        );
-    }
-
-    #[test]
-    fn parses_unique_monster_instance_names() {
-        let instances = detect_monster_instances(b"mon_24_BP_Abyss_C_2147349936\0");
-        assert_eq!(instances.len(), 1);
-        assert_eq!(instances[0].instance_id, "2147349936");
-        assert_eq!(instances[0].monster_id, "mon_24_BP_Abyss");
-        assert_eq!(instances[0].monster_name, "诡面风筝");
-        assert_eq!(instances[0].object_name, "mon_24_BP_Abyss_C_2147349936");
     }
 }

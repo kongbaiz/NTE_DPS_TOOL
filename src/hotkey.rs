@@ -1,6 +1,6 @@
 use std::sync::{
-    Arc, OnceLock,
-    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::thread;
 use std::time::Duration;
@@ -17,8 +17,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
-static HOTKEY_SENDER: OnceLock<Sender<HotkeyEvent>> = OnceLock::new();
-static HOTKEY_CONTEXT: OnceLock<egui::Context> = OnceLock::new();
+#[derive(Default)]
+struct HotkeyState {
+    sender: Option<Sender<HotkeyEvent>>,
+    context: Option<egui::Context>,
+    instance_id: u64,
+}
+
+static HOTKEY_STATE: OnceLock<Mutex<HotkeyState>> = OnceLock::new();
+static HOTKEY_INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
 static HOME_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(not(feature = "no_debug"))]
 static F12_DOWN: AtomicBool = AtomicBool::new(false);
@@ -32,10 +39,20 @@ pub enum HotkeyEvent {
 }
 
 fn send_hotkey(event: HotkeyEvent) {
-    if let Some(sender) = HOTKEY_SENDER.get() {
+    let (sender, context) = HOTKEY_STATE
+        .get()
+        .map(|state| match state.lock() {
+            Ok(state) => (state.sender.clone(), state.context.clone()),
+            Err(poisoned) => {
+                let state = poisoned.into_inner();
+                (state.sender.clone(), state.context.clone())
+            }
+        })
+        .unwrap_or((None, None));
+    if let Some(sender) = sender {
         let _ = sender.send(event);
     }
-    if let Some(context) = HOTKEY_CONTEXT.get() {
+    if let Some(context) = context {
         context.request_repaint();
     }
 }
@@ -85,15 +102,23 @@ unsafe extern "system" fn low_level_keyboard_proc(
 }
 
 pub struct HotkeyHandle {
+    instance_id: u64,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
 impl HotkeyHandle {
     pub fn start(context: egui::Context) -> (Self, Receiver<HotkeyEvent>) {
+        let instance_id = HOTKEY_INSTANCE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = unbounded();
-        let _ = HOTKEY_SENDER.set(sender.clone());
-        let _ = HOTKEY_CONTEXT.set(context);
+        let state = HOTKEY_STATE.get_or_init(|| Mutex::new(HotkeyState::default()));
+        let mut state = match state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        state.sender = Some(sender.clone());
+        state.context = Some(context);
+        state.instance_id = instance_id;
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
         let thread = thread::spawn(move || {
@@ -108,11 +133,11 @@ impl HotkeyHandle {
             if hook.is_null() {
                 let error = unsafe { GetLastError() };
                 #[cfg(not(feature = "no_debug"))]
-                let shortcut = "Home / F12（低级键盘钩子）";
+                let shortcut = "Home / F12";
                 #[cfg(feature = "no_debug")]
-                let shortcut = "Home（低级键盘钩子）";
+                let shortcut = "Home";
                 let _ = sender.send(HotkeyEvent::RegistrationFailed(format!(
-                    "{shortcut}，GetLastError={error}"
+                    "{shortcut} 注册失败，GetLastError={error}"
                 )));
                 return;
             }
@@ -132,6 +157,7 @@ impl HotkeyHandle {
 
         (
             Self {
+                instance_id,
                 stop,
                 thread: Some(thread),
             },
@@ -145,6 +171,17 @@ impl Drop for HotkeyHandle {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
+        }
+        let Some(state) = HOTKEY_STATE.get() else {
+            return;
+        };
+        let mut state = match state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if state.instance_id == self.instance_id {
+            state.sender = None;
+            state.context = None;
         }
     }
 }

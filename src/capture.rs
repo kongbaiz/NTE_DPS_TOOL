@@ -1,7 +1,5 @@
 use std::borrow::Cow;
-#[cfg(test)]
-use std::collections::BTreeMap;
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{CStr, CString, c_char, c_int, c_uchar, c_uint};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -30,21 +28,18 @@ use crate::model::{AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, Packe
 use crate::parser::{
     GAMEPLAY_EFFECT_MAPPING_PATH, GameplayEffectSkill, ParsedGameplayEffect,
     SKILL_DAMAGE_DATA_PATH, WOODEN_DAMAGE_DESCRIPTIONS_PATH, classify_attack_type,
-    classify_attack_type_from_description, declared_character_ids_from_evidence,
-    detect_monster_instances, detect_monster_targets, find_data_file,
+    classify_attack_type_from_description, declared_character_ids_from_evidence, find_data_file,
     find_declared_character_evidence, load_gameplay_effect_mapping, load_gameplay_effect_skills,
-    load_wooden_damage_names, monster_target_from_identifier, normalize_damage_name,
-    parse_boss_hp_updates, parse_current_hp_updates, parse_damage_payload, parse_gameplay_effects,
-    parse_object_handles, qte_reaction_type,
+    load_wooden_damage_names, normalize_damage_name, parse_boss_hp_updates,
+    parse_current_hp_updates, parse_damage_payload, parse_gameplay_effects, qte_reaction_type,
 };
 
-include!(concat!(env!("OUT_DIR"), "/abyss_stage_index.rs"));
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 
 const PCAP_ERRBUF_SIZE: usize = 256;
 const MIN_READABLE_TEXT_LEN: usize = 4;
 const MAX_IGNORABLE_BINARY_PACKET_LEN: usize = 96;
-const UNREADABLE_PROTOCOL_TEXT: &str = "未解析到可读协议文本";
+const UNREADABLE_PROTOCOL_TEXT: &str = "鏈В鏋愬埌鍙鍗忚鏂囨湰";
 const CAPTURE_SNAPLEN: u32 = 65_535;
 const RAW_CAPTURE_FLUSH_INTERVAL: u64 = 256;
 
@@ -103,6 +98,70 @@ type Compile =
 type SetFilter = unsafe extern "C" fn(*mut PcapT, *mut BpfProgram) -> c_int;
 type FreeCode = unsafe extern "C" fn(*mut BpfProgram);
 type GetErr = unsafe extern "C" fn(*mut PcapT) -> *const c_char;
+
+struct PcapHandle {
+    raw: *mut PcapT,
+    close: Close,
+}
+
+impl PcapHandle {
+    fn new(raw: *mut PcapT, close: Close) -> Self {
+        Self { raw, close }
+    }
+
+    fn as_ptr(&self) -> *mut PcapT {
+        self.raw
+    }
+}
+
+impl Drop for PcapHandle {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            unsafe {
+                (self.close)(self.raw);
+            }
+            self.raw = ptr::null_mut();
+        }
+    }
+}
+
+struct BpfProgramGuard {
+    program: BpfProgram,
+    free_code: FreeCode,
+    active: bool,
+}
+
+impl BpfProgramGuard {
+    fn new(free_code: FreeCode) -> Self {
+        Self {
+            program: BpfProgram {
+                bf_len: 0,
+                bf_insns: ptr::null_mut(),
+            },
+            free_code,
+            active: true,
+        }
+    }
+
+    fn as_mut(&mut self) -> &mut BpfProgram {
+        &mut self.program
+    }
+
+    fn release(&mut self) {
+        if self.active {
+            unsafe {
+                (self.free_code)(&mut self.program);
+            }
+            self.active = false;
+        }
+    }
+}
+
+impl Drop for BpfProgramGuard {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct CaptureDevice {
@@ -218,17 +277,17 @@ impl RawCaptureBuffer {
         let capture = self
             .inner
             .lock()
-            .map_err(|_| "原始抓包状态不可用".to_owned())?;
+            .map_err(|_| "raw capture lock poisoned".to_owned())?;
         if capture.writer.is_some() {
-            return Err("抓包文件仍在写入，请先停止抓包".to_owned());
+            return Err("raw capture is still being written; stop capture first".to_owned());
         }
         if let Some(error) = &capture.write_error {
-            return Err(format!("原始抓包写入失败：{error}"));
+            return Err(format!("raw capture write failed: {error}"));
         }
         if path != capture.path {
             std::fs::copy(&capture.path, path).map_err(|error| {
                 format!(
-                    "无法复制抓包文件 {} 到 {}: {error}",
+                    "failed to copy raw capture {} to {}: {error}",
                     capture.path.display(),
                     path.display()
                 )
@@ -247,11 +306,19 @@ struct RawCaptureWriter {
 impl RawCaptureWriter {
     fn create(path: &std::path::Path, device: &CaptureDevice) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("无法创建原始抓包目录 {}: {error}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create raw capture directory {}: {error}",
+                    parent.display()
+                )
+            })?;
         }
-        let file = File::create(path)
-            .map_err(|error| format!("无法创建原始抓包文件 {}: {error}", path.display()))?;
+        let file = File::create(path).map_err(|error| {
+            format!(
+                "failed to create raw capture file {}: {error}",
+                path.display()
+            )
+        })?;
         let mut writer =
             PcapNgWriter::new(BufWriter::new(file)).map_err(|error| error.to_string())?;
         let mut interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, CAPTURE_SNAPLEN);
@@ -355,9 +422,9 @@ pub fn list_devices() -> Result<Vec<CaptureDevice>, String> {
     // SAFETY: Loading a known Npcap DLL and calling its documented API.
     unsafe {
         let _packet_library = Library::new(packet_library_path())
-            .map_err(|error| format!("无法加载 Npcap Packet.dll: {error}"))?;
+            .map_err(|error| format!("鏃犳硶鍔犺浇 Npcap Packet.dll: {error}"))?;
         let library = Library::new(npcap_library_path())
-            .map_err(|error| format!("无法加载 Npcap，请先安装 Npcap: {error}"))?;
+            .map_err(|error| format!("鏃犳硶鍔犺浇 Npcap锛岃鍏堝畨瑁?Npcap: {error}"))?;
         let find_all_devs: FindAllDevs = load_symbol(&library, b"pcap_findalldevs\0")?;
         let free_all_devs: FreeAllDevs = load_symbol(&library, b"pcap_freealldevs\0")?;
         let mut devices_ptr = ptr::null_mut();
@@ -680,8 +747,7 @@ fn binary_payload_diagnostic(
             .collect::<HashSet<_>>()
             .len();
         return Some(format!(
-            "已识别 UE 长度前缀角色声明；其余内容为无内联字段名的位打包复制增量，\
-检测到 {} 个锚点、{} 种位对齐：{}",
+            "detected {} character anchors across {} bit alignments: {}",
             anchors.len(),
             alignments,
             anchors.join(", ")
@@ -697,8 +763,7 @@ fn binary_payload_diagnostic(
         return None;
     }
     Some(format!(
-        "候选 UE 位打包复制/引用增量：无 FString 锚点或内联字段名，\
-零字节占比 {:.1}%，熵 {:.2} bit/byte",
+        "candidate packed replication payload: zero_ratio={:.1}%, entropy={:.2} bit/byte",
         zero_ratio * 100.0,
         entropy
     ))
@@ -712,7 +777,7 @@ fn append_packet_note(note: &mut String, diagnostic: Option<String>) {
         return;
     }
     if !note.is_empty() {
-        note.push('；');
+        note.push_str("; ");
     }
     note.push_str(&diagnostic);
 }
@@ -784,56 +849,9 @@ fn abyss_events_from_text(timestamp: f64, decoded_text: &str) -> Vec<AbyssEvent>
     events
 }
 
-#[derive(Clone, Debug)]
-struct AbyssStageTarget {
-    id: String,
-    name: String,
-    max_hp: Option<u64>,
-}
-
-fn abyss_stage_target(identifier: &str, max_hp: Option<u64>) -> Option<AbyssStageTarget> {
-    let abyss_identifier = (!identifier.ends_with("_Abyss")).then(|| format!("{identifier}_Abyss"));
-    let (id, name) = abyss_identifier
-        .as_deref()
-        .and_then(monster_target_from_identifier)
-        .or_else(|| monster_target_from_identifier(identifier))?;
-    Some(AbyssStageTarget { id, name, max_hp })
-}
-
-fn abyss_stage_targets(cycle: u32, floor: u32, half: AbyssHalf) -> Vec<AbyssStageTarget> {
-    let half_index = match half {
-        AbyssHalf::First => 0,
-        AbyssHalf::Second => 1,
-    };
-    let rows = ABYSS_STAGE_ROWS
-        .iter()
-        .filter(|&&(row_cycle, row_floor, row_half, _, _, _)| {
-            row_cycle == cycle && row_floor == floor && row_half == half_index
-        })
-        .filter_map(|&(_, _, _, _, identifier, max_hp)| {
-            abyss_stage_target(identifier, Some(max_hp))
-        })
-        .collect::<Vec<_>>();
-
-    let names = rows
-        .iter()
-        .map(|target| target.name.as_str())
-        .collect::<BTreeSet<_>>();
-    if names.len() == 1 {
-        let mut target = rows.into_iter().next().expect("one target name exists");
-        target.max_hp = None;
-        return vec![target];
-    }
-
-    rows
-}
-
 fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
     for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
         let _ = sender.send(EngineEvent::Abyss(event));
-    }
-    for scene in crate::scene::detect_scenes(packet.timestamp, &packet.decoded_text) {
-        let _ = sender.send(EngineEvent::Scene(scene));
     }
     let _ = sender.send(EngineEvent::Packet(packet));
 }
@@ -973,7 +991,7 @@ impl FollowUpDamageTracker {
         Some(Hit {
             timestamp,
             char_id: INFERRED_FOLLOW_UP_CHAR_ID,
-            char_name: "覆纹伤害".to_owned(),
+            char_name: "瑕嗙汗浼ゅ".to_owned(),
             char_known: false,
             damage: inferred_damage,
             byte_offset: 0,
@@ -988,34 +1006,14 @@ impl FollowUpDamageTracker {
             } else {
                 0.0
             },
-            target_id: source.target_id,
-            target_name: source.target_name,
-            target_context: vec![
-                format!(
-                    "服务器实际掉血 {:.0} - 封包伤害 {:.0}（残差 {:.1}%）",
-                    actual_damage,
-                    source.damage,
-                    inferred_ratio * 100.0
-                ),
-                if corrected {
-                    format!(
-                        "GameplayEffect {}：按显示伤害的 20% 反解覆纹 {:.0}",
-                        pending.gameplay_effect_index.unwrap_or_default(),
-                        inferred_damage
-                    )
-                } else {
-                    "覆纹取服务器 HP 残差".to_owned()
-                },
-                format!(
-                    "触发角色 {}（{}，{}属性）",
-                    source.char_name, source.char_id, source_attribute
-                ),
-            ],
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
-            damage_name: Some("覆纹追加攻击".to_owned()),
-            attack_type: Some("覆纹".to_owned()),
+            damage_name: Some("瑕嗙汗杩藉姞鏀诲嚮".to_owned()),
+            attack_type: Some("瑕嗙汗".to_owned()),
         })
     }
 }
@@ -1048,575 +1046,74 @@ fn corrected_follow_up_damage(
     None
 }
 
-#[derive(Clone, Debug)]
-struct TargetHandleInfo {
-    handle: [u8; 16],
-    target_id: String,
-    target_name: Option<String>,
-    monster_id: Option<String>,
-    monster_name: Option<String>,
-    max_hp: Option<f64>,
-    last_hp: Option<f64>,
-    last_seen_at: f64,
-    ambiguous: bool,
-}
-
-#[derive(Default)]
-struct TargetHandleTracker {
-    targets: HashMap<[u8; 16], TargetHandleInfo>,
-    scope: u64,
-}
-
-impl TargetHandleTracker {
-    fn observe_monster(
-        &mut self,
-        handles: &[[u8; 16]],
-        monsters: &[(String, String)],
-        timestamp: f64,
-    ) {
-        let [(monster_id, _)] = monsters else {
-            return;
-        };
-        let noisy_generic = matches!(
-            monster_id.to_ascii_lowercase().as_str(),
-            "mon_01_bp" | "mon_04_bp" | "mon_015_bp" | "mon_18_bp"
-        );
-        let handle = if let [handle] = handles {
-            *handle
-        } else {
-            let mut candidates = if handles.is_empty() {
-                self.targets
-                    .values()
-                    .filter(|target| {
-                        target.monster_name.is_none()
-                            && target.max_hp.is_some()
-                            && timestamp - target.last_seen_at <= 2.0
-                    })
-                    .map(|target| target.handle)
-                    .collect::<Vec<_>>()
-            } else {
-                handles
-                    .iter()
-                    .copied()
-                    .filter(|handle| {
-                        self.targets.get(handle).is_some_and(|target| {
-                            target.max_hp.is_some() && timestamp - target.last_seen_at <= 2.0
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            };
-            candidates.sort_unstable();
-            candidates.dedup();
-            let [handle] = candidates.as_slice() else {
-                return;
-            };
-            if noisy_generic {
-                return;
-            }
-            *handle
-        };
-        let (monster_id, monster_name) = &monsters[0];
-        let target = self
-            .targets
-            .entry(handle)
-            .or_insert_with(|| target_handle_info(handle, timestamp, self.scope));
-        if target
-            .monster_name
-            .as_deref()
-            .is_some_and(|known| known != monster_name)
-        {
-            target.target_name = None;
-            target.monster_id = None;
-            target.monster_name = None;
-            target.ambiguous = true;
-            target.last_seen_at = timestamp;
-            return;
-        }
-        if target.ambiguous {
-            return;
-        }
-        target.target_name = Some(monster_name.clone());
-        target.monster_id = Some(monster_id.clone());
-        target.monster_name = Some(monster_name.clone());
-        target.last_seen_at = timestamp;
-    }
-
-    fn observe_boss_hp(&mut self, handle: [u8; 16], current_hp: f64, timestamp: f64) {
-        let target = self
-            .targets
-            .entry(handle)
-            .or_insert_with(|| target_handle_info(handle, timestamp, self.scope));
-        target.last_hp = Some(current_hp);
-        target.max_hp = Some(
-            target
-                .max_hp
-                .map_or(current_hp, |maximum| maximum.max(current_hp)),
-        );
-        target.last_seen_at = timestamp;
-    }
-
-    fn apply_to_hits(
-        &mut self,
-        packet_handles: &[[u8; 16]],
-        hits: &mut [Hit],
-        timestamp: f64,
-    ) -> bool {
-        let mut matched_handles = packet_handles
-            .iter()
-            .copied()
-            .filter(|handle| self.targets.contains_key(handle))
-            .collect::<Vec<_>>();
-        matched_handles.sort_unstable();
-        matched_handles.dedup();
-        let [handle] = matched_handles.as_slice() else {
-            return false;
-        };
-        let Some(target) = self.targets.get_mut(handle) else {
-            return false;
-        };
-        if target.ambiguous {
-            return false;
-        }
-        debug_assert!(target.target_id.starts_with(&hex::encode(target.handle)));
-        target.last_seen_at = timestamp;
-        for hit in hits {
-            if hit.direction == "incoming" {
-                continue;
-            }
-            if let (Some(hit_name), Some(handle_name)) =
-                (hit.target_name.as_deref(), target.monster_name.as_deref())
-                && hit_name != handle_name
-            {
-                continue;
-            }
-            if hit.target_name.is_none() {
-                hit.target_name = target
-                    .target_name
-                    .clone()
-                    .or_else(|| target.monster_name.clone());
-            }
-            target.max_hp = Some(
-                target
-                    .max_hp
-                    .map_or(hit.target_max_hp, |maximum| maximum.max(hit.target_max_hp)),
-            );
-            target.last_hp = Some(hit.target_hp_after);
-            hit.target_context.push(format!(
-                "协议相关 16 字节值：{}（仅用于名称线索，不作为实体唯一 ID）",
-                target.target_id
-            ));
-            if let (Some(monster_id), Some(monster_name)) =
-                (&target.monster_id, &target.monster_name)
-            {
-                hit.target_context
-                    .push(format!("对象句柄关联怪物：{monster_name}（{monster_id}）"));
-            }
-        }
-        true
-    }
-
-    fn clear(&mut self) {
-        self.targets.clear();
-    }
-
-    fn begin_scope(&mut self) {
-        self.scope = self.scope.wrapping_add(1);
-        self.clear();
-    }
-}
-
-fn target_handle_info(handle: [u8; 16], timestamp: f64, scope: u64) -> TargetHandleInfo {
-    let handle_id = hex::encode(handle);
-    TargetHandleInfo {
-        handle,
-        target_id: if scope == 0 {
-            handle_id
-        } else {
-            format!("{handle_id}#{scope}")
-        },
-        target_name: None,
-        monster_id: None,
-        monster_name: None,
-        max_hp: None,
-        last_hp: None,
-        last_seen_at: timestamp,
-        ambiguous: false,
-    }
-}
-
-#[derive(Clone, Debug)]
-struct ObservedTargetTrack {
-    serial: u64,
-    max_hp: f64,
-    current_hp: f64,
-    last_seen_at: f64,
-    instance_id: Option<String>,
-    instance_name: Option<String>,
-}
-
-#[derive(Default)]
-struct TargetTrackResolver {
-    scope: u64,
-    next_serial: u64,
-    tracks: Vec<ObservedTargetTrack>,
-}
-
-#[derive(Clone, Debug)]
-struct TargetTrackResolution {
-    track_key: String,
-    target_id: String,
-    target_name: String,
-}
-
-impl TargetTrackResolver {
-    fn begin_scope(&mut self) {
-        self.scope = self.scope.wrapping_add(1);
-        self.next_serial = 0;
-        self.tracks.clear();
-    }
-
-    fn resolve_hits(
-        &mut self,
-        hits: &mut [Hit],
-        instances: &[crate::parser::ParsedMonsterInstance],
-        timestamp: f64,
-    ) -> Vec<TargetTrackResolution> {
-        let mut resolutions = Vec::new();
-        self.tracks
-            .retain(|track| timestamp - track.last_seen_at <= 30.0);
-
-        for hit in hits.iter_mut().filter(|hit| hit.direction != "incoming") {
-            let direct_instance = closest_instance_for_hit(hit, instances);
-            let track_index = direct_instance
-                .and_then(|instance| {
-                    self.tracks.iter().position(|track| {
-                        track.instance_id.as_deref() == Some(instance.object_name.as_str())
-                    })
-                })
-                .or_else(|| {
-                    self.unique_continuous_track(
-                        hit,
-                        direct_instance.map(|instance| instance.object_name.as_str()),
-                    )
-                });
-
-            let track_index = track_index.unwrap_or_else(|| {
-                let serial = self.next_serial;
-                self.next_serial = self.next_serial.wrapping_add(1);
-                self.tracks.push(ObservedTargetTrack {
-                    serial,
-                    max_hp: hit.target_max_hp,
-                    current_hp: hit.target_hp_before,
-                    last_seen_at: timestamp,
-                    instance_id: None,
-                    instance_name: None,
-                });
-                self.tracks.len() - 1
-            });
-
-            let track = &mut self.tracks[track_index];
-            track.max_hp = track.max_hp.max(hit.target_max_hp);
-            track.current_hp = hit.target_hp_after;
-            track.last_seen_at = timestamp;
-            let track_key = format!("hp:{}:{}", self.scope, track.serial);
-            hit.target_context.push(format!("目标轨迹键：{track_key}"));
-
-            if let Some(instance) = direct_instance {
-                let newly_bound = track.instance_id.is_none();
-                track.instance_id = Some(instance.object_name.clone());
-                track.instance_name = Some(instance.monster_name.clone());
-                hit.target_id = Some(instance.object_name.clone());
-                hit.target_name = Some(instance.monster_name.clone());
-                hit.target_context.push(format!(
-                    "同包唯一/最近对象实例：{}（伤害 shift={}，实例 shift={}，距离 {} bit）",
-                    instance.object_name,
-                    hit.bit_shift,
-                    instance.bit_shift,
-                    (hit.byte_offset * 8 + hit.bit_shift as usize)
-                        .abs_diff(instance.byte_offset * 8 + instance.bit_shift as usize)
-                ));
-                if newly_bound {
-                    resolutions.push(TargetTrackResolution {
-                        track_key,
-                        target_id: instance.object_name.clone(),
-                        target_name: instance.monster_name.clone(),
-                    });
-                }
-            } else if let Some(instance_id) = &track.instance_id {
-                hit.target_id = Some(instance_id.clone());
-                hit.target_name.clone_from(&track.instance_name);
-                hit.target_context.push(format!(
-                    "HP 连续轨迹：scope={} track={}，继承已确认对象实例",
-                    self.scope, track.serial
-                ));
-            } else {
-                hit.target_context.push(format!(
-                    "HP 连续轨迹：scope={} track={}（未绑定协议实例）",
-                    self.scope, track.serial
-                ));
-            }
-        }
-        resolutions
-    }
-
-    fn unique_continuous_track(
-        &self,
-        hit: &Hit,
-        direct_instance_id: Option<&str>,
-    ) -> Option<usize> {
-        let tolerance = 0.5_f64.max(hit.target_max_hp.abs() * 1e-6);
-        let reset_threshold = hit.target_max_hp * 0.05;
-        let mut candidates = self
-            .tracks
-            .iter()
-            .enumerate()
-            .filter_map(|(index, track)| {
-                if (track.max_hp - hit.target_max_hp).abs() > tolerance {
-                    return None;
-                }
-                if let (Some(expected), Some(actual)) =
-                    (direct_instance_id, track.instance_id.as_deref())
-                    && expected != actual
-                {
-                    return None;
-                }
-                let hp_increase = hit.target_hp_before - track.current_hp;
-                let looks_like_fresh_spawn = hp_increase > reset_threshold
-                    && hit.target_hp_before >= hit.target_max_hp * 0.9;
-                (!looks_like_fresh_spawn)
-                    .then_some(((track.current_hp - hit.target_hp_before).abs(), index))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_by(|left, right| left.0.total_cmp(&right.0));
-        let (best_gap, best_index) = *candidates.first()?;
-        if candidates
-            .get(1)
-            .is_some_and(|(gap, _)| (*gap - best_gap).abs() <= tolerance)
-        {
-            return None;
-        }
-        Some(best_index)
-    }
-}
-
-fn closest_instance_for_hit<'a>(
-    hit: &Hit,
-    instances: &'a [crate::parser::ParsedMonsterInstance],
-) -> Option<&'a crate::parser::ParsedMonsterInstance> {
-    if let [instance] = instances {
-        return Some(instance);
-    }
-
-    const MAX_INSTANCE_DISTANCE_BITS: usize = 16_384;
-    let hit_bit_offset = hit.byte_offset * 8 + hit.bit_shift as usize;
-    let mut candidates = instances
-        .iter()
-        .map(|instance| {
-            let instance_bit_offset = instance.byte_offset * 8 + instance.bit_shift as usize;
-            (hit_bit_offset.abs_diff(instance_bit_offset), instance)
-        })
-        .filter(|(distance, _)| *distance <= MAX_INSTANCE_DISTANCE_BITS)
-        .collect::<Vec<_>>();
-    candidates.sort_by_key(|(distance, _)| *distance);
-    let (best_distance, best) = candidates.first().copied()?;
-    if candidates
-        .get(1)
-        .is_some_and(|(distance, _)| *distance == best_distance)
-    {
-        return None;
-    }
-    Some(best)
-}
-
 struct PacketDecoder {
     session_characters: HashMap<(Ipv4Addr, u16, Ipv4Addr, u16), u32>,
     client_endpoints: HashSet<(Ipv4Addr, u16)>,
-    follow_up_damage: FollowUpDamageTracker,
     gameplay_effect_names: HashMap<u32, String>,
     gameplay_effect_skills: HashMap<String, GameplayEffectSkill>,
     wooden_damage_names: HashMap<String, String>,
-    resource_warnings: Vec<String>,
+    follow_up_damage: FollowUpDamageTracker,
     character_declarations: HashMap<u32, f64>,
-    current_monster: Option<InferredMonsterTarget>,
-    target_handles: TargetHandleTracker,
-    target_tracks: TargetTrackResolver,
-    active_abyss_stage: Option<(u32, u32, AbyssHalf)>,
-    abyss_stage_targets: Vec<AbyssStageTarget>,
-    scene_transition_active: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MonsterTargetSource {
-    Entity,
-    GameplayEffect,
-}
-
-impl MonsterTargetSource {
-    fn confidence(self) -> u8 {
-        match self {
-            Self::Entity => 1,
-            Self::GameplayEffect => 2,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Entity => "怪物实体特征",
-            Self::GameplayEffect => "GameplayEffect 特征",
-        }
-    }
-
-    fn confidence_label(self) -> &'static str {
-        match self {
-            Self::Entity => "低",
-            Self::GameplayEffect => "高",
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct InferredMonsterTarget {
-    id: String,
-    name: String,
-    source: MonsterTargetSource,
-    observed_at: f64,
-    expires_at: f64,
+    resource_warnings: Vec<String>,
 }
 
 impl Default for PacketDecoder {
     fn default() -> Self {
-        let mapping_relative = Path::new(GAMEPLAY_EFFECT_MAPPING_PATH);
-        let skills_relative = Path::new(SKILL_DAMAGE_DATA_PATH);
-        let wooden_relative = Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH);
         let mut resource_warnings = Vec::new();
-        let gameplay_effect_names = find_data_file(mapping_relative)
-            .ok_or_else(|| format!("找不到 {}", mapping_relative.display()))
-            .and_then(|path| load_gameplay_effect_mapping(&path).map_err(|error| error.to_string()))
-            .unwrap_or_else(|error| {
-                resource_warnings.push(format!("GameplayEffect 名称表加载失败：{error}"));
-                HashMap::new()
-            });
-        let gameplay_effect_skills = find_data_file(skills_relative)
-            .ok_or_else(|| format!("找不到 {}", skills_relative.display()))
-            .and_then(|path| load_gameplay_effect_skills(&path).map_err(|error| error.to_string()))
-            .unwrap_or_else(|error| {
-                resource_warnings.push(format!("技能分类表加载失败：{error}"));
-                HashMap::new()
-            });
-        let wooden_damage_names = find_data_file(wooden_relative)
-            .ok_or_else(|| format!("找不到 {}", wooden_relative.display()))
-            .and_then(|path| load_wooden_damage_names(&path).map_err(|error| error.to_string()))
-            .unwrap_or_else(|error| {
-                resource_warnings.push(format!("木桩伤害描述表加载失败：{error}"));
-                HashMap::new()
-            });
+        let gameplay_effect_names = load_resource(
+            GAMEPLAY_EFFECT_MAPPING_PATH,
+            &mut resource_warnings,
+            load_gameplay_effect_mapping,
+        );
+        let gameplay_effect_skills = load_resource(
+            SKILL_DAMAGE_DATA_PATH,
+            &mut resource_warnings,
+            load_gameplay_effect_skills,
+        );
+        let wooden_damage_names = load_resource(
+            WOODEN_DAMAGE_DESCRIPTIONS_PATH,
+            &mut resource_warnings,
+            load_wooden_damage_names,
+        );
+
         Self {
             session_characters: HashMap::new(),
             client_endpoints: HashSet::new(),
-            follow_up_damage: FollowUpDamageTracker::default(),
             gameplay_effect_names,
             gameplay_effect_skills,
             wooden_damage_names,
-            resource_warnings,
+            follow_up_damage: FollowUpDamageTracker::default(),
             character_declarations: HashMap::new(),
-            current_monster: None,
-            target_handles: TargetHandleTracker::default(),
-            target_tracks: TargetTrackResolver::default(),
-            active_abyss_stage: None,
-            abyss_stage_targets: Vec::new(),
-            scene_transition_active: false,
+            resource_warnings,
+        }
+    }
+}
+
+fn load_resource<T>(
+    relative_path: &str,
+    warnings: &mut Vec<String>,
+    loader: impl FnOnce(&Path) -> anyhow::Result<T>,
+) -> T
+where
+    T: Default,
+{
+    let path = Path::new(relative_path);
+    let Some(path) = find_data_file(path) else {
+        warnings.push(format!("missing resource {relative_path}"));
+        return T::default();
+    };
+    match loader(&path) {
+        Ok(value) => value,
+        Err(error) => {
+            warnings.push(format!("{}: {error}", path.display()));
+            T::default()
         }
     }
 }
 
 impl PacketDecoder {
-    fn observe_monster(
-        &mut self,
-        id: String,
-        name: String,
-        source: MonsterTargetSource,
-        observed_at: f64,
-        expires_at: f64,
-    ) {
-        let should_replace = self.current_monster.as_ref().is_none_or(|current| {
-            id == current.id
-                || source.confidence() >= current.source.confidence()
-                || observed_at >= current.expires_at
-        });
-        if should_replace {
-            self.current_monster = Some(InferredMonsterTarget {
-                id,
-                name,
-                source,
-                observed_at,
-                expires_at,
-            });
-        }
-    }
-
-    fn inferred_monster(
-        &self,
-        timestamp: f64,
-        packet_has_multiple_targets: bool,
-    ) -> Option<&InferredMonsterTarget> {
-        if packet_has_multiple_targets {
-            return None;
-        }
-        self.current_monster
-            .as_ref()
-            .filter(|target| timestamp >= target.observed_at && timestamp <= target.expires_at)
-    }
-
-    fn invalidate_monster_if_ambiguous(&mut self, packet_has_multiple_targets: bool) {
-        if packet_has_multiple_targets {
-            self.current_monster = None;
-        }
-    }
-
-    fn apply_inferred_monster(
-        &self,
-        hits: &mut [Hit],
-        timestamp: f64,
-        packet_has_multiple_targets: bool,
-    ) {
-        let Some(target) = self.inferred_monster(timestamp, packet_has_multiple_targets) else {
-            return;
-        };
-        for hit in hits {
-            if hit.direction != "incoming" && hit.target_name.is_none() {
-                hit.target_name = Some(target.name.clone());
-                hit.target_context.push(format!(
-                    "推断目标（非协议直接命中）：来源 {}，置信度{}",
-                    target.source.label(),
-                    target.source.confidence_label()
-                ));
-            }
-        }
-    }
-
-    fn apply_abyss_stage_target(&self, hits: &mut [Hit]) {
-        for hit in hits {
-            if hit.direction == "incoming" || hit.target_name.is_some() {
-                continue;
-            }
-            let max_hp = hit.target_max_hp.round() as u64;
-            let mut candidates = self
-                .abyss_stage_targets
-                .iter()
-                .filter(|target| target.max_hp.is_none_or(|value| value == max_hp));
-            let Some(target) = candidates.next() else {
-                continue;
-            };
-            if candidates.next().is_none() {
-                hit.target_name = Some(target.name.clone());
-                hit.target_context
-                    .push("深渊数据表/MaxHP：仅补目标名称，不作为实体唯一 ID".to_owned());
-            }
-        }
-    }
-
     fn resource_warning(&self) -> Option<String> {
-        (!self.resource_warnings.is_empty()).then(|| self.resource_warnings.join("；"))
+        (!self.resource_warnings.is_empty()).then(|| self.resource_warnings.join("; "))
     }
 }
 
@@ -1705,40 +1202,6 @@ impl PacketDecoder {
         }
 
         let decoded_text = decode_payload_text(payload);
-        for event in abyss_events_from_text(timestamp, &decoded_text) {
-            match event {
-                AbyssEvent::RestartDetected { .. } => {
-                    self.target_handles.begin_scope();
-                    self.target_tracks.begin_scope();
-                    self.current_monster = None;
-                }
-                AbyssEvent::Stage {
-                    cycle, floor, half, ..
-                } => {
-                    if let (Some(cycle), Some(floor)) = (cycle, floor) {
-                        let stage = (cycle, floor, half);
-                        if self
-                            .active_abyss_stage
-                            .is_some_and(|active| active != stage)
-                        {
-                            self.target_handles.begin_scope();
-                            self.target_tracks.begin_scope();
-                            self.current_monster = None;
-                        }
-                        self.active_abyss_stage = Some(stage);
-                        self.abyss_stage_targets = abyss_stage_targets(cycle, floor, half);
-                    }
-                }
-                AbyssEvent::Exit { .. } => {
-                    self.target_handles.begin_scope();
-                    self.target_tracks.begin_scope();
-                    self.current_monster = None;
-                    self.active_abyss_stage = None;
-                    self.abyss_stage_targets.clear();
-                }
-                AbyssEvent::Success { .. } => {}
-            }
-        }
         let evidence = find_declared_character_evidence(payload);
         let ids = declared_character_ids_from_evidence(&evidence);
         self.follow_up_damage
@@ -1749,72 +1212,6 @@ impl PacketDecoder {
         }
         let direction = if outgoing { "C2S" } else { "S2C" };
         let gameplay_effects = parse_gameplay_effects(payload);
-        let detected_monsters = detect_monster_targets(payload);
-        let monster_instances = detect_monster_instances(payload);
-        let mut effect_monsters = gameplay_effects
-            .iter()
-            .filter_map(|effect| self.gameplay_effect_names.get(&effect.unique_index))
-            .filter_map(|effect_name| monster_target_from_identifier(effect_name))
-            .collect::<Vec<_>>();
-        effect_monsters.sort();
-        effect_monsters.dedup();
-        let packet_handles = parse_object_handles(payload);
-        let bindable_monsters = |monsters: &[(String, String)]| {
-            if monster_instances.is_empty() {
-                return monsters.to_vec();
-            }
-            monsters
-                .iter()
-                .filter(|(monster_id, _)| {
-                    monster_instances
-                        .iter()
-                        .any(|instance| instance.monster_id.eq_ignore_ascii_case(monster_id))
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        let bindable_detected_monsters = bindable_monsters(&detected_monsters);
-        let bindable_effect_monsters = bindable_monsters(&effect_monsters);
-        // Entity strings can describe preloaded enemies, summons, or unrelated actors. The
-        // tracker accepts them only when the packet contains exactly one monster and one object
-        // value; later hits must repeat that same value before the name is applied.
-        self.target_handles.observe_monster(
-            &packet_handles,
-            &bindable_detected_monsters,
-            timestamp,
-        );
-        self.target_handles
-            .observe_monster(&packet_handles, &bindable_effect_monsters, timestamp);
-        let mut packet_target_ids = detected_monsters
-            .iter()
-            .chain(effect_monsters.iter())
-            .map(|(id, _)| id.as_str())
-            .collect::<Vec<_>>();
-        packet_target_ids.sort_unstable();
-        packet_target_ids.dedup();
-        let packet_has_multiple_targets = packet_target_ids.len() > 1;
-        self.invalidate_monster_if_ambiguous(packet_has_multiple_targets);
-        if !packet_has_multiple_targets {
-            if effect_monsters.len() == 1 {
-                let (id, name) = effect_monsters.remove(0);
-                self.observe_monster(
-                    id,
-                    name,
-                    MonsterTargetSource::GameplayEffect,
-                    timestamp,
-                    timestamp + 3.0,
-                );
-            } else if detected_monsters.len() == 1 {
-                let (id, name) = detected_monsters[0].clone();
-                self.observe_monster(
-                    id,
-                    name,
-                    MonsterTargetSource::Entity,
-                    timestamp,
-                    timestamp + 0.25,
-                );
-            }
-        }
         let mut hits = if outgoing {
             let packet_char_id = if ids.len() == 1 {
                 ids.first().copied()
@@ -1837,35 +1234,6 @@ impl PacketDecoder {
         } else {
             Vec::new()
         };
-        let scene_transition = crate::scene::detect_scenes(timestamp, &decoded_text)
-            .iter()
-            .any(|scene| scene.category == "transition");
-        if scene_transition {
-            if !self.scene_transition_active {
-                self.current_monster = None;
-                self.target_handles.begin_scope();
-                self.target_tracks.begin_scope();
-                self.scene_transition_active = true;
-            }
-        } else {
-            self.scene_transition_active = false;
-            if outgoing {
-                for resolution in
-                    self.target_tracks
-                        .resolve_hits(&mut hits, &monster_instances, timestamp)
-                {
-                    let _ = sender.send(EngineEvent::TargetTrackResolved {
-                        track_key: resolution.track_key,
-                        target_id: resolution.target_id,
-                        target_name: resolution.target_name,
-                    });
-                }
-                self.target_handles
-                    .apply_to_hits(&packet_handles, &mut hits, timestamp);
-                self.apply_abyss_stage_target(&mut hits);
-                self.apply_inferred_monster(&mut hits, timestamp, packet_has_multiple_targets);
-            }
-        }
         for hit in &mut hits {
             enrich_hit_with_gameplay_effect(
                 hit,
@@ -1877,7 +1245,7 @@ impl PacketDecoder {
             if hit
                 .attack_type
                 .as_deref()
-                .is_some_and(|attack_type| attack_type.starts_with("环合"))
+                .is_some_and(|attack_type| attack_type.starts_with("鐜悎"))
             {
                 let previous_declared_character = self
                     .character_declarations
@@ -1901,19 +1269,7 @@ impl PacketDecoder {
                         &self.follow_up_damage.team_attributes,
                     )
                 {
-                    hit.attack_type = Some(format!("环合·{reaction_type}"));
-                    hit.target_context.push(format!(
-                        "异能环合：{}({}) + {}({}) = {}",
-                        previous_declared_character
-                            .and_then(|character_id| characters.get(&character_id))
-                            .map(|character| character.name_zh.as_str())
-                            .filter(|name| !name.is_empty())
-                            .unwrap_or("前台角色"),
-                        previous_attribute,
-                        hit.char_name,
-                        entering_attribute,
-                        reaction_type
-                    ));
+                    hit.attack_type = Some(format!("鐜悎路{reaction_type}"));
                 }
             }
         }
@@ -1938,22 +1294,6 @@ impl PacketDecoder {
         } else {
             parse_boss_hp_updates(payload)
         };
-        for update in &boss_hp_updates {
-            self.target_handles.observe_boss_hp(
-                update.target_handle,
-                update.current_hp as f64,
-                timestamp,
-            );
-            if self.abyss_stage_targets.len() == 1
-                && let Some(monster) = self.abyss_stage_targets.first()
-            {
-                self.target_handles.observe_monster(
-                    &[update.target_handle],
-                    &[(monster.id.clone(), monster.name.clone())],
-                    timestamp,
-                );
-            }
-        }
         if current_hp_updates.is_empty()
             && boss_hp_updates.is_empty()
             && !should_keep_debug_packet(payload, &ids, accepted, &decoded_text)
@@ -1961,7 +1301,7 @@ impl PacketDecoder {
             return;
         }
         let mut note = if hits.len() != accepted {
-            format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
+            format!("杩囨护 {} 鏉?incoming 璁板綍", hits.len() - accepted)
         } else {
             String::new()
         };
@@ -1973,7 +1313,7 @@ impl PacketDecoder {
             append_packet_note(
                 &mut note,
                 Some(format!(
-                    "GameplayEffect：{}",
+                    "GameplayEffect: {}",
                     gameplay_effects
                         .iter()
                         .map(|effect| {
@@ -1994,7 +1334,7 @@ impl PacketDecoder {
             append_packet_note(
                 &mut note,
                 Some(format!(
-                    "CurrentHP 更新候选：{}",
+                    "CurrentHP 鏇存柊鍊欓€夛細{}",
                     current_hp_updates
                         .iter()
                         .map(|update| format!(
@@ -2010,7 +1350,7 @@ impl PacketDecoder {
             append_packet_note(
                 &mut note,
                 Some(format!(
-                    "Boss HP 更新：{}",
+                    "Boss HP updates: {}",
                     boss_hp_updates
                         .iter()
                         .map(|update| format!(
@@ -2037,7 +1377,7 @@ impl PacketDecoder {
                 append_packet_note(
                     &mut note,
                     Some(format!(
-                        "传输模式 {}，PacketId {}，Ack {}，应用载荷 {} bit",
+                        "浼犺緭妯″紡 {}锛孭acketId {}锛孉ck {}锛屽簲鐢ㄨ浇鑽?{} bit",
                         packet.mode,
                         packet.packet_id,
                         packet.acknowledged_packet_id,
@@ -2048,7 +1388,7 @@ impl PacketDecoder {
                 append_packet_note(
                     &mut note,
                     Some(format!(
-                        "SingleBunch seq {}，descriptor 0x{:02x}，数据 {} bit",
+                        "SingleBunch seq {}锛宒escriptor 0x{:02x}锛屾暟鎹?{} bit",
                         bunch.sequence, bunch.descriptor, bunch.data_bit_len
                     )),
                 );
@@ -2164,33 +1504,38 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
             error_buffer.as_mut_ptr(),
         );
         if handle.is_null() {
-            return Err(format!("打开网卡失败: {}", c_string(error_buffer.as_ptr())));
+            return Err(format!(
+                "failed to open device: {}",
+                c_string(error_buffer.as_ptr())
+            ));
         }
+        let handle = PcapHandle::new(handle, close);
 
         let capture_filter = CString::new(filter).map_err(|error| error.to_string())?;
-        let mut program = BpfProgram {
-            bf_len: 0,
-            bf_insns: ptr::null_mut(),
-        };
-        if compile(handle, &mut program, capture_filter.as_ptr(), 1, u32::MAX) != 0
-            || set_filter(handle, &mut program) != 0
+        let mut program = BpfProgramGuard::new(free_code);
+        if compile(
+            handle.as_ptr(),
+            program.as_mut(),
+            capture_filter.as_ptr(),
+            1,
+            u32::MAX,
+        ) != 0
+            || set_filter(handle.as_ptr(), program.as_mut()) != 0
         {
-            let error = c_string(get_err(handle));
-            free_code(&mut program);
-            close(handle);
-            return Err(format!("抓包过滤器无效: {error}"));
+            let error = c_string(get_err(handle.as_ptr()));
+            return Err(format!("failed to set capture filter: {error}"));
         }
-        free_code(&mut program);
+        program.release();
         let raw_capture_status = raw_capture.path().map_or_else(
-            || "；原始帧文件不可用".to_owned(),
-            |path| format!("；原始帧实时写入 {}", path.display()),
+            || "; raw capture unavailable".to_owned(),
+            |path| format!("; writing raw capture to {}", path.display()),
         );
         let _ = sender.send(EngineEvent::Status(format!(
-            "正在抓包: {} ({}){}",
+            "capturing: {} ({}){}",
             device.description,
             local_ip
                 .map(|ip| ip.to_string())
-                .unwrap_or_else(|| "不过滤本机 IP".to_owned()),
+                .unwrap_or_else(|| "local IP not filtered".to_owned()),
             raw_capture_status
         )));
 
@@ -2201,14 +1546,13 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
         while !stop.load(Ordering::Relaxed) {
             let mut header = ptr::null();
             let mut packet_data = ptr::null();
-            let result = next_ex(handle, &mut header, &mut packet_data);
+            let result = next_ex(handle.as_ptr(), &mut header, &mut packet_data);
             if result == 0 {
                 continue;
             }
             if result < 0 {
-                let error = c_string(get_err(handle));
-                close(handle);
-                return Err(format!("抓包读取失败: {error}"));
+                let error = c_string(get_err(handle.as_ptr()));
+                return Err(format!("failed to read packet: {error}"));
             }
             if header.is_null() || packet_data.is_null() {
                 continue;
@@ -2234,7 +1578,6 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
                 sender,
             );
         }
-        close(handle);
     }
     Ok(())
 }
@@ -2249,11 +1592,11 @@ pub fn import_pcapng(
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let direction_mode = local_ip_hint.map_or_else(
-            || "启发式判向".to_owned(),
-            |ip| format!("本机 IP {ip} 过滤/判向"),
+            || "heuristic direction".to_owned(),
+            |ip| format!("local IP {ip}"),
         );
         let _ = sender.send(EngineEvent::Status(format!(
-            "正在导入 pcapng：{direction_mode}"
+            "importing pcapng: {direction_mode}"
         )));
         let result = (|| -> Result<(usize, usize), String> {
             let file = File::open(&path).map_err(|error| error.to_string())?;
@@ -2297,7 +1640,7 @@ pub fn import_pcapng(
                 );
             }
             if packet_count > 0 && supported_count == 0 {
-                return Err("pcapng 中没有受支持的 Ethernet 数据包".to_owned());
+                return Err("pcapng contains no supported Ethernet packets".to_owned());
             }
             Ok((packet_count, supported_count))
         })();
@@ -2306,11 +1649,11 @@ pub fn import_pcapng(
         match result {
             Ok((packet_count, supported_count)) => {
                 let _ = sender.send(EngineEvent::Status(format!(
-                    "pcapng 导入完成：读取 {packet_count} 包，解析 {supported_count} 个 Ethernet 包；{direction_mode}"
+                    "pcapng import complete: read {packet_count} packets, parsed {supported_count} Ethernet packets; {direction_mode}"
                 )));
             }
             Err(error) => {
-                let _ = sender.send(EngineEvent::Error(format!("pcapng 导入失败：{error}")));
+                let _ = sender.send(EngineEvent::Error(format!("pcapng import failed: {error}")));
             }
         }
     })
@@ -2435,11 +1778,11 @@ pub fn import_capture_json(
         match result {
             Ok((hit_count, packet_count)) => {
                 let _ = sender.send(EngineEvent::Status(format!(
-                    "JSON 导入完成：{packet_count} 个封包，{hit_count} 条伤害"
+                    "JSON import complete: {packet_count} packets, {hit_count} hits"
                 )));
             }
             Err(error) => {
-                let _ = sender.send(EngineEvent::Error(format!("JSON 导入失败：{error}")));
+                let _ = sender.send(EngineEvent::Error(format!("JSON import failed: {error}")));
             }
         }
     })
@@ -2447,7 +1790,11 @@ pub fn import_capture_json(
 
 fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Result<bool, String> {
     let declared_ids = parse_export_ids(&packet.declared_ids);
-    let payload = hex::decode(&packet.payload_hex).unwrap_or_default();
+    let payload = if packet.payload_hex.trim().is_empty() {
+        Vec::new()
+    } else {
+        hex::decode(&packet.payload_hex).map_err(|error| format!("payload_hex 鏃犳晥: {error}"))?
+    };
     let decoded_text = if payload.is_empty() {
         packet.decoded_text
     } else {
@@ -2480,11 +1827,6 @@ fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Res
             .send(EngineEvent::Abyss(event))
             .map_err(|error| error.to_string())?;
     }
-    for scene in crate::scene::detect_scenes(packet.timestamp, &packet.decoded_text) {
-        sender
-            .send(EngineEvent::Scene(scene))
-            .map_err(|error| error.to_string())?;
-    }
     sender
         .send(EngineEvent::Packet(packet))
         .map_err(|error| error.to_string())?;
@@ -2515,9 +1857,9 @@ fn export_hit_event(hit: ExportHit) -> EngineEvent {
         damage_name: hit.damage_name.map(|name| normalize_damage_name(&name)),
         attack_type: hit.attack_type.map(|attack_type| {
             if attack_type == "QTE" {
-                "环合".to_owned()
-            } else if let Some(reaction_type) = attack_type.strip_prefix("QTE·") {
-                format!("环合·{reaction_type}")
+                "鐜悎".to_owned()
+            } else if let Some(reaction_type) = attack_type.strip_prefix("QTE路") {
+                format!("鐜悎路{reaction_type}")
             } else {
                 attack_type
             }
@@ -2531,7 +1873,7 @@ fn parse_capture_export(text: &str) -> Result<CaptureExport, String> {
             let repaired = text
                 .lines()
                 .map(|line| {
-                    if line.trim_start().starts_with("\"payload_hex\":") && !line.ends_with(',') {
+                    if line.trim_start().starts_with(r#""payload_hex":"#) && !line.ends_with(',') {
                         format!("{line},")
                     } else {
                         line.to_owned()
@@ -2564,29 +1906,6 @@ fn parse_export_ids(value: &serde_json::Value) -> Vec<u32> {
 mod tests {
     use super::*;
     use crossbeam_channel::unbounded;
-    use std::path::Path;
-
-    fn actual_capture_path() -> PathBuf {
-        if let Some(path) = std::env::var_os("NTE_TEST_CAPTURE").map(PathBuf::from) {
-            assert!(
-                path.is_file(),
-                "NTE_TEST_CAPTURE 指向的真实抓包文件不存在: {}",
-                path.display()
-            );
-            return path;
-        }
-
-        std::fs::read_dir("logs")
-            .expect("logs 目录不存在，无法执行真实数据测试")
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("pcapng"))
-            })
-            .max_by_key(|path| path.metadata().map(|metadata| metadata.len()).unwrap_or(0))
-            .expect("logs 目录中没有真实 .pcapng 抓包；也可设置 NTE_TEST_CAPTURE")
-    }
 
     #[test]
     fn corrects_nanally_melee1_follow_up_from_server_total() {
@@ -2610,7 +1929,7 @@ mod tests {
             (
                 1,
                 CharacterInfo {
-                    name_zh: "角色1".to_owned(),
+                    name_zh: "character1".to_owned(),
                     name_en: String::new(),
                     color: None,
                     avatar: None,
@@ -2620,7 +1939,7 @@ mod tests {
             (
                 2,
                 CharacterInfo {
-                    name_zh: "角色2".to_owned(),
+                    name_zh: "character2".to_owned(),
                     name_en: String::new(),
                     color: None,
                     avatar: None,
@@ -2632,7 +1951,7 @@ mod tests {
         tracker.observe_characters([1, 2], &characters);
         let mut hit = targetless_hit();
         hit.char_id = 1;
-        hit.char_name = "角色1".to_owned();
+        hit.char_name = "character1".to_owned();
         hit.target_max_hp = 1_000_000.0;
         hit.target_hp_before = 1_000_000.0;
         hit.damage = 3_177.0;
@@ -2673,6 +1992,57 @@ mod tests {
     }
 
     #[test]
+    fn send_export_packet_rejects_invalid_hex_payload() {
+        let (sender, receiver) = unbounded();
+        let packet = ExportPacket {
+            timestamp_unix: 1.0,
+            source: "127.0.0.1:1234".to_owned(),
+            destination: "127.0.0.1:5678".to_owned(),
+            direction: "S2C".to_owned(),
+            payload_len: 0,
+            declared_ids: serde_json::json!([1]),
+            parsed_hits: 0,
+            note: String::new(),
+            payload_preview: String::new(),
+            payload_hex: "ZZ".to_owned(),
+            decoded_text: String::new(),
+        };
+        assert!(
+            send_export_packet(packet, &sender)
+                .unwrap_err()
+                .contains("payload_hex 鏃犳晥")
+        );
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn send_export_packet_accepts_empty_payload_hex() {
+        let (sender, receiver) = unbounded();
+        let packet = ExportPacket {
+            timestamp_unix: 1.0,
+            source: "127.0.0.1:1234".to_owned(),
+            destination: "127.0.0.1:5678".to_owned(),
+            direction: "S2C".to_owned(),
+            payload_len: 0,
+            declared_ids: serde_json::json!([1]),
+            parsed_hits: 0,
+            note: String::new(),
+            payload_preview: String::new(),
+            payload_hex: String::new(),
+            decoded_text: "娴嬭瘯瑙ｇ爜".to_owned(),
+        };
+        assert!(send_export_packet(packet, &sender).is_ok());
+        match receiver.try_recv().expect("packet event should be emitted") {
+            EngineEvent::Packet(packet) => {
+                assert_eq!(packet.payload_hex, String::new());
+                assert_eq!(packet.payload_len, 0);
+            }
+            _ => panic!("expected packet event"),
+        }
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
     fn local_ip_hint_controls_import_direction_inference() {
         let local_ip = Ipv4Addr::new(10, 0, 0, 2);
         let remote_ip = Ipv4Addr::new(10, 0, 0, 3);
@@ -2704,248 +2074,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn target_handle_tracker_links_monster_hp_and_hit() {
-        let handle = [
-            0x21, 0xf0, 0x4e, 0x92, 0x89, 0x95, 0x33, 0x4f, 0x8c, 0x0b, 0xbc, 0xaa, 0x0e, 0xe1,
-            0x6f, 0xe7,
-        ];
-        let mut tracker = TargetHandleTracker::default();
-        tracker.observe_monster(
-            &[handle],
-            &[("boss_07".to_owned(), "Boss 07".to_owned())],
-            1.0,
-        );
-        tracker.observe_boss_hp(handle, 1_930_389.0, 1.1);
-        let mut hits = [targetless_hit()];
-        hits[0].target_max_hp = 1_930_389.0;
-        hits[0].target_hp_after = 1_927_891.0;
-
-        assert!(tracker.apply_to_hits(&[handle], &mut hits, 1.2));
-        assert_eq!(hits[0].target_id, None);
-        assert_eq!(hits[0].target_name.as_deref(), Some("Boss 07"));
-        assert!(
-            hits[0]
-                .target_context
-                .iter()
-                .any(|context| context.contains("协议相关 16 字节值"))
-        );
-
-        let mut incoming = targetless_hit();
-        incoming.direction = "incoming".to_owned();
-        incoming.target_id = Some("1001".to_owned());
-        incoming.target_name = Some("测试角色".to_owned());
-        let mut incoming_hits = [incoming];
-
-        assert!(tracker.apply_to_hits(&[handle], &mut incoming_hits, 1.3));
-        assert_eq!(incoming_hits[0].target_id.as_deref(), Some("1001"));
-        assert_eq!(incoming_hits[0].target_name.as_deref(), Some("测试角色"));
-    }
-
-    #[test]
-    fn target_handle_scope_separates_reused_handles_between_abyss_halves() {
-        let handle = [0x5a; 16];
-        let mut tracker = TargetHandleTracker::default();
-        tracker.observe_boss_hp(handle, 100.0, 1.0);
-        tracker.observe_monster(
-            &[handle],
-            &[("boss_first".to_owned(), "上半 Boss".to_owned())],
-            1.1,
-        );
-        let mut first_hits = [targetless_hit()];
-        assert!(tracker.apply_to_hits(&[handle], &mut first_hits, 1.2));
-
-        tracker.begin_scope();
-        tracker.observe_boss_hp(handle, 200.0, 2.0);
-        tracker.observe_monster(
-            &[handle],
-            &[("boss_second".to_owned(), "下半 Boss".to_owned())],
-            2.1,
-        );
-        let mut second_hits = [targetless_hit()];
-        assert!(tracker.apply_to_hits(&[handle], &mut second_hits, 2.2));
-
-        assert_eq!(first_hits[0].target_id, None);
-        assert_eq!(second_hits[0].target_id, None);
-        assert_eq!(first_hits[0].target_name.as_deref(), Some("上半 Boss"));
-        assert_eq!(second_hits[0].target_name.as_deref(), Some("下半 Boss"));
-    }
-
-    #[test]
-    fn abyss_group_stage_leaves_same_hp_variants_unresolved() {
-        let decoder = PacketDecoder {
-            abyss_stage_targets: abyss_stage_targets(3, 10, AbyssHalf::Second),
-            ..Default::default()
-        };
-
-        let mut bear = targetless_hit();
-        bear.target_id = Some("shared-handle".to_owned());
-        bear.target_max_hp = 1_983_356.0;
-        let mut soldiers = targetless_hit();
-        soldiers.target_id = Some("shared-handle".to_owned());
-        soldiers.target_max_hp = 495_839.0;
-        let mut hits = [bear, soldiers];
-
-        decoder.apply_abyss_stage_target(&mut hits);
-
-        assert_eq!(hits[0].target_name.as_deref(), Some("伤心英熊"));
-        assert_eq!(hits[1].target_name, None);
-        assert_eq!(hits[0].target_id.as_deref(), Some("shared-handle"));
-        assert_eq!(hits[1].target_id.as_deref(), Some("shared-handle"));
-    }
-
-    #[test]
-    fn abyss_stage_rosters_are_generated_from_all_table_rows() {
-        assert_eq!(ABYSS_STAGE_ROWS.len(), 151);
-
-        let stages = ABYSS_STAGE_ROWS
-            .iter()
-            .map(|&(cycle, floor, half, _, _, _)| (cycle, floor, half))
-            .collect::<BTreeSet<_>>();
-        assert_eq!(stages.len(), 72);
-        for (cycle, floor, half) in stages {
-            let half = if half == 0 {
-                AbyssHalf::First
-            } else {
-                AbyssHalf::Second
-            };
-            assert!(
-                !abyss_stage_targets(cycle, floor, half).is_empty(),
-                "missing generated roster for Abyss_{cycle}_{floor}_{half:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn aligned_packet_instance_binds_hp_track_and_following_hits() {
-        let mut resolver = TargetTrackResolver::default();
-        let instance = crate::parser::ParsedMonsterInstance {
-            instance_id: "2147349936".to_owned(),
-            monster_id: "mon_24_BP_Abyss".to_owned(),
-            monster_name: "诡面风筝".to_owned(),
-            object_name: "mon_24_BP_Abyss_C_2147349936".to_owned(),
-            byte_offset: 64,
-            bit_shift: 0,
-        };
-        let mut first = targetless_hit();
-        first.byte_offset = 96;
-        first.target_hp_before = 1_000.0;
-        first.target_hp_after = 900.0;
-        first.target_max_hp = 1_000.0;
-        let mut hits = [first];
-
-        let _ = resolver.resolve_hits(&mut hits, std::slice::from_ref(&instance), 1.0);
-
-        assert_eq!(
-            hits[0].target_id.as_deref(),
-            Some("mon_24_BP_Abyss_C_2147349936")
-        );
-        assert_eq!(hits[0].target_name.as_deref(), Some("诡面风筝"));
-
-        let mut next = targetless_hit();
-        next.byte_offset = 120;
-        next.target_hp_before = 900.0;
-        next.target_hp_after = 800.0;
-        next.target_max_hp = 1_000.0;
-        let _ = resolver.resolve_hits(std::slice::from_mut(&mut next), &[], 1.1);
-
-        assert_eq!(
-            next.target_id.as_deref(),
-            Some("mon_24_BP_Abyss_C_2147349936")
-        );
-        assert_eq!(next.target_name.as_deref(), Some("诡面风筝"));
-    }
-
-    #[test]
-    fn hp_track_does_not_merge_discontinuous_same_hp_targets() {
-        let mut resolver = TargetTrackResolver::default();
-        let mut first = targetless_hit();
-        first.target_hp_before = 1_000.0;
-        first.target_hp_after = 900.0;
-        first.target_max_hp = 1_000.0;
-        let _ = resolver.resolve_hits(std::slice::from_mut(&mut first), &[], 1.0);
-
-        let mut second = targetless_hit();
-        second.target_hp_before = 1_000.0;
-        second.target_hp_after = 850.0;
-        second.target_max_hp = 1_000.0;
-        let _ = resolver.resolve_hits(std::slice::from_mut(&mut second), &[], 1.1);
-
-        assert!(
-            first
-                .target_context
-                .iter()
-                .any(|context| context.contains("track=0"))
-        );
-        assert!(
-            second
-                .target_context
-                .iter()
-                .any(|context| context.contains("track=1"))
-        );
-        assert!(first.target_id.is_none());
-        assert!(second.target_id.is_none());
-    }
-
-    #[test]
-    fn target_handle_does_not_append_conflicting_monster_evidence() {
-        let mut tracker = TargetHandleTracker::default();
-        let handle = [7; 16];
-        tracker.observe_boss_hp(handle, 500.0, 1.0);
-        tracker.observe_monster(
-            &[handle],
-            &[("mon_blue".to_owned(), "blue monster".to_owned())],
-            1.1,
-        );
-        let mut hit = targetless_hit();
-        hit.target_name = Some("red monster".to_owned());
-
-        assert!(tracker.apply_to_hits(&[handle], std::slice::from_mut(&mut hit), 1.2));
-        assert_eq!(hit.target_name.as_deref(), Some("red monster"));
-        assert!(hit.target_context.is_empty());
-    }
-
-    #[test]
-    fn target_handle_conflict_disables_future_name_assignment() {
-        let mut tracker = TargetHandleTracker::default();
-        let handle = [9; 16];
-        tracker.observe_boss_hp(handle, 500.0, 1.0);
-        tracker.observe_monster(
-            &[handle],
-            &[("monster-a".to_owned(), "怪物 A".to_owned())],
-            1.1,
-        );
-        tracker.observe_monster(
-            &[handle],
-            &[("monster-b".to_owned(), "怪物 B".to_owned())],
-            1.2,
-        );
-        let mut hit = targetless_hit();
-
-        assert!(!tracker.apply_to_hits(&[handle], std::slice::from_mut(&mut hit), 1.3));
-        assert!(hit.target_name.is_none());
-        assert!(hit.target_context.is_empty());
-    }
-
-    fn inferred_target(
-        source: MonsterTargetSource,
-        observed_at: f64,
-        expires_at: f64,
-    ) -> InferredMonsterTarget {
-        InferredMonsterTarget {
-            id: "monster-1".to_owned(),
-            name: "测试怪物".to_owned(),
-            source,
-            observed_at,
-            expires_at,
-        }
-    }
-
     fn targetless_hit() -> Hit {
         Hit {
             timestamp: 0.0,
             char_id: 1,
-            char_name: "测试角色".to_owned(),
+            char_name: "test character".to_owned(),
             char_known: true,
             damage: 100.0,
             byte_offset: 0,
@@ -2965,78 +2098,6 @@ mod tests {
             damage_name: None,
             attack_type: None,
         }
-    }
-
-    #[test]
-    fn applies_only_current_unambiguous_inferred_monster() {
-        let decoder = PacketDecoder {
-            current_monster: Some(inferred_target(
-                MonsterTargetSource::GameplayEffect,
-                10.0,
-                13.0,
-            )),
-            ..Default::default()
-        };
-
-        let mut hits = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut hits, 12.0, false);
-        assert_eq!(hits[0].target_name.as_deref(), Some("测试怪物"));
-        assert!(hits[0].target_context[0].contains("推断目标"));
-        assert!(hits[0].target_context[0].contains("置信度高"));
-
-        let mut expired = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut expired, 13.1, false);
-        assert!(expired[0].target_name.is_none());
-
-        let mut ambiguous = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut ambiguous, 12.0, true);
-        assert!(ambiguous[0].target_name.is_none());
-
-        let mut incoming = targetless_hit();
-        incoming.direction = "incoming".to_owned();
-        incoming.target_id = Some("1001".to_owned());
-        incoming.target_name = Some("测试角色".to_owned());
-        let mut incoming_hits = [incoming];
-        decoder.apply_inferred_monster(&mut incoming_hits, 12.0, false);
-        assert_eq!(incoming_hits[0].target_id.as_deref(), Some("1001"));
-        assert_eq!(incoming_hits[0].target_name.as_deref(), Some("测试角色"));
-    }
-
-    #[test]
-    fn low_confidence_entity_target_has_short_lifetime() {
-        let decoder = PacketDecoder {
-            current_monster: Some(inferred_target(MonsterTargetSource::Entity, 20.0, 20.25)),
-            ..Default::default()
-        };
-
-        let mut near_hits = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut near_hits, 20.2, false);
-        assert_eq!(near_hits[0].target_name.as_deref(), Some("测试怪物"));
-        assert!(near_hits[0].target_context[0].contains("置信度低"));
-
-        let mut later_hits = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut later_hits, 20.3, false);
-        assert!(later_hits[0].target_name.is_none());
-    }
-
-    #[test]
-    fn ambiguous_targets_invalidate_current_monster_for_later_hits() {
-        let mut decoder = PacketDecoder {
-            current_monster: Some(inferred_target(
-                MonsterTargetSource::GameplayEffect,
-                30.0,
-                33.0,
-            )),
-            ..Default::default()
-        };
-
-        decoder.invalidate_monster_if_ambiguous(true);
-        assert!(decoder.current_monster.is_none());
-
-        let mut later_hits = [targetless_hit()];
-        decoder.apply_inferred_monster(&mut later_hits, 31.0, false);
-        assert!(later_hits[0].target_name.is_none());
-        assert!(later_hits[0].target_context.is_empty());
     }
 
     #[test]
@@ -3094,7 +2155,7 @@ mod tests {
         )]);
 
         assert_eq!(
-            resolve_damage_name("GE_Player_Daffodill_Skill6_Damage", &skills, &names,).as_deref(),
+            resolve_damage_name("GE_Player_Daffodill_Skill6_Damage", &skills, &names).as_deref(),
             Some("达芙蒂尔技能")
         );
     }
@@ -3128,2373 +2189,13 @@ mod tests {
             ),
         ]);
         let names = HashMap::from([
-            (
-                "GE_Test_Skill1_Damage".to_owned(),
-                "测试技能短按".to_owned(),
-            ),
-            (
-                "GE_Test_Skill2_Damage".to_owned(),
-                "测试技能长按".to_owned(),
-            ),
+            ("GE_Test_Skill1_Damage".to_owned(), "测试技能一".to_owned()),
+            ("GE_Test_Skill2_Damage".to_owned(), "测试技能二".to_owned()),
         ]);
 
         assert_eq!(
             resolve_damage_name("GE_Test_Skill3_Damage", &skills, &names),
             None
         );
-    }
-
-    #[test]
-    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
-    fn actual_capture_contains_udp_traffic() {
-        let path = actual_capture_path();
-        let file = File::open(&path).expect("无法打开真实抓包文件");
-        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
-        let mut ethernet_packets = 0;
-        let mut udp_packets = 0;
-
-        while let Some(block) = reader.next_block() {
-            let block = block.expect("真实抓包包含损坏的数据块");
-            let (interface_id, data) = match block {
-                Block::EnhancedPacket(packet) => {
-                    (packet.interface_id as usize, packet.data.into_owned())
-                }
-                Block::SimplePacket(packet) => (0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            ethernet_packets += 1;
-            if parse_udp_ipv4(&data).is_some() {
-                udp_packets += 1;
-            }
-        }
-
-        assert!(
-            ethernet_packets > 0,
-            "真实抓包中没有 Ethernet 数据包: {}",
-            path.display()
-        );
-        assert!(
-            udp_packets > 0,
-            "真实抓包中没有可解析的 IPv4/UDP 流量: {}",
-            path.display()
-        );
-    }
-
-    #[test]
-    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
-    fn actual_capture_runs_through_the_decoder() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("无法加载实际 characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-
-        import_pcapng(path.clone(), characters, None, true, sender, stop)
-            .join()
-            .expect("真实抓包导入线程异常退出");
-
-        let events: Vec<_> = receiver.try_iter().collect();
-        let packet_count = events
-            .iter()
-            .filter(|event| matches!(event, EngineEvent::Packet(_)))
-            .count();
-        let errors: Vec<_> = events
-            .iter()
-            .filter_map(|event| match event {
-                EngineEvent::Error(error) => Some(error.as_str()),
-                _ => None,
-            })
-            .collect();
-
-        assert!(
-            errors.is_empty(),
-            "真实抓包导入失败 {}: {}",
-            path.display(),
-            errors.join("; ")
-        );
-        assert!(
-            packet_count > 0,
-            "真实抓包未产生任何解码包事件: {}",
-            path.display()
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, EngineEvent::CaptureStopped)),
-            "真实抓包导入未发送结束事件: {}",
-            path.display()
-        );
-    }
-
-    #[test]
-    #[ignore = "manual real-capture scene analysis"]
-    fn diagnose_actual_capture_scenes() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("failed to load characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-
-        import_pcapng(path.clone(), characters, None, true, sender, stop)
-            .join()
-            .expect("capture import thread failed");
-
-        let mut observations = Vec::new();
-        let mut accepted_scenes = Vec::new();
-        let mut scene_state = crate::model::SceneState::default();
-        let mut scene_lines = Vec::new();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Scene(scene) => {
-                    let previous = scene_state.display_name().to_owned();
-                    scene_state.apply(scene.clone());
-                    let current = scene_state.display_name();
-                    if current != previous {
-                        accepted_scenes.push((scene.timestamp, current.to_owned()));
-                    }
-                    if observations.last().is_none_or(
-                        |previous: &crate::model::SceneObservation| previous.id != scene.id,
-                    ) {
-                        observations.push(scene);
-                    }
-                }
-                EngineEvent::Packet(packet) => {
-                    for line in packet
-                        .decoded_text
-                        .lines()
-                        .filter(|line| line.contains("DataLayer_") || line.contains("/Map_DLC/"))
-                    {
-                        scene_lines.push((packet.timestamp, line.to_owned()));
-                    }
-                }
-                _ => {}
-            }
-        }
-        println!("capture={}", path.display());
-        for (timestamp, line) in &scene_lines {
-            println!("token t={timestamp:.3} {line}");
-        }
-        for scene in &observations {
-            println!(
-                "scene t={:.3} id={} name={} category={} priority={}",
-                scene.timestamp, scene.id, scene.display_name, scene.category, scene.priority
-            );
-        }
-        for (timestamp, display_name) in &accepted_scenes {
-            println!("accepted_scene t={timestamp:.3} name={display_name}");
-        }
-        assert!(
-            !observations.is_empty() || !scene_lines.is_empty(),
-            "no scene tokens detected"
-        );
-    }
-
-    #[test]
-    #[ignore = "manual real-capture target analysis"]
-    fn diagnose_actual_capture_targets() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("failed to load characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-
-        import_pcapng(path.clone(), characters, None, true, sender, stop)
-            .join()
-            .expect("capture import thread failed");
-
-        let mut observed_targets = Vec::new();
-        let mut state = crate::model::CombatState::default();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Hit(hit) => state.push_hit(hit),
-                EngineEvent::TargetTrackResolved {
-                    track_key,
-                    target_id,
-                    target_name,
-                } => state.apply_target_track_resolution(&track_key, &target_id, &target_name),
-                EngineEvent::Packet(packet) => {
-                    if let Ok(payload) = hex::decode(&packet.payload_hex) {
-                        for (id, name) in detect_monster_targets(&payload) {
-                            observed_targets.push((packet.timestamp, id, name));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        let mut targets = HashMap::<(String, String, String), usize>::new();
-        let mut unresolved = 0;
-        let mut missing_target_ids = 0;
-        let mut name_only = HashMap::<(String, String), usize>::new();
-        for hit in state.hits {
-            if hit.direction != "incoming" && hit.target_id.is_none() {
-                missing_target_ids += 1;
-            }
-            match (hit.target_id, hit.target_name) {
-                (Some(id), Some(name)) => {
-                    *targets
-                        .entry((id, name, hit.target_context.join("|")))
-                        .or_default() += 1
-                }
-                (None, Some(name)) => {
-                    *name_only
-                        .entry((name, hit.target_context.join("|")))
-                        .or_default() += 1
-                }
-                _ => unresolved += 1,
-            }
-        }
-        observed_targets.dedup();
-        println!("observed_targets={observed_targets:?}");
-        println!(
-            "target_summary capture={} targets={targets:?} name_only={name_only:?} unresolved={unresolved} missing_target_ids={missing_target_ids}",
-            path.display()
-        );
-        assert!(
-            !targets.is_empty() || !name_only.is_empty(),
-            "no monster targets resolved"
-        );
-    }
-
-    #[test]
-    #[ignore = "manual real-capture target quality summary"]
-    fn diagnose_actual_capture_target_quality() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("failed to load characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        import_pcapng(
-            path.clone(),
-            characters,
-            None,
-            true,
-            sender,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .join()
-        .expect("capture import thread failed");
-
-        let mut state = crate::model::CombatState::default();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Hit(hit) => state.push_hit(hit),
-                EngineEvent::TargetTrackResolved {
-                    track_key,
-                    target_id,
-                    target_name,
-                } => state.apply_target_track_resolution(&track_key, &target_id, &target_name),
-                _ => {}
-            }
-        }
-
-        let mut outgoing = 0;
-        let mut exact_instance = 0;
-        let mut inherited_instance = 0;
-        let mut name_only = 0;
-        let mut unresolved = 0;
-        let mut contradictory_handle_names = 0;
-        for hit in state
-            .hits
-            .into_iter()
-            .filter(|hit| hit.direction != "incoming")
-        {
-            outgoing += 1;
-            match (&hit.target_id, &hit.target_name) {
-                (Some(id), Some(_)) if id.contains("_C_") => {
-                    exact_instance += 1;
-                    if hit.target_context.iter().any(|context| {
-                        context.contains("继承已确认对象实例")
-                            || context.contains("后续同轨迹对象实例确认")
-                    }) {
-                        inherited_instance += 1;
-                    }
-                }
-                (None, Some(_)) => name_only += 1,
-                _ => unresolved += 1,
-            }
-            if let Some(name) = &hit.target_name {
-                for context in &hit.target_context {
-                    if let Some((_, association)) = context.split_once("对象句柄关联怪物：")
-                        && !association.starts_with(name)
-                    {
-                        contradictory_handle_names += 1;
-                    }
-                }
-            }
-        }
-        println!(
-            "TARGET_QUALITY capture={} outgoing={outgoing} exact_instance={exact_instance} inherited_instance={inherited_instance} name_only={name_only} unresolved={unresolved} contradictory_handle_names={contradictory_handle_names}",
-            path.display()
-        );
-    }
-
-    #[test]
-    #[ignore = "manual multi-floor abyss target analysis"]
-    fn diagnose_actual_capture_abyss_floors() {
-        #[derive(Default)]
-        struct FloorStats {
-            hits: usize,
-            exact: usize,
-            name_only: usize,
-            unresolved: usize,
-            names: BTreeMap<String, usize>,
-        }
-
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("failed to load characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        import_pcapng(
-            path.clone(),
-            characters,
-            None,
-            true,
-            sender,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .join()
-        .expect("capture import thread failed");
-
-        let mut active_stage = None;
-        let mut stages = BTreeMap::<(u32, u32, u8), FloorStats>::new();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Abyss(AbyssEvent::Stage {
-                    timestamp,
-                    cycle: Some(cycle),
-                    floor: Some(floor),
-                    half,
-                }) => {
-                    let half_index = u8::from(half == AbyssHalf::Second);
-                    active_stage = Some((cycle, floor, half_index));
-                    println!(
-                        "STAGE t={timestamp:.3} cycle={cycle} floor={floor} half={half_index}"
-                    );
-                }
-                EngineEvent::Abyss(AbyssEvent::RestartDetected { timestamp }) => {
-                    println!("RESTART t={timestamp:.3} stage={active_stage:?}");
-                }
-                EngineEvent::Abyss(AbyssEvent::Success { timestamp }) => {
-                    println!("SUCCESS t={timestamp:.3} stage={active_stage:?}");
-                }
-                EngineEvent::Abyss(AbyssEvent::Exit { timestamp }) => {
-                    println!("EXIT t={timestamp:.3} stage={active_stage:?}");
-                    active_stage = None;
-                }
-                EngineEvent::Hit(hit) if hit.direction != "incoming" && active_stage.is_some() => {
-                    let stats = stages.entry(active_stage.unwrap()).or_default();
-                    stats.hits += 1;
-                    match (&hit.target_id, &hit.target_name) {
-                        (Some(_), Some(name)) => {
-                            stats.exact += 1;
-                            *stats.names.entry(name.clone()).or_default() += 1;
-                        }
-                        (None, Some(name)) => {
-                            stats.name_only += 1;
-                            *stats.names.entry(name.clone()).or_default() += 1;
-                        }
-                        _ => stats.unresolved += 1,
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        println!("capture={}", path.display());
-        for ((cycle, floor, half), stats) in stages {
-            println!(
-                "FLOOR cycle={cycle} floor={floor} half={half} hits={} exact={} name_only={} unresolved={} names={:?}",
-                stats.hits, stats.exact, stats.name_only, stats.unresolved, stats.names
-            );
-        }
-    }
-
-    #[test]
-    #[ignore = "manual real-capture target timeline analysis"]
-    fn diagnose_actual_capture_target_timeline() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("failed to load characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        import_pcapng(
-            path.clone(),
-            characters,
-            None,
-            true,
-            sender,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .join()
-        .expect("capture import thread failed");
-
-        println!("capture={}", path.display());
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Hit(hit) if hit.direction != "incoming" => println!(
-                    "HIT t={:.6} damage={:.0} hp={:.0}/{:.0} id={:?} name={:?} context={}",
-                    hit.timestamp,
-                    hit.damage,
-                    hit.target_hp_before,
-                    hit.target_max_hp,
-                    hit.target_id,
-                    hit.target_name,
-                    hit.target_context.join("|")
-                ),
-                EngineEvent::Packet(packet) => {
-                    let Ok(payload) = hex::decode(&packet.payload_hex) else {
-                        continue;
-                    };
-                    let monsters = detect_monster_targets(&payload);
-                    let instances = detect_monster_instances(&payload);
-                    if !monsters.is_empty() || !instances.is_empty() {
-                        let handles = parse_object_handles(&payload)
-                            .into_iter()
-                            .map(hex::encode)
-                            .collect::<Vec<_>>();
-                        println!(
-                            "OBS t={:.6} dir={} hits={} monsters={:?} instances={:?} handles={handles:?}",
-                            packet.timestamp,
-                            packet.direction,
-                            packet.parsed_hits,
-                            monsters,
-                            instances
-                                .iter()
-                                .map(|instance| instance.object_name.as_str())
-                                .collect::<Vec<_>>()
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "manual UDP flow analysis"]
-    fn diagnose_actual_capture_udp_flows() {
-        #[derive(Default)]
-        struct FlowStats {
-            packets: usize,
-            bytes: usize,
-            first: f64,
-            last: f64,
-            monster_packets: Vec<(f64, Vec<(String, String)>)>,
-        }
-
-        let path = actual_capture_path();
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut flows = BTreeMap::<(Ipv4Addr, u16, Ipv4Addr, u16), FlowStats>::new();
-        let mut capture_first = f64::INFINITY;
-        let mut capture_last = 0.0_f64;
-
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            capture_first = capture_first.min(timestamp);
-            capture_last = capture_last.max(timestamp);
-            let stats = flows.entry((src, src_port, dst, dst_port)).or_default();
-            stats.packets += 1;
-            stats.bytes += payload.len();
-            if stats.first == 0.0 {
-                stats.first = timestamp;
-            }
-            stats.last = timestamp;
-            let monsters = detect_monster_targets(payload);
-            if !monsters.is_empty() {
-                stats.monster_packets.push((timestamp, monsters));
-            }
-        }
-
-        println!(
-            "capture={} first={capture_first:.6} last={capture_last:.6} duration={:.3}s flows={}",
-            path.display(),
-            capture_last - capture_first,
-            flows.len()
-        );
-        for ((src, src_port, dst, dst_port), stats) in flows {
-            println!(
-                "FLOW {src}:{src_port} -> {dst}:{dst_port} packets={} bytes={} first={:.6} last={:.6} monsters={:?}",
-                stats.packets, stats.bytes, stats.first, stats.last, stats.monster_packets
-            );
-        }
-    }
-
-    #[test]
-    #[ignore = "manual damage target reference analysis"]
-    fn diagnose_damage_target_references() {
-        let path = actual_capture_path();
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut samples = BTreeMap::<u64, Vec<String>>::new();
-        let mut prefixes = BTreeMap::<u64, Vec<Vec<u8>>>::new();
-        let mut reference_candidates = BTreeMap::<u64, HashMap<[u8; 8], usize>>::new();
-
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            if !src.is_private() || dst.is_private() {
-                continue;
-            }
-            for record in crate::parser::parse_damage_records(payload) {
-                let max_hp = record.target_max_hp.round() as u64;
-                let rows = samples.entry(max_hp).or_default();
-                if rows.len() >= 8 {
-                    continue;
-                }
-                let Some(aligned) =
-                    crate::parser::aligned_bytes_for_test(payload, record.bit_shift)
-                else {
-                    continue;
-                };
-                let record_start = record.byte_offset.saturating_sub(5);
-                if record_start >= 227 {
-                    let candidate: [u8; 8] = aligned[record_start - 227..record_start - 219]
-                        .try_into()
-                        .unwrap();
-                    *reference_candidates
-                        .entry(max_hp)
-                        .or_default()
-                        .entry(candidate)
-                        .or_default() += 1;
-                }
-                if record_start >= 75 {
-                    let prefix_start = record_start.saturating_sub(256);
-                    prefixes
-                        .entry(max_hp)
-                        .or_default()
-                        .push(aligned[prefix_start..record_start - 75].to_vec());
-                }
-                let start = record_start.saturating_sub(256);
-                let end = aligned.len().min(record_start + 160);
-                let transport = parse_transport_packet(payload)
-                    .and_then(|packet| match packet {
-                        TransportPacket::Sequenced(packet) => Some(packet),
-                        TransportPacket::StatelessHandshake { .. } => None,
-                    })
-                    .map(|packet| {
-                        let bunch = parse_single_bunch(&packet)
-                            .map(|bunch| {
-                                format!(
-                                    " bunch={}/{:02x}/{}",
-                                    bunch.sequence, bunch.descriptor, bunch.data_bit_len
-                                )
-                            })
-                            .unwrap_or_default();
-                        format!(" packet={}/mode={}{}", packet.packet_id, packet.mode, bunch)
-                    })
-                    .unwrap_or_default();
-                rows.push(format!(
-                    "t={timestamp:.6} damage={:.0} hp={:.0}/{max_hp} shift={} offset={}{} bytes[{}..{}]={}",
-                    record.damage,
-                    record.target_hp_before,
-                    record.bit_shift,
-                    record_start,
-                    transport,
-                    start,
-                    end,
-                    hex::encode(&aligned[start..end])
-                ));
-            }
-        }
-
-        println!("capture={}", path.display());
-        for (max_hp, rows) in samples {
-            println!("MAX_HP={max_hp} samples={}", rows.len());
-            for row in rows {
-                println!("{row}");
-            }
-        }
-        println!("STABLE PREFIX RUNS");
-        for (max_hp, rows) in prefixes {
-            if rows.len() < 3 {
-                continue;
-            }
-            let width = rows.iter().map(Vec::len).min().unwrap_or(0);
-            let aligned_rows = rows
-                .iter()
-                .map(|row| &row[row.len() - width..])
-                .collect::<Vec<_>>();
-            let mut index = 0;
-            let mut runs = Vec::new();
-            while index < width {
-                if aligned_rows
-                    .iter()
-                    .skip(1)
-                    .all(|row| row[index] == aligned_rows[0][index])
-                {
-                    let start = index;
-                    index += 1;
-                    while index < width
-                        && aligned_rows
-                            .iter()
-                            .skip(1)
-                            .all(|row| row[index] == aligned_rows[0][index])
-                    {
-                        index += 1;
-                    }
-                    if index - start >= 2 {
-                        runs.push(format!(
-                            "{}..{}:{}",
-                            start as isize - width as isize - 75,
-                            index as isize - width as isize - 75,
-                            hex::encode(&aligned_rows[0][start..index])
-                        ));
-                    }
-                } else {
-                    index += 1;
-                }
-            }
-            println!("MAX_HP={max_hp} count={} {}", rows.len(), runs.join(" "));
-        }
-        println!("REFERENCE CANDIDATES");
-        for (max_hp, candidates) in reference_candidates {
-            let mut candidates = candidates.into_iter().collect::<Vec<_>>();
-            candidates.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-            println!(
-                "MAX_HP={max_hp} candidates={:?}",
-                candidates
-                    .into_iter()
-                    .take(8)
-                    .map(|(value, count)| (hex::encode(value), count))
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
-
-    #[test]
-    #[ignore = "manual monster NetGUID export analysis"]
-    fn diagnose_monster_export_references() {
-        const MONSTERS: &[&str] = &[
-            "mon_17_BP_Abyss",
-            "mon_14_BP_Abyss",
-            "mon_24_BP_Abyss",
-            "mon_023_BP_Abyss",
-            "mon_33_BP_Abyss",
-        ];
-        let path = actual_capture_path();
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut seen = HashSet::new();
-
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            for bit_shift in 0..8 {
-                let Some(aligned) = crate::parser::aligned_bytes_for_test(payload, bit_shift)
-                else {
-                    continue;
-                };
-                for monster in MONSTERS {
-                    for (offset, _) in aligned
-                        .windows(monster.len())
-                        .enumerate()
-                        .filter(|(_, window)| *window == monster.as_bytes())
-                    {
-                        let key = (monster, bit_shift, offset, timestamp.to_bits());
-                        if !seen.insert(key) {
-                            continue;
-                        }
-                        let start = offset.saturating_sub(96);
-                        let end = aligned.len().min(offset + monster.len() + 48);
-                        println!(
-                            "t={timestamp:.6} flow={src}:{src_port}->{dst}:{dst_port} dir={} monster={monster} shift={bit_shift} offset={offset} raw={} transport={:?} records={:?} handles={:?} bytes[{}..{}]={}",
-                            if src.is_private() && !dst.is_private() {
-                                "C2S"
-                            } else {
-                                "S2C"
-                            },
-                            hex::encode(&payload[..payload.len().min(24)]),
-                            parse_transport_packet(payload).and_then(|packet| match packet {
-                                TransportPacket::Sequenced(packet) => {
-                                    let prefix = packet.payload.get(..2).map(|bytes| {
-                                        u16::from_le_bytes([bytes[0], bytes[1]]) & 0x1fff
-                                    });
-                                    Some((
-                                        packet.mode,
-                                        packet.packet_id,
-                                        packet.payload_bit_len,
-                                        prefix,
-                                    ))
-                                }
-                                TransportPacket::StatelessHandshake { .. } => None,
-                            }),
-                            crate::parser::parse_damage_records(payload)
-                                .iter()
-                                .map(|record| {
-                                    let candidate = crate::parser::aligned_bytes_for_test(
-                                        payload,
-                                        record.bit_shift,
-                                    )
-                                    .and_then(|aligned| {
-                                        let start = record.byte_offset.checked_sub(232)?;
-                                        aligned.get(start..start + 16).map(hex::encode)
-                                    });
-                                    (
-                                        record.damage.round() as u64,
-                                        record.target_hp_before.round() as u64,
-                                        record.target_max_hp.round() as u64,
-                                        record.bit_shift,
-                                        record.byte_offset,
-                                        candidate,
-                                    )
-                                })
-                                .collect::<Vec<_>>(),
-                            parse_object_handles(payload)
-                                .into_iter()
-                                .map(hex::encode)
-                                .collect::<Vec<_>>(),
-                            start,
-                            end,
-                            hex::encode(&aligned[start..end])
-                        );
-                    }
-                }
-            }
-        }
-        println!("capture={} exports={}", path.display(), seen.len());
-    }
-
-    #[test]
-    #[ignore = "manual monster instance reference search"]
-    fn diagnose_monster_instance_ids_in_damage_packets() {
-        const INSTANCE_IDS: &[u32] = &[
-            2_147_354_380,
-            2_147_353_337,
-            2_147_349_936,
-            2_147_349_963,
-            2_147_349_209,
-            2_147_347_859,
-        ];
-        let path = actual_capture_path();
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut damage_packets = 0;
-        let mut matches = 0;
-
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            if !src.is_private() || dst.is_private() {
-                continue;
-            }
-            let records = crate::parser::parse_damage_records(payload);
-            if records.is_empty() {
-                continue;
-            }
-            damage_packets += 1;
-            for bit_shift in 0..8 {
-                let Some(aligned) = crate::parser::aligned_bytes_for_test(payload, bit_shift)
-                else {
-                    continue;
-                };
-                for instance_id in INSTANCE_IDS {
-                    for bytes in [instance_id.to_le_bytes(), instance_id.to_be_bytes()] {
-                        if let Some(offset) = aligned
-                            .windows(bytes.len())
-                            .position(|window| window == bytes)
-                        {
-                            matches += 1;
-                            println!(
-                                "t={timestamp:.6} id={instance_id} shift={bit_shift} offset={offset} records={:?}",
-                                records
-                                    .iter()
-                                    .map(|record| (
-                                        record.target_max_hp.round() as u64,
-                                        record.bit_shift,
-                                        record.byte_offset
-                                    ))
-                                    .collect::<Vec<_>>()
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        println!(
-            "capture={} damage_packets={damage_packets} exact_instance_matches={matches}",
-            path.display()
-        );
-    }
-
-    #[test]
-    #[ignore = "manual monster instance and damage alignment analysis"]
-    fn diagnose_monster_instance_damage_alignment() {
-        let path = actual_capture_path();
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut matches = 0;
-
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            if !src.is_private() || dst.is_private() {
-                continue;
-            }
-            let records = crate::parser::parse_damage_records(payload);
-            let instances = detect_monster_instances(payload);
-            if records.is_empty() || instances.is_empty() {
-                continue;
-            }
-            matches += 1;
-            println!(
-                "ALIGN t={timestamp:.6} records={:?} instances={:?}",
-                records
-                    .iter()
-                    .map(|record| (
-                        record.target_max_hp.round() as u64,
-                        record.byte_offset,
-                        record.bit_shift
-                    ))
-                    .collect::<Vec<_>>(),
-                instances
-                    .iter()
-                    .map(|instance| (
-                        instance.object_name.as_str(),
-                        instance.byte_offset,
-                        instance.bit_shift
-                    ))
-                    .collect::<Vec<_>>()
-            );
-        }
-        println!("capture={} packets_with_both={matches}", path.display());
-    }
-
-    #[test]
-    #[ignore = "manual real-capture attack type analysis"]
-    fn diagnose_actual_capture_attack_types() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("无法加载实际 characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        let stop = Arc::new(AtomicBool::new(false));
-
-        import_pcapng(path.clone(), characters, None, true, sender, stop)
-            .join()
-            .expect("真实抓包导入线程异常退出");
-
-        let mut counts = HashMap::<String, usize>::new();
-        let mut effects = HashMap::<String, (usize, Vec<u64>)>::new();
-        let mut unknown_hits = Vec::new();
-        let mut other_hits = Vec::new();
-        let mut recent_hits = VecDeque::<Hit>::new();
-        let mut recent_packets = VecDeque::<(f64, Vec<u32>)>::new();
-        let mut last_declared_at = HashMap::<u32, f64>::new();
-        let mut total_hits = 0_usize;
-        let mut classified_hits = 0_usize;
-        let mut named_hits = 0_usize;
-        for event in receiver.try_iter() {
-            let hit = match event {
-                EngineEvent::Packet(packet) => {
-                    if !packet.declared_ids.is_empty() {
-                        for character_id in &packet.declared_ids {
-                            last_declared_at.insert(*character_id, packet.timestamp);
-                        }
-                        recent_packets.push_back((packet.timestamp, packet.declared_ids));
-                        while recent_packets.len() > 32 {
-                            recent_packets.pop_front();
-                        }
-                    }
-                    continue;
-                }
-                EngineEvent::Hit(hit) => hit,
-                _ => continue,
-            };
-            if hit.attack_type.as_deref() == Some("环合") {
-                println!(
-                    "qte_timeline t={:.6} char={}({}) damage={:.0} effect={} recent={:?}",
-                    hit.timestamp,
-                    hit.char_name,
-                    hit.char_id,
-                    hit.damage,
-                    hit.gameplay_effect_name.as_deref().unwrap_or("<unknown>"),
-                    recent_hits
-                        .iter()
-                        .filter(|recent| hit.timestamp - recent.timestamp <= 3.0)
-                        .map(|recent| (
-                            hit.timestamp - recent.timestamp,
-                            recent.char_id,
-                            recent.char_name.as_str(),
-                            recent.attack_type.as_deref(),
-                            recent.gameplay_effect_name.as_deref(),
-                        ))
-                        .collect::<Vec<_>>()
-                );
-                println!(
-                    "qte_packet_history={:?}",
-                    recent_packets
-                        .iter()
-                        .filter(|(timestamp, _)| hit.timestamp - timestamp <= 1.0)
-                        .map(|(timestamp, ids)| (hit.timestamp - timestamp, ids))
-                        .collect::<Vec<_>>()
-                );
-                let mut other_declarations = last_declared_at
-                    .iter()
-                    .filter(|(character_id, _)| **character_id != hit.char_id)
-                    .map(|(character_id, timestamp)| (hit.timestamp - timestamp, *character_id))
-                    .collect::<Vec<_>>();
-                other_declarations.sort_by(|left, right| left.0.total_cmp(&right.0));
-                println!("qte_other_declarations={other_declarations:?}");
-            }
-            total_hits += 1;
-            let attack_type = hit.attack_type.as_deref().unwrap_or("未知").to_owned();
-            if hit.attack_type.is_some() {
-                classified_hits += 1;
-            } else if unknown_hits.len() < 12 {
-                unknown_hits.push((
-                    hit.char_name.clone(),
-                    hit.damage.round() as u64,
-                    hit.bit_shift,
-                    hit.gameplay_effect_index,
-                ));
-            }
-            if hit.damage_name.is_some() {
-                named_hits += 1;
-            }
-            if hit.attack_type.as_deref() == Some("其他") && other_hits.len() < 12 {
-                other_hits.push((
-                    hit.char_name.clone(),
-                    hit.damage.round() as u64,
-                    hit.gameplay_effect_name.clone(),
-                    hit.ability_name.clone(),
-                ));
-            }
-            *counts.entry(attack_type).or_default() += 1;
-            if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-                let row = effects.entry(effect_name.to_owned()).or_default();
-                row.0 += 1;
-                let damage = hit.damage.round() as u64;
-                if row.1.len() < 8 && !row.1.contains(&damage) {
-                    row.1.push(damage);
-                }
-            }
-            recent_hits.push_back(hit);
-            while recent_hits.len() > 24 {
-                recent_hits.pop_front();
-            }
-        }
-
-        let mut count_rows: Vec<_> = counts.into_iter().collect();
-        count_rows.sort_by(|left, right| right.1.cmp(&left.1));
-        let mut effect_rows: Vec<_> = effects.into_iter().collect();
-        effect_rows.sort_by(|left, right| right.1.0.cmp(&left.1.0));
-        println!(
-            "attack_type_summary capture={} hits={} classified={} named={} types={:?}",
-            path.display(),
-            total_hits,
-            classified_hits,
-            named_hits,
-            count_rows
-        );
-        println!("unknown_hits={unknown_hits:?}");
-        println!("other_hits={other_hits:?}");
-        for (effect_name, (count, damages)) in effect_rows {
-            println!("effect={effect_name} hits={count} damage={damages:?}");
-        }
-
-        assert!(total_hits > 0, "抓包没有解析出伤害记录");
-        assert!(classified_hits > 0, "抓包没有关联出任何攻击类型");
-    }
-
-    #[test]
-    #[ignore = "requires a local PCAPNG via logs or NTE_TEST_CAPTURE"]
-    fn actual_capture_contains_server_boss_hp_updates() {
-        let path = actual_capture_path();
-        let file = File::open(&path).expect("无法打开真实抓包文件");
-        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
-        let mut updates = Vec::new();
-
-        while let Some(block) = reader.next_block() {
-            let block = block.expect("真实抓包包含损坏的数据块");
-            let (interface_id, data) = match block {
-                Block::EnhancedPacket(packet) => {
-                    (packet.interface_id as usize, packet.data.into_owned())
-                }
-                Block::SimplePacket(packet) => (0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((_, _, _, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            updates.extend(parse_boss_hp_updates(payload));
-        }
-
-        assert!(
-            updates.len() >= 2,
-            "真实抓包中缺少可用于伤害校正的 Boss HP 更新: {}",
-            path.display()
-        );
-        assert!(
-            updates
-                .windows(2)
-                .any(|pair| pair[1].current_hp < pair[0].current_hp),
-            "真实抓包中的 Boss HP 更新没有形成掉血序列: {}",
-            path.display()
-        );
-    }
-
-    #[test]
-    #[ignore = "manual real-capture GameplayEffect analysis"]
-    fn diagnose_actual_capture_gameplay_effects() {
-        #[derive(Default)]
-        struct EffectStats {
-            count: usize,
-            packet_count: usize,
-            damage_values: Vec<u64>,
-            declared_ids: HashSet<u32>,
-            bit_shifts: HashSet<u8>,
-        }
-
-        let path = actual_capture_path();
-        let names = load_gameplay_effect_mapping(Path::new(GAMEPLAY_EFFECT_MAPPING_PATH))
-            .expect("无法加载 GameplayEffect 映射");
-        let file = File::open(&path).expect("无法打开真实抓包文件");
-        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
-        let mut stats = HashMap::<u32, EffectStats>::new();
-        let mut udp_packets = 0_usize;
-        let mut effect_packets = 0_usize;
-
-        while let Some(block) = reader.next_block() {
-            let block = block.expect("真实抓包包含损坏的数据块");
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            udp_packets += 1;
-            let effects = parse_gameplay_effects(payload);
-            if effects.is_empty() {
-                continue;
-            }
-            effect_packets += 1;
-            let damage_records = crate::parser::parse_damage_records(payload);
-            let damage_values: Vec<_> = damage_records
-                .iter()
-                .map(|record| record.damage.round() as u64)
-                .collect();
-            let character_evidence = find_declared_character_evidence(payload);
-            let declared_ids = declared_character_ids_from_evidence(&character_evidence);
-            let mut packet_indexes = HashSet::new();
-            if effects
-                .iter()
-                .any(|effect| matches!(effect.unique_index, 52 | 559 | 561))
-            {
-                println!(
-                    "reaction_event t={timestamp:.6} direction={} effects={:?} evidence={:?} damage={:?}",
-                    if src.is_private() && !dst.is_private() {
-                        "C2S"
-                    } else {
-                        "S2C"
-                    },
-                    effects
-                        .iter()
-                        .map(|effect| (effect.unique_index, effect.bit_shift, effect.byte_offset))
-                        .collect::<Vec<_>>(),
-                    character_evidence,
-                    damage_records
-                        .iter()
-                        .map(|record| (
-                            record.damage.round() as u64,
-                            record.bit_shift,
-                            record.byte_offset
-                        ))
-                        .collect::<Vec<_>>()
-                );
-            }
-            for effect in effects {
-                let row = stats.entry(effect.unique_index).or_default();
-                row.count += 1;
-                row.bit_shifts.insert(effect.bit_shift);
-                row.declared_ids.extend(declared_ids.iter().copied());
-                for damage in &damage_values {
-                    if !row.damage_values.contains(damage) && row.damage_values.len() < 12 {
-                        row.damage_values.push(*damage);
-                    }
-                }
-                if packet_indexes.insert(effect.unique_index) {
-                    row.packet_count += 1;
-                }
-            }
-        }
-
-        let mut rows: Vec<_> = stats.into_iter().collect();
-        rows.sort_by(|(left_index, left), (right_index, right)| {
-            right
-                .count
-                .cmp(&left.count)
-                .then_with(|| left_index.cmp(right_index))
-        });
-        println!(
-            "effect_summary capture={} udp_packets={} effect_packets={} effect_events={} distinct={}",
-            path.display(),
-            udp_packets,
-            effect_packets,
-            rows.iter().map(|(_, row)| row.count).sum::<usize>(),
-            rows.len()
-        );
-        for (index, mut row) in rows {
-            let mut declared_ids: Vec<_> = row.declared_ids.drain().collect();
-            declared_ids.sort_unstable();
-            let mut bit_shifts: Vec<_> = row.bit_shifts.drain().collect();
-            bit_shifts.sort_unstable();
-            println!(
-                "effect index={} count={} packets={} name={} declared={:?} damage={:?} shifts={:?}",
-                index,
-                row.count,
-                row.packet_count,
-                names.get(&index).map(String::as_str).unwrap_or("<unknown>"),
-                declared_ids,
-                row.damage_values,
-                bit_shifts
-            );
-        }
-    }
-
-    #[test]
-    #[ignore = "manual real-capture follow-up damage analysis"]
-    fn diagnose_actual_capture_follow_up_damage() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("无法加载实际 characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        import_pcapng(
-            path.clone(),
-            characters,
-            None,
-            true,
-            sender,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .join()
-        .unwrap();
-
-        let mut hits: Vec<_> = receiver
-            .try_iter()
-            .filter_map(|event| match event {
-                EngineEvent::Hit(hit) if hit.direction != "incoming" => Some(hit),
-                _ => None,
-            })
-            .collect();
-        hits.sort_by(|left, right| left.timestamp.total_cmp(&right.timestamp));
-        let max_hp = hits
-            .iter()
-            .map(|hit| hit.target_max_hp.round() as u64)
-            .max()
-            .unwrap();
-        hits.retain(|hit| hit.target_max_hp.round() as u64 == max_hp);
-        for hit in &hits {
-            println!(
-                "parsed_hit t={:.6} char={} damage={:.3} hp_before={:.3} hp_after={:.3} max_hp={:.3} source={} target={:?}",
-                hit.timestamp,
-                hit.char_id,
-                hit.damage,
-                hit.target_hp_before,
-                hit.target_hp_after,
-                hit.target_max_hp,
-                hit.char_source,
-                hit.target_id
-            );
-        }
-
-        let mut gaps = Vec::new();
-        for pair in hits.windows(2) {
-            let gap = pair[0].target_hp_after - pair[1].target_hp_before;
-            if gap > 0.5 {
-                gaps.push((pair[1].timestamp, gap));
-            }
-        }
-        println!(
-            "capture={} max_hp={} hits={} damage={:.0} first_hp={:.0} last_hp={:.0} gaps={} gap_sum={:.0}",
-            path.display(),
-            max_hp,
-            hits.len(),
-            hits.iter().map(|hit| hit.damage).sum::<f64>(),
-            hits.first().unwrap().target_hp_before,
-            hits.last().unwrap().target_hp_after,
-            gaps.len(),
-            gaps.iter().map(|(_, gap)| gap).sum::<f64>()
-        );
-        let start = hits.first().unwrap().timestamp;
-        let mut frequencies: HashMap<u64, Vec<f64>> = HashMap::new();
-        for (timestamp, gap) in &gaps {
-            frequencies
-                .entry(gap.round() as u64)
-                .or_default()
-                .push(*timestamp);
-        }
-        let mut frequencies: Vec<_> = frequencies.into_iter().collect();
-        frequencies.sort_by_key(|(_, timestamps)| std::cmp::Reverse(timestamps.len()));
-        for (damage, timestamps) in frequencies.iter().take(30) {
-            let intervals: Vec<_> = timestamps
-                .windows(2)
-                .map(|pair| pair[1] - pair[0])
-                .collect();
-            println!(
-                "gap_damage={} count={} first={:.3}s intervals={:?}",
-                damage,
-                timestamps.len(),
-                timestamps[0] - start,
-                intervals
-                    .iter()
-                    .map(|interval| format!("{interval:.3}"))
-                    .collect::<Vec<_>>()
-            );
-        }
-
-        #[derive(Clone)]
-        struct RawPacket {
-            timestamp: f64,
-            direction: &'static str,
-            payload: Vec<u8>,
-            hit_count: usize,
-            text: String,
-        }
-        let file = File::open(&path).unwrap();
-        let mut reader = PcapNgReader::new(file).unwrap();
-        let mut packets = Vec::new();
-        while let Some(block) = reader.next_block() {
-            let block = block.unwrap();
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, _, dst, _, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            for record in crate::parser::parse_damage_records(payload) {
-                println!(
-                    "raw_record t={timestamp:.6} dir={} damage={:.6} hp_before={:.6} max_hp={:.6} damage_time={:.6} world_time={:.6} repeated={:.6} flags={:?} trailing={:.6} shift={} offset={}",
-                    if src.is_private() && !dst.is_private() {
-                        "C2S"
-                    } else {
-                        "S2C"
-                    },
-                    record.damage,
-                    record.target_hp_before,
-                    record.target_max_hp,
-                    record.damage_time,
-                    record.world_time,
-                    record.repeated_damage,
-                    record.state_flags,
-                    record.trailing_value,
-                    record.bit_shift,
-                    record.byte_offset
-                );
-            }
-            let search_values = [641.0_f32, 3_177.0, 3_209.0, 3_818.0, 3_850.0, 8_772.0];
-            for bit_shift in 0..8 {
-                let shifted = decode_shifted_payload(payload, bit_shift);
-                for offset in 0..shifted.len().saturating_sub(4) {
-                    let value = f32::from_le_bytes(shifted[offset..offset + 4].try_into().unwrap());
-                    for expected in search_values {
-                        if value.is_finite() && (value - expected).abs() < 0.01 {
-                            println!(
-                                "float_value t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.3}"
-                            );
-                        }
-                    }
-                    if value.is_finite()
-                        && ((0.15..=0.25).contains(&value) || (0.95..=1.05).contains(&value))
-                    {
-                        println!(
-                            "ratio_value t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.9}"
-                        );
-                    }
-                    if !src.is_private()
-                        && dst.is_private()
-                        && timestamp >= 1_781_344_072.474
-                        && value.is_finite()
-                        && (1_100_000.0..=1_140_000.0).contains(&value)
-                        && value.fract().abs() < 0.01
-                    {
-                        println!(
-                            "boss_hp_candidate t={timestamp:.6} shift={bit_shift} offset={offset} value={value:.0} len={}",
-                            payload.len()
-                        );
-                        if (value - 1_122_225.0).abs() < 0.5 || (value - 1_126_075.0).abs() < 0.5 {
-                            let start = offset.saturating_sub(40);
-                            let end = (offset + 40).min(shifted.len());
-                            println!(
-                                "boss_hp_context text={} bytes={}",
-                                decode_payload_text(payload).replace('\n', "|"),
-                                hex::encode(&shifted[start..end])
-                            );
-                        }
-                    }
-                }
-            }
-            packets.push(RawPacket {
-                timestamp,
-                direction: if src.is_private() && !dst.is_private() {
-                    "C2S"
-                } else {
-                    "S2C"
-                },
-                payload: payload.to_vec(),
-                hit_count: crate::parser::parse_damage_records(payload).len(),
-                text: decode_payload_text(payload),
-            });
-        }
-
-        let Some(trigger_time) = hits
-            .iter()
-            .find(|hit| (hit.damage - 8_772.0).abs() < 0.5)
-            .map(|hit| hit.timestamp)
-        else {
-            println!("specific trigger damage 8772 is absent; skipping legacy packet window");
-            return;
-        };
-        let Some(follow_up_time) = hits
-            .iter()
-            .find(|hit| (hit.damage - 3_177.0).abs() < 0.5)
-            .map(|hit| hit.timestamp)
-        else {
-            println!("specific follow-up damage 3177 is absent; skipping legacy packet window");
-            return;
-        };
-        for (label, center) in [("trigger", trigger_time), ("follow_up", follow_up_time)] {
-            println!("window {label} center={center:.6}");
-            for packet in packets.iter().filter(|packet| {
-                packet.direction == "C2S"
-                    && packet.timestamp >= center - 0.5
-                    && packet.timestamp <= center + 0.5
-            }) {
-                let evidence = find_declared_character_evidence(&packet.payload);
-                println!(
-                    "window_packet label={label} dt={:.6} len={} hits={} ids={:?} text={} prefix={}",
-                    packet.timestamp - center,
-                    packet.payload.len(),
-                    packet.hit_count,
-                    declared_character_ids_from_evidence(&evidence),
-                    packet.text.replace('\n', "|"),
-                    hex::encode(&packet.payload[..packet.payload.len().min(48)])
-                );
-            }
-        }
-        for packet in &packets {
-            if packet.text.lines().any(|line| {
-                line.contains("GA_")
-                    || line.starts_with("Ability.")
-                    || line.starts_with("Effect")
-                    || line.contains("ActiveGE")
-            }) {
-                println!(
-                    "effect_text dt_trigger={:.6} dt_follow_up={:.6} dir={} len={} text={}",
-                    packet.timestamp - trigger_time,
-                    packet.timestamp - follow_up_time,
-                    packet.direction,
-                    packet.payload.len(),
-                    packet.text.replace('\n', "|")
-                );
-            }
-        }
-        for target in [641_u32, 3_177, 3_209, 3_850, 8_772] {
-            let u16_le = (target as u16).to_le_bytes();
-            let u16_be = (target as u16).to_be_bytes();
-            let u32_le = target.to_le_bytes();
-            let u32_be = target.to_be_bytes();
-            let f64_le = (target as f64).to_le_bytes();
-            let mut leb128 = Vec::new();
-            let mut remaining = target;
-            loop {
-                let mut byte = (remaining & 0x7f) as u8;
-                remaining >>= 7;
-                if remaining != 0 {
-                    byte |= 0x80;
-                }
-                leb128.push(byte);
-                if remaining == 0 {
-                    break;
-                }
-            }
-            for packet in &packets {
-                if (packet.timestamp - follow_up_time).abs() > 0.2 {
-                    continue;
-                }
-                for bit_shift in 0..8 {
-                    let shifted = decode_shifted_payload(&packet.payload, bit_shift);
-                    for (encoding, needle) in [
-                        ("u16_le", u16_le.as_slice()),
-                        ("u16_be", u16_be.as_slice()),
-                        ("u32_le", u32_le.as_slice()),
-                        ("u32_be", u32_be.as_slice()),
-                        ("f64_le", f64_le.as_slice()),
-                        ("leb128", leb128.as_slice()),
-                    ] {
-                        for offset in shifted
-                            .windows(needle.len())
-                            .enumerate()
-                            .filter_map(|(offset, window)| (window == needle).then_some(offset))
-                        {
-                            println!(
-                                "encoded_value target={target} encoding={encoding} dt={:.6} dir={} len={} shift={bit_shift} offset={offset} context={}",
-                                packet.timestamp - follow_up_time,
-                                packet.direction,
-                                packet.payload.len(),
-                                hex::encode(
-                                    &shifted[offset.saturating_sub(12)
-                                        ..(offset + needle.len() + 12).min(shifted.len())]
-                                )
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        for target in [0.2_f32, 1.2, 20.0] {
-            let needle = target.to_le_bytes();
-            for packet in &packets {
-                if (packet.timestamp - follow_up_time).abs() > 0.2 {
-                    continue;
-                }
-                for bit_shift in 0..8 {
-                    let shifted = decode_shifted_payload(&packet.payload, bit_shift);
-                    for offset in shifted
-                        .windows(needle.len())
-                        .enumerate()
-                        .filter_map(|(offset, window)| (window == needle).then_some(offset))
-                    {
-                        println!(
-                            "coefficient target={target} dt={:.6} dir={} len={} shift={bit_shift} offset={offset}",
-                            packet.timestamp - follow_up_time,
-                            packet.direction,
-                            packet.payload.len()
-                        );
-                    }
-                }
-            }
-        }
-        for (label, center) in [("trigger", trigger_time), ("follow_up", follow_up_time)] {
-            let packet = packets
-                .iter()
-                .find(|packet| packet.timestamp == center && packet.hit_count > 0)
-                .unwrap();
-            for bit_shift in 0..8 {
-                let shifted = decode_shifted_payload(&packet.payload, bit_shift);
-                let strings = shifted
-                    .split(|byte| !(0x20..=0x7e).contains(byte))
-                    .filter(|bytes| bytes.len() >= 4)
-                    .filter_map(|bytes| std::str::from_utf8(bytes).ok())
-                    .collect::<Vec<_>>();
-                if !strings.is_empty() {
-                    println!("hit_strings label={label} shift={bit_shift} values={strings:?}");
-                }
-                if let Some(offset) = shifted
-                    .windows(b"FHTClientActiveGE".len())
-                    .position(|window| window == b"FHTClientActiveGE")
-                {
-                    let start = offset.saturating_sub(96);
-                    let end = (offset + 256).min(shifted.len());
-                    println!(
-                        "active_ge label={label} shift={bit_shift} offset={offset} nearby={}",
-                        hex::encode(&shifted[start..end])
-                    );
-                    let anchor = offset + b"FHTClientActiveGE".len() + 5;
-                    let values = shifted[anchor..]
-                        .chunks_exact(4)
-                        .enumerate()
-                        .filter_map(|(index, bytes)| {
-                            let value = u32::from_le_bytes(bytes.try_into().unwrap());
-                            (2..=10_000_000)
-                                .contains(&value)
-                                .then_some((index * 4, value))
-                        })
-                        .collect::<Vec<_>>();
-                    println!("active_ge_u32 label={label} values={values:?}");
-                }
-            }
-            for record in crate::parser::parse_damage_records(&packet.payload) {
-                let shifted = decode_shifted_payload(&packet.payload, record.bit_shift);
-                let start = record.byte_offset.saturating_sub(96);
-                let end = (record.byte_offset + 128).min(shifted.len());
-                println!(
-                    "hit_record label={label} damage={} shift={} offset={} nearby={}",
-                    record.damage,
-                    record.bit_shift,
-                    record.byte_offset,
-                    hex::encode(&shifted[start..end])
-                );
-            }
-        }
-
-        let mut signature_hits: HashMap<(String, usize, String), usize> = HashMap::new();
-        let mut exact_float_matches = 0;
-        for pair in hits.windows(2) {
-            let gap = pair[0].target_hp_after - pair[1].target_hp_before;
-            if gap <= 0.5 {
-                continue;
-            }
-            let float_bytes = (gap as f32).to_le_bytes();
-            for packet in packets.iter().filter(|packet| {
-                packet.timestamp >= pair[0].timestamp
-                    && packet.timestamp <= pair[1].timestamp
-                    && packet.hit_count == 0
-            }) {
-                if packet
-                    .payload
-                    .windows(float_bytes.len())
-                    .any(|window| window == float_bytes)
-                {
-                    exact_float_matches += 1;
-                    println!(
-                        "float_match gap={gap:.0} dt={:.3} dir={} len={} text={}",
-                        packet.timestamp - pair[0].timestamp,
-                        packet.direction,
-                        packet.payload.len(),
-                        packet.text.replace('\n', "|")
-                    );
-                }
-                let text = if packet.text == UNREADABLE_PROTOCOL_TEXT {
-                    String::new()
-                } else {
-                    packet.text.lines().take(3).collect::<Vec<_>>().join("|")
-                };
-                *signature_hits
-                    .entry((packet.direction.to_owned(), packet.payload.len(), text))
-                    .or_default() += 1;
-            }
-        }
-        println!("exact_float_matches={exact_float_matches}");
-        let mut signature_hits: Vec<_> = signature_hits.into_iter().collect();
-        signature_hits.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-        for ((direction, len, text), count) in signature_hits.into_iter().take(60) {
-            println!("candidate count={count} dir={direction} len={len} text={text}");
-        }
-
-        let mut records_by_direction: HashMap<String, (usize, f64)> = HashMap::new();
-        for packet in &packets {
-            let records = crate::parser::parse_damage_records(&packet.payload);
-            let entry = records_by_direction
-                .entry(packet.direction.to_owned())
-                .or_default();
-            entry.0 += records.len();
-            entry.1 += records
-                .iter()
-                .map(|record| record.damage as f64)
-                .sum::<f64>();
-        }
-        for (direction, (count, damage)) in records_by_direction {
-            println!("records direction={direction} count={count} damage={damage:.0}");
-        }
-
-        let mut packet_groups: Vec<Vec<&Hit>> = Vec::new();
-        for hit in &hits {
-            if packet_groups
-                .last()
-                .is_none_or(|group| group[0].timestamp != hit.timestamp)
-            {
-                packet_groups.push(Vec::new());
-            }
-            packet_groups.last_mut().unwrap().push(hit);
-        }
-        let mut residuals = Vec::new();
-        for pair in packet_groups.windows(2) {
-            let previous = &pair[0];
-            let current = &pair[1];
-            let previous_before = previous
-                .iter()
-                .map(|hit| hit.target_hp_before)
-                .fold(f64::NEG_INFINITY, f64::max);
-            let previous_damage = previous.iter().map(|hit| hit.damage).sum::<f64>();
-            let previous_after = (previous_before - previous_damage).max(0.0);
-            let current_before = current
-                .iter()
-                .map(|hit| hit.target_hp_before)
-                .fold(f64::NEG_INFINITY, f64::max);
-            residuals.push((
-                current[0].timestamp - start,
-                previous_after - current_before,
-                previous.len(),
-                current.len(),
-            ));
-        }
-        let positive = residuals
-            .iter()
-            .filter(|(_, residual, _, _)| *residual > 0.5)
-            .map(|(_, residual, _, _)| *residual)
-            .sum::<f64>();
-        let negative = residuals
-            .iter()
-            .filter(|(_, residual, _, _)| *residual < -0.5)
-            .map(|(_, residual, _, _)| -*residual)
-            .sum::<f64>();
-        println!(
-            "packet_groups={} positive_residual={positive:.0} negative_residual={negative:.0} net={:.0}",
-            packet_groups.len(),
-            positive - negative
-        );
-        for (elapsed, residual, previous_count, current_count) in residuals
-            .iter()
-            .filter(|(_, residual, _, _)| residual.abs() > 100.0)
-        {
-            println!(
-                "packet_residual t={elapsed:.3}s value={residual:.0} prev_hits={previous_count} current_hits={current_count}"
-            );
-        }
-
-        let mut positive_counts: HashMap<i64, usize> = HashMap::new();
-        let mut negative_counts: HashMap<i64, usize> = HashMap::new();
-        for (_, residual, _, _) in &residuals {
-            let rounded = residual.round() as i64;
-            if rounded > 0 {
-                *positive_counts.entry(rounded).or_default() += 1;
-            } else if rounded < 0 {
-                *negative_counts.entry(-rounded).or_default() += 1;
-            }
-        }
-        let mut unmatched = Vec::new();
-        for (damage, positive_count) in positive_counts {
-            let negative_count = negative_counts.get(&damage).copied().unwrap_or(0);
-            if positive_count > negative_count {
-                unmatched.push((damage, positive_count - negative_count));
-            }
-        }
-        unmatched.sort_by_key(|(damage, count)| (std::cmp::Reverse(*count), *damage));
-        println!(
-            "unmatched_positive_total={}",
-            unmatched
-                .iter()
-                .map(|(damage, count)| *damage * *count as i64)
-                .sum::<i64>()
-        );
-        for (damage, count) in unmatched {
-            println!("unmatched damage={damage} count={count}");
-        }
-
-        let mut hp_order = hits.iter().collect::<Vec<_>>();
-        hp_order.sort_by(|left, right| {
-            right
-                .target_hp_before
-                .total_cmp(&left.target_hp_before)
-                .then_with(|| left.timestamp.total_cmp(&right.timestamp))
-        });
-        let mut hp_gaps = Vec::new();
-        let mut overlaps = Vec::new();
-        for pair in hp_order.windows(2) {
-            let residual = pair[0].target_hp_after - pair[1].target_hp_before;
-            if residual > 0.5 {
-                hp_gaps.push((
-                    pair[1].timestamp - start,
-                    residual,
-                    pair[0].target_hp_after,
-                    pair[1].target_hp_before,
-                ));
-            } else if residual < -0.5 {
-                overlaps.push(-residual);
-            }
-        }
-        println!(
-            "hp_order gaps={} gap_sum={:.0} overlaps={} overlap_sum={:.0}",
-            hp_gaps.len(),
-            hp_gaps.iter().map(|(_, gap, _, _)| gap).sum::<f64>(),
-            overlaps.len(),
-            overlaps.iter().sum::<f64>()
-        );
-        let mut hp_gap_frequencies: HashMap<u64, usize> = HashMap::new();
-        for (_, gap, _, _) in &hp_gaps {
-            *hp_gap_frequencies.entry(gap.round() as u64).or_default() += 1;
-        }
-        let mut hp_gap_frequencies: Vec<_> = hp_gap_frequencies.into_iter().collect();
-        hp_gap_frequencies.sort_by_key(|(damage, count)| (std::cmp::Reverse(*count), *damage));
-        for (damage, count) in hp_gap_frequencies {
-            println!("hp_order_gap damage={damage} count={count}");
-        }
-
-        let mut text_counts: HashMap<String, usize> = HashMap::new();
-        for packet in &packets {
-            if packet.text == UNREADABLE_PROTOCOL_TEXT {
-                continue;
-            }
-            for line in packet.text.lines() {
-                *text_counts.entry(line.to_owned()).or_default() += 1;
-            }
-        }
-        let mut text_counts: Vec<_> = text_counts.into_iter().collect();
-        text_counts.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-        for (text, count) in text_counts {
-            println!("protocol_text count={count} value={text}");
-        }
-
-        let mut hits_by_character: HashMap<u32, Vec<usize>> = HashMap::new();
-        for (index, hit) in hits.iter().enumerate() {
-            hits_by_character
-                .entry(hit.char_id)
-                .or_default()
-                .push(index);
-        }
-        for (char_id, indexes) in hits_by_character {
-            let mut positive = 0.0;
-            let mut negative = 0.0;
-            let mut residual_values = Vec::new();
-            let mut cumulative = 0.0;
-            for pair in indexes.windows(2) {
-                let previous_index = pair[0];
-                let current_index = pair[1];
-                let ordinary_between = hits[previous_index..current_index]
-                    .iter()
-                    .map(|hit| hit.damage)
-                    .sum::<f64>();
-                let residual = hits[previous_index].target_hp_before
-                    - ordinary_between
-                    - hits[current_index].target_hp_before;
-                cumulative += residual;
-                println!(
-                    "character_stream_cumulative char_id={char_id} t={:.3}s delta={residual:.0} total={cumulative:.0}",
-                    hits[current_index].timestamp - start
-                );
-                if residual > 0.5 {
-                    positive += residual;
-                    residual_values.push((hits[current_index].timestamp - start, residual));
-                } else if residual < -0.5 {
-                    negative += -residual;
-                }
-            }
-            println!(
-                "character_stream char_id={char_id} records={} positive={positive:.0} negative={negative:.0} net={:.0}",
-                indexes.len(),
-                positive - negative
-            );
-            for (elapsed, residual) in residual_values {
-                println!(
-                    "character_stream_gap char_id={char_id} t={elapsed:.3}s damage={residual:.0}"
-                );
-            }
-        }
-
-        let mut active_ge_signatures: HashMap<(String, usize, usize, String), usize> =
-            HashMap::new();
-        for packet in &packets {
-            if !packet.text.contains("FHTClientActiveGE") {
-                continue;
-            }
-            let identifiers = packet
-                .text
-                .lines()
-                .filter(|line| {
-                    *line != "FHTClientActiveGE"
-                        && *line != "FCharacterForNet"
-                        && *line != "AbilitySystemComponent"
-                        && *line != "UnbalCurrent"
-                })
-                .collect::<Vec<_>>()
-                .join("|");
-            *active_ge_signatures
-                .entry((
-                    packet.direction.to_owned(),
-                    packet.payload.len(),
-                    packet.hit_count,
-                    identifiers,
-                ))
-                .or_default() += 1;
-        }
-        let mut active_ge_signatures: Vec<_> = active_ge_signatures.into_iter().collect();
-        active_ge_signatures.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-        for ((direction, len, hit_count, identifiers), count) in active_ge_signatures {
-            println!(
-                "active_ge count={count} dir={direction} len={len} hits={hit_count} ids={identifiers}"
-            );
-        }
-        for packet in packets
-            .iter()
-            .filter(|packet| packet.hit_count == 0 && packet.text.contains("FHTClientActiveGE"))
-        {
-            let evidence = find_declared_character_evidence(&packet.payload);
-            println!(
-                "active_ge_no_hit t={:.3}s dir={} len={} declared={:?} evidence={:?} text={} hex={}",
-                packet.timestamp - start,
-                packet.direction,
-                packet.payload.len(),
-                declared_character_ids_from_evidence(&evidence),
-                evidence,
-                packet.text.replace('\n', "|"),
-                hex::encode(&packet.payload)
-            );
-            for record in crate::parser::parse_damage_records(&packet.payload) {
-                println!(
-                    "active_ge_no_hit_record t={:.3}s damage={:.0} hp_before={:.0} max_hp={:.0} repeated={:.0} flags={:?} trailing={:.3} shift={} offset={}",
-                    packet.timestamp - start,
-                    record.damage,
-                    record.target_hp_before,
-                    record.target_max_hp,
-                    record.repeated_damage,
-                    record.state_flags,
-                    record.trailing_value,
-                    record.bit_shift,
-                    record.byte_offset
-                );
-            }
-            for bit_shift in 0..8 {
-                let shifted = decode_shifted_payload(&packet.payload, bit_shift);
-                for offset in 0..shifted.len().saturating_sub(9) {
-                    if shifted[offset] != 12 || shifted[offset + 1..offset + 5] != [4, 0, 0, 0] {
-                        continue;
-                    }
-                    let value =
-                        f32::from_le_bytes(shifted[offset + 5..offset + 9].try_into().unwrap());
-                    if !value.is_finite() || value.abs() < 1.0 {
-                        continue;
-                    }
-                    let mut cursor = offset;
-                    let mut fields = Vec::new();
-                    while cursor + 5 <= shifted.len() && fields.len() < 16 {
-                        let field_type = shifted[cursor];
-                        let length =
-                            u32::from_le_bytes(shifted[cursor + 1..cursor + 5].try_into().unwrap())
-                                as usize;
-                        if length == 0 || length > 64 || cursor + 5 + length > shifted.len() {
-                            break;
-                        }
-                        fields.push(format!("{field_type}:{length}"));
-                        cursor += 5 + length;
-                    }
-                    if fields.len() >= 3 {
-                        println!(
-                            "active_ge_fields t={:.3}s shift={} offset={} first={value:.3} fields={}",
-                            packet.timestamp - start,
-                            bit_shift,
-                            offset,
-                            fields.join(",")
-                        );
-                    }
-                }
-            }
-        }
-
-        #[derive(Clone, Copy)]
-        struct StreamEstimate {
-            hp_before: f64,
-            ordinary_total: f64,
-            inferred_total: f64,
-        }
-        let mut stream_estimates: HashMap<u32, StreamEstimate> = HashMap::new();
-        let mut ordinary_total = 0.0;
-        let mut confirmed = 0.0_f64;
-        let mut confirmed_events = Vec::new();
-        for hit in &hits {
-            if let Some(previous) = stream_estimates.get(&hit.char_id).copied() {
-                let expected_hp = previous.hp_before - (ordinary_total - previous.ordinary_total);
-                let residual = expected_hp - hit.target_hp_before;
-                stream_estimates.insert(
-                    hit.char_id,
-                    StreamEstimate {
-                        hp_before: hit.target_hp_before,
-                        ordinary_total,
-                        inferred_total: previous.inferred_total + residual,
-                    },
-                );
-            } else {
-                stream_estimates.insert(
-                    hit.char_id,
-                    StreamEstimate {
-                        hp_before: hit.target_hp_before,
-                        ordinary_total,
-                        inferred_total: 0.0,
-                    },
-                );
-            }
-            if stream_estimates.len() >= 2 {
-                let common = stream_estimates
-                    .values()
-                    .map(|estimate| estimate.inferred_total)
-                    .fold(f64::INFINITY, f64::min)
-                    .max(0.0);
-                if common > confirmed + 0.5 {
-                    confirmed_events.push((hit.timestamp - start, common - confirmed));
-                    confirmed = common;
-                }
-            }
-            ordinary_total += hit.damage;
-        }
-        println!(
-            "confirmed_burn total={confirmed:.0} events={}",
-            confirmed_events.len()
-        );
-        for (elapsed, damage) in confirmed_events {
-            println!("confirmed_burn_event t={elapsed:.3}s damage={damage:.0}");
-        }
-    }
-
-    #[test]
-    #[ignore = "manual real-capture follow-up settlement timeline"]
-    fn diagnose_actual_capture_follow_up_settlements() {
-        let path = actual_capture_path();
-        let characters = Arc::new(
-            crate::parser::load_characters(Path::new(crate::parser::CHARACTER_DATA_PATH))
-                .expect("无法加载实际 characters.json"),
-        );
-        let (sender, receiver) = unbounded();
-        import_pcapng(
-            path.clone(),
-            characters.clone(),
-            None,
-            true,
-            sender,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .join()
-        .unwrap();
-        let mut production_hits = Vec::new();
-        for event in receiver.try_iter() {
-            match event {
-                EngineEvent::Hit(hit) => {
-                    production_hits.push(hit.clone());
-                    println!(
-                        "production_hit t={:.6} char={} damage={:.0} direction={} source={}",
-                        hit.timestamp, hit.char_id, hit.damage, hit.direction, hit.char_source
-                    );
-                    if hit.char_source == "boss_hp_residual" {
-                        println!(
-                            "production_follow_up t={:.6} damage={:.0} context={}",
-                            hit.timestamp,
-                            hit.damage,
-                            hit.target_context.join("|")
-                        );
-                    }
-                }
-                EngineEvent::Packet(packet) if packet.note.contains("Boss HP 更新") => {
-                    println!(
-                        "production_boss_hp t={:.6} source={} destination={} direction={} note={}",
-                        packet.timestamp,
-                        packet.source,
-                        packet.destination,
-                        packet.direction,
-                        packet.note.replace('\n', "|")
-                    );
-                }
-                _ => {}
-            }
-        }
-        let file = File::open(&path).expect("无法打开真实抓包文件");
-        let mut reader = PcapNgReader::new(file).expect("真实抓包不是有效的 PCAPNG");
-        let mut timeline = Vec::<(f64, Vec<Hit>, Vec<f64>)>::new();
-
-        while let Some(block) = reader.next_block() {
-            let block = block.expect("真实抓包包含损坏的数据块");
-            let (interface_id, timestamp, data) = match block {
-                Block::EnhancedPacket(packet) => (
-                    packet.interface_id as usize,
-                    packet.timestamp.as_secs_f64(),
-                    packet.data.into_owned(),
-                ),
-                Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
-                _ => continue,
-            };
-            let Some(interface) = reader.interfaces().get(interface_id) else {
-                continue;
-            };
-            if interface.linktype != DataLink::ETHERNET {
-                continue;
-            }
-            let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(&data) else {
-                continue;
-            };
-            for hit in production_hits
-                .iter()
-                .take(30)
-                .filter(|hit| timestamp >= hit.timestamp && timestamp <= hit.timestamp + 0.35)
-            {
-                let expected_hp = hit.target_hp_after as f32;
-                for bit_shift in 0..8 {
-                    let shifted = decode_shifted_payload(payload, bit_shift);
-                    for offset in shifted
-                        .windows(4)
-                        .enumerate()
-                        .filter_map(|(offset, bytes)| {
-                            let value = f32::from_le_bytes(bytes.try_into().unwrap());
-                            ((value - expected_hp).abs() < 0.5).then_some(offset)
-                        })
-                    {
-                        println!(
-                            "hp_reverse_match hit_t={:.6} packet_t={timestamp:.6} damage={:.0} expected_hp={expected_hp:.0} src={src}:{src_port} dst={dst}:{dst_port} shift={bit_shift} offset={offset} len={} context={}",
-                            hit.timestamp,
-                            hit.damage,
-                            payload.len(),
-                            hex::encode(
-                                &shifted
-                                    [offset.saturating_sub(48)..(offset + 48).min(shifted.len())]
-                            )
-                        );
-                    }
-                }
-            }
-            let evidence = find_declared_character_evidence(payload);
-            let ids = declared_character_ids_from_evidence(&evidence);
-            let outgoing = src.is_private() && !dst.is_private();
-            let hits = if outgoing {
-                parse_damage_payload(
-                    payload,
-                    timestamp,
-                    (ids.len() == 1).then(|| ids[0]),
-                    None,
-                    &characters,
-                    &evidence,
-                )
-            } else {
-                Vec::new()
-            };
-            if outgoing {
-                for record in crate::parser::parse_damage_records(payload) {
-                    println!(
-                        "game_clock packet={timestamp:.6} damage={:.0} damage_time={:.6} world_time={:.6}",
-                        record.damage, record.damage_time, record.world_time
-                    );
-                }
-            }
-            let hp_updates = if outgoing {
-                Vec::new()
-            } else {
-                parse_boss_hp_updates(payload)
-                    .into_iter()
-                    .map(|update| update.current_hp as f64)
-                    .collect()
-            };
-            if !hits.is_empty() || !hp_updates.is_empty() {
-                let _ = (src_port, dst_port);
-                timeline.push((timestamp, hits, hp_updates));
-            }
-        }
-
-        let mut replay_pending = Vec::<Hit>::new();
-        let mut replay_last_hp = None::<f64>;
-        let mut accepted_residual = 0.0;
-        let mut rejected_positive = Vec::new();
-        let mut unmatched_drops = Vec::new();
-        for (timestamp, hits, hp_updates) in &timeline {
-            for hit in hits {
-                if replay_pending
-                    .last()
-                    .is_some_and(|previous| hit.timestamp - previous.timestamp > 1.0)
-                {
-                    replay_pending.clear();
-                }
-                replay_pending.push(hit.clone());
-            }
-            for current_hp in hp_updates {
-                replay_pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
-                let previous_hp = replay_last_hp
-                    .or_else(|| replay_pending.first().map(|hit| hit.target_hp_before));
-                replay_last_hp = Some(*current_hp);
-                let Some(previous_hp) = previous_hp else {
-                    continue;
-                };
-                if *current_hp >= previous_hp || replay_pending.is_empty() {
-                    if *current_hp > previous_hp {
-                        replay_pending.clear();
-                    } else if *current_hp < previous_hp {
-                        unmatched_drops.push((
-                            *timestamp,
-                            previous_hp - current_hp,
-                            replay_pending
-                                .iter()
-                                .map(|hit| (hit.timestamp, hit.char_id, hit.damage))
-                                .collect::<Vec<_>>(),
-                        ));
-                    }
-                    continue;
-                }
-                let actual = previous_hp - current_hp;
-                let candidate = replay_pending
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, hit)| {
-                        let ratio = actual / hit.damage;
-                        (0.75..=1.35).contains(&ratio).then_some((
-                            index,
-                            (actual - hit.damage).abs() / actual.max(hit.damage),
-                            hit.timestamp,
-                        ))
-                    })
-                    .min_by(|left, right| {
-                        left.1
-                            .total_cmp(&right.1)
-                            .then_with(|| right.2.total_cmp(&left.2))
-                    });
-                let Some((index, _, _)) = candidate else {
-                    unmatched_drops.push((
-                        *timestamp,
-                        actual,
-                        replay_pending
-                            .iter()
-                            .map(|hit| (hit.timestamp, hit.char_id, hit.damage))
-                            .collect::<Vec<_>>(),
-                    ));
-                    continue;
-                };
-                let hit = replay_pending.remove(index);
-                let residual = actual - hit.damage;
-                let ratio = residual / hit.damage;
-                if residual >= 1.0 && (0.18..=0.26).contains(&ratio) {
-                    accepted_residual += residual;
-                } else if residual > 0.5 {
-                    rejected_positive.push((
-                        *timestamp,
-                        actual,
-                        hit.damage,
-                        residual,
-                        ratio,
-                        replay_pending
-                            .iter()
-                            .map(|candidate| {
-                                (candidate.timestamp, candidate.char_id, candidate.damage)
-                            })
-                            .collect::<Vec<_>>(),
-                    ));
-                }
-            }
-        }
-        rejected_positive.sort_by(|left, right| right.3.total_cmp(&left.3));
-        unmatched_drops.sort_by(|left, right| right.1.total_cmp(&left.1));
-        println!(
-            "replay_summary accepted={accepted_residual:.0} rejected_positive={:.0} unmatched_drops={:.0} pending_damage={:.0}",
-            rejected_positive.iter().map(|row| row.3).sum::<f64>(),
-            unmatched_drops.iter().map(|row| row.1).sum::<f64>(),
-            replay_pending.iter().map(|hit| hit.damage).sum::<f64>()
-        );
-        for (timestamp, actual, reported, residual, ratio, remaining) in
-            rejected_positive.iter().take(30)
-        {
-            println!(
-                "replay_rejected t={timestamp:.6} actual={actual:.0} reported={reported:.0} residual={residual:.0} ratio={:.1}% remaining={remaining:?}",
-                ratio * 100.0,
-            );
-        }
-        for (timestamp, actual, pending) in unmatched_drops.iter().take(30) {
-            println!("replay_unmatched t={timestamp:.6} actual={actual:.0} pending={pending:?}");
-        }
-
-        let mut fifo_pending = std::collections::VecDeque::<Hit>::new();
-        let mut fifo_last_hp = None::<f64>;
-        let mut fifo_positive_residual = 0.0;
-        let mut fifo_overlay_residual = 0.0;
-        let mut fifo_negative_residual = 0.0;
-        for (timestamp, hits, hp_updates) in &timeline {
-            for hit in hits {
-                fifo_pending.push_back(hit.clone());
-            }
-            fifo_pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
-            for current_hp in hp_updates {
-                let previous_hp =
-                    fifo_last_hp.or_else(|| fifo_pending.front().map(|hit| hit.target_hp_before));
-                fifo_last_hp = Some(*current_hp);
-                let Some(previous_hp) = previous_hp else {
-                    continue;
-                };
-                let actual = previous_hp - current_hp;
-                if actual <= 0.0 {
-                    continue;
-                }
-                let Some(hit) = fifo_pending.pop_front() else {
-                    continue;
-                };
-                let residual = actual - hit.damage;
-                if residual > 0.0 {
-                    fifo_positive_residual += residual;
-                    let ratio = residual / hit.damage;
-                    if (0.18..=0.26).contains(&ratio) {
-                        fifo_overlay_residual += residual;
-                    }
-                } else {
-                    fifo_negative_residual += residual;
-                }
-            }
-        }
-        println!(
-            "fifo_summary positive={fifo_positive_residual:.0} overlay={fifo_overlay_residual:.0} negative={fifo_negative_residual:.0} pending={:.0}",
-            fifo_pending.iter().map(|hit| hit.damage).sum::<f64>()
-        );
-
-        let mut pending = Vec::<Hit>::new();
-        let mut last_hp = None::<f64>;
-        for (timestamp, hits, hp_updates) in timeline {
-            for hit in hits {
-                println!(
-                    "settlement_hit t={timestamp:.6} char={} damage={:.0} hp_before={:.0}",
-                    hit.char_id, hit.damage, hit.target_hp_before
-                );
-                if pending
-                    .last()
-                    .is_some_and(|previous| timestamp - previous.timestamp > 1.0)
-                {
-                    println!("settlement_clear reason=hit_gap pending={}", pending.len());
-                    pending.clear();
-                }
-                pending.push(hit);
-            }
-            for current_hp in hp_updates {
-                pending.retain(|hit| timestamp - hit.timestamp <= 1.0);
-                let previous_hp =
-                    last_hp.or_else(|| pending.first().map(|hit| hit.target_hp_before));
-                last_hp = Some(current_hp);
-                let Some(previous_hp) = previous_hp else {
-                    println!(
-                        "settlement_hp t={timestamp:.6} hp={current_hp:.0} reason=no_baseline"
-                    );
-                    continue;
-                };
-                if current_hp >= previous_hp || pending.is_empty() {
-                    println!(
-                        "settlement_hp t={timestamp:.6} hp={current_hp:.0} previous={previous_hp:.0} pending={} reason={}",
-                        pending.len(),
-                        if current_hp >= previous_hp {
-                            "not_damage"
-                        } else {
-                            "no_pending_hit"
-                        }
-                    );
-                    if current_hp > previous_hp {
-                        pending.clear();
-                    }
-                    continue;
-                }
-                let settled = std::mem::take(&mut pending);
-                let reported = settled.iter().map(|hit| hit.damage).sum::<f64>();
-                let actual = previous_hp - current_hp;
-                let residual = actual - reported;
-                let ratio = residual / reported;
-                println!(
-                    "settlement t={timestamp:.6} previous={previous_hp:.0} hp={current_hp:.0} actual={actual:.0} reported={reported:.0} residual={residual:.0} ratio={:.1}% chars={:?} accepted={}",
-                    ratio * 100.0,
-                    settled.iter().map(|hit| hit.char_id).collect::<Vec<_>>(),
-                    residual >= 1.0 && (0.10..=0.30).contains(&ratio)
-                );
-            }
-        }
     }
 }

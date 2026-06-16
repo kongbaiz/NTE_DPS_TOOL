@@ -10,7 +10,6 @@ mod model;
 mod network;
 mod parser;
 mod protocol;
-mod scene;
 
 use anyhow::Result;
 use app::DpsApp;

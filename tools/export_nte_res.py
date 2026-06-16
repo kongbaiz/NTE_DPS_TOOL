@@ -93,17 +93,20 @@ def resolve_key_file(
 def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> dict[str, Any]:
     dotnet = args.dotnet.resolve()
     probe = args.probe.resolve()
-    usmap = args.usmap.resolve()
     paks = args.paks_dir.resolve()
-    for label, path, is_directory in (
+    paths_to_check = (
         ("dotnet", dotnet, False),
         ("CUE4Parse probe", probe, False),
-        ("usmap", usmap, False),
-        ("Paks 目录", paks, True),
-    ):
+        ("Paks ????", paks, True),
+    )
+    if args.usmap is not None:
+        usmap = args.usmap.resolve()
+        paths_to_check = (*paths_to_check, ("usmap", usmap, False))
+
+    for label, path, is_directory in paths_to_check:
         valid = path.is_dir() if is_directory else path.is_file()
         if not valid:
-            raise ExportError(f"{label}不存在: {path}")
+            raise ExportError(f"{label}?????: {path}")
 
     key_file, remove_key_file = resolve_key_file(args.aes_key_file, raw_root)
     command = [
@@ -115,9 +118,9 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
         str(raw_root),
         "--aes-key-file",
         str(key_file),
-        "--usmap",
-        str(usmap),
     ]
+    if args.usmap is not None:
+        command.extend(["--usmap", str(args.usmap.resolve())])
     for table in tables:
         command.extend(["--target", pipeline.REQUIRED_TABLES[table].removesuffix(".json")])
 
@@ -127,12 +130,12 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
         if remove_key_file:
             key_file.unlink(missing_ok=True)
     if result.returncode:
-        raise ExportError(f"CUE4Parse 导出失败，退出码 {result.returncode}")
+        raise ExportError(f"CUE4Parse ???????? {result.returncode}")
 
     report_path = raw_root / "cue4parse_report.json"
     report = pipeline.read_json(report_path)
     if not isinstance(report, dict):
-        raise ExportError(f"CUE4Parse 报告格式无效: {report_path}")
+        raise ExportError(f"CUE4Parse ??????: {report_path}")
     failed = [
         target
         for target in report.get("targets", [])
@@ -144,9 +147,8 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
             f"{target.get('error', '')}".strip()
             for target in failed
         )
-        raise ExportError(f"存在未成功导出的数据表: {details}")
+        raise ExportError(f"????????: {details}")
     return report
-
 
 def transform_tables(
     args: argparse.Namespace,
@@ -205,7 +207,8 @@ def main() -> int:
     parser.add_argument(
         "--usmap",
         type=Path,
-        default=REPOSITORY_ROOT / "NTE-5.6.1.usmap",
+        default=None,
+        help="????????????? usmap ??",
     )
     parser.add_argument("--aes-key-file", type=Path)
     parser.add_argument(
@@ -250,7 +253,7 @@ def main() -> int:
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "paks_directory": str(args.paks_dir.resolve()),
-            "usmap": str(args.usmap.resolve()),
+            "usmap": str(args.usmap.resolve()) if args.usmap is not None else None,
             "selected_tables": tables,
             "available_file_count": probe_report.get("available_file_count"),
             **transformed,
