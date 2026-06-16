@@ -39,7 +39,7 @@ use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packe
 const PCAP_ERRBUF_SIZE: usize = 256;
 const MIN_READABLE_TEXT_LEN: usize = 4;
 const MAX_IGNORABLE_BINARY_PACKET_LEN: usize = 96;
-const UNREADABLE_PROTOCOL_TEXT: &str = "鏈В鏋愬埌鍙鍗忚鏂囨湰";
+const UNREADABLE_PROTOCOL_TEXT: &str = "未解析到可读协议文本";
 const CAPTURE_SNAPLEN: u32 = 65_535;
 const RAW_CAPTURE_FLUSH_INTERVAL: u64 = 256;
 
@@ -422,9 +422,9 @@ pub fn list_devices() -> Result<Vec<CaptureDevice>, String> {
     // SAFETY: Loading a known Npcap DLL and calling its documented API.
     unsafe {
         let _packet_library = Library::new(packet_library_path())
-            .map_err(|error| format!("鏃犳硶鍔犺浇 Npcap Packet.dll: {error}"))?;
+            .map_err(|error| format!("无法加载 Npcap Packet.dll: {error}"))?;
         let library = Library::new(npcap_library_path())
-            .map_err(|error| format!("鏃犳硶鍔犺浇 Npcap锛岃鍏堝畨瑁?Npcap: {error}"))?;
+            .map_err(|error| format!("无法加载 Npcap，请先安装 Npcap: {error}"))?;
         let find_all_devs: FindAllDevs = load_symbol(&library, b"pcap_findalldevs\0")?;
         let free_all_devs: FreeAllDevs = load_symbol(&library, b"pcap_freealldevs\0")?;
         let mut devices_ptr = ptr::null_mut();
@@ -991,7 +991,7 @@ impl FollowUpDamageTracker {
         Some(Hit {
             timestamp,
             char_id: INFERRED_FOLLOW_UP_CHAR_ID,
-            char_name: "瑕嗙汗浼ゅ".to_owned(),
+            char_name: "覆纹伤害".to_owned(),
             char_known: false,
             damage: inferred_damage,
             byte_offset: 0,
@@ -1012,8 +1012,8 @@ impl FollowUpDamageTracker {
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
-            damage_name: Some("瑕嗙汗杩藉姞鏀诲嚮".to_owned()),
-            attack_type: Some("瑕嗙汗".to_owned()),
+            damage_name: Some("覆纹追加攻击".to_owned()),
+            attack_type: Some("覆纹".to_owned()),
         })
     }
 }
@@ -1245,7 +1245,7 @@ impl PacketDecoder {
             if hit
                 .attack_type
                 .as_deref()
-                .is_some_and(|attack_type| attack_type.starts_with("鐜悎"))
+                .is_some_and(|attack_type| attack_type.starts_with("环合"))
             {
                 let previous_declared_character = self
                     .character_declarations
@@ -1269,7 +1269,7 @@ impl PacketDecoder {
                         &self.follow_up_damage.team_attributes,
                     )
                 {
-                    hit.attack_type = Some(format!("鐜悎路{reaction_type}"));
+                    hit.attack_type = Some(format!("环合·{reaction_type}"));
                 }
             }
         }
@@ -1301,7 +1301,7 @@ impl PacketDecoder {
             return;
         }
         let mut note = if hits.len() != accepted {
-            format!("杩囨护 {} 鏉?incoming 璁板綍", hits.len() - accepted)
+            format!("过滤 {} 条 incoming 记录", hits.len() - accepted)
         } else {
             String::new()
         };
@@ -1334,7 +1334,7 @@ impl PacketDecoder {
             append_packet_note(
                 &mut note,
                 Some(format!(
-                    "CurrentHP 鏇存柊鍊欓€夛細{}",
+                    "CurrentHP 更新候选：{}",
                     current_hp_updates
                         .iter()
                         .map(|update| format!(
@@ -1377,7 +1377,7 @@ impl PacketDecoder {
                 append_packet_note(
                     &mut note,
                     Some(format!(
-                        "浼犺緭妯″紡 {}锛孭acketId {}锛孉ck {}锛屽簲鐢ㄨ浇鑽?{} bit",
+                        "传输模式 {}，PacketId {}，Ack {}，应用载荷 {} bit",
                         packet.mode,
                         packet.packet_id,
                         packet.acknowledged_packet_id,
@@ -1388,7 +1388,7 @@ impl PacketDecoder {
                 append_packet_note(
                     &mut note,
                     Some(format!(
-                        "SingleBunch seq {}锛宒escriptor 0x{:02x}锛屾暟鎹?{} bit",
+                        "SingleBunch seq {}，descriptor 0x{:02x}，数据 {} bit",
                         bunch.sequence, bunch.descriptor, bunch.data_bit_len
                     )),
                 );
@@ -1857,9 +1857,12 @@ fn export_hit_event(hit: ExportHit) -> EngineEvent {
         damage_name: hit.damage_name.map(|name| normalize_damage_name(&name)),
         attack_type: hit.attack_type.map(|attack_type| {
             if attack_type == "QTE" {
-                "鐜悎".to_owned()
-            } else if let Some(reaction_type) = attack_type.strip_prefix("QTE路") {
-                format!("鐜悎路{reaction_type}")
+                "环合".to_owned()
+            } else if let Some(reaction_type) = attack_type
+                .strip_prefix("QTE·")
+                .or_else(|| attack_type.strip_prefix("QTE路"))
+            {
+                format!("环合·{reaction_type}")
             } else {
                 attack_type
             }
@@ -1976,6 +1979,9 @@ mod tests {
             .observe_server_hp(2.1, 996_150.0)
             .expect("recent pending hit should still resolve follow-up damage");
         assert_eq!(follow_up.damage, 641.0);
+        assert_eq!(follow_up.char_name, "覆纹伤害");
+        assert_eq!(follow_up.damage_name.as_deref(), Some("覆纹追加攻击"));
+        assert_eq!(follow_up.attack_type.as_deref(), Some("覆纹"));
     }
 
     #[test]

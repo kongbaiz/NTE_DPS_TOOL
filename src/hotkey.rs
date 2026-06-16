@@ -111,14 +111,16 @@ impl HotkeyHandle {
     pub fn start(context: egui::Context) -> (Self, Receiver<HotkeyEvent>) {
         let instance_id = HOTKEY_INSTANCE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = unbounded();
-        let state = HOTKEY_STATE.get_or_init(|| Mutex::new(HotkeyState::default()));
-        let mut state = match state.lock() {
-            Ok(state) => state,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        state.sender = Some(sender.clone());
-        state.context = Some(context);
-        state.instance_id = instance_id;
+        {
+            let state = HOTKEY_STATE.get_or_init(|| Mutex::new(HotkeyState::default()));
+            let mut state = match state.lock() {
+                Ok(state) => state,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            state.sender = Some(sender.clone());
+            state.context = Some(context);
+            state.instance_id = instance_id;
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
         let thread = thread::spawn(move || {

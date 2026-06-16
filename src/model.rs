@@ -210,8 +210,8 @@ pub enum AbyssHalf {
 impl AbyssHalf {
     pub fn label(self) -> &'static str {
         match self {
-            Self::First => "涓婂崐",
-            Self::Second => "涓嬪崐",
+            Self::First => "上半",
+            Self::Second => "下半",
         }
     }
 }
@@ -508,7 +508,7 @@ mod tests {
         Hit {
             timestamp,
             char_id,
-            char_name: format!("瑙掕壊{char_id}"),
+            char_name: format!("角色{char_id}"),
             char_known: true,
             damage,
             byte_offset: 0,
@@ -636,6 +636,12 @@ mod tests {
         assert_eq!(summary.incoming_damage, 25.0);
         assert_eq!(summary.incoming_hits, 1);
         assert!((summary.unknown_share() - 28.571_428_571).abs() < 1e-6);
+    }
+
+    #[test]
+    fn abyss_half_labels_are_utf8_chinese() {
+        assert_eq!(AbyssHalf::First.label(), "上半");
+        assert_eq!(AbyssHalf::Second.label(), "下半");
     }
 
     #[test]

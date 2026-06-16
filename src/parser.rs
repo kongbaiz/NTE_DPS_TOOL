@@ -861,6 +861,14 @@ mod character_tests {
     }
 
     #[test]
+    fn classifies_qte_as_utf8_huanhe() {
+        assert_eq!(
+            classify_attack_type(None, "GE_Player_Test_QTE_Damage", Some("GA_Test_QTE")),
+            "环合"
+        );
+    }
+
+    #[test]
     fn loads_chinese_damage_names_from_wooden_assets() {
         let names = load_wooden_damage_names(Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH)).unwrap();
 

@@ -97,7 +97,7 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
     paths_to_check = (
         ("dotnet", dotnet, False),
         ("CUE4Parse probe", probe, False),
-        ("Paks ????", paks, True),
+        ("Paks 目录", paks, True),
     )
     if args.usmap is not None:
         usmap = args.usmap.resolve()
@@ -106,7 +106,7 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
     for label, path, is_directory in paths_to_check:
         valid = path.is_dir() if is_directory else path.is_file()
         if not valid:
-            raise ExportError(f"{label}?????: {path}")
+            raise ExportError(f"{label}不存在: {path}")
 
     key_file, remove_key_file = resolve_key_file(args.aes_key_file, raw_root)
     command = [
@@ -130,12 +130,12 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
         if remove_key_file:
             key_file.unlink(missing_ok=True)
     if result.returncode:
-        raise ExportError(f"CUE4Parse ???????? {result.returncode}")
+        raise ExportError(f"CUE4Parse 导出失败，退出码 {result.returncode}")
 
     report_path = raw_root / "cue4parse_report.json"
     report = pipeline.read_json(report_path)
     if not isinstance(report, dict):
-        raise ExportError(f"CUE4Parse ??????: {report_path}")
+        raise ExportError(f"CUE4Parse 报告格式无效: {report_path}")
     failed = [
         target
         for target in report.get("targets", [])
@@ -147,7 +147,7 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
             f"{target.get('error', '')}".strip()
             for target in failed
         )
-        raise ExportError(f"????????: {details}")
+        raise ExportError(f"部分资源导出失败: {details}")
     return report
 
 def transform_tables(
@@ -208,7 +208,7 @@ def main() -> int:
         "--usmap",
         type=Path,
         default=None,
-        help="????????????? usmap ??",
+        help="可选：需要类型映射时指定 usmap 文件",
     )
     parser.add_argument("--aes-key-file", type=Path)
     parser.add_argument(

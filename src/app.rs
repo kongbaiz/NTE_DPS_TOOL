@@ -5170,7 +5170,7 @@ mod tests {
         Hit {
             timestamp: 0.0,
             char_id: 1,
-            char_name: "????".to_owned(),
+            char_name: "角色".to_owned(),
             char_known: true,
             damage: 1.0,
             byte_offset: 0,
@@ -5187,7 +5187,7 @@ mod tests {
             gameplay_effect_index: None,
             gameplay_effect_name: None,
             ability_name: None,
-            damage_name: Some("????".to_owned()),
+            damage_name: Some("招式".to_owned()),
             attack_type: None,
         }
     }
