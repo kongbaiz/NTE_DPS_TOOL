@@ -270,6 +270,18 @@ impl ObjectStateStore {
         let Some(path) = strong_paths.first() else {
             return;
         };
+        let attribute_keys = self
+            .objects
+            .iter()
+            .filter(|(_, object)| object.handle_kind == ObjectHandleKind::AttributeGuid)
+            .filter(|(_, object)| {
+                (timestamp - object.last_seen_at).abs() <= ATTRIBUTE_PATH_LINK_WINDOW_SECONDS
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        if attribute_keys.len() != 1 || attribute_keys[0] != attribute_key {
+            return;
+        }
         let display_name = self
             .objects
             .values()
@@ -513,5 +525,30 @@ mod tests {
                 .iter()
                 .any(|evidence| evidence == &format!("linked_path:{weak_path}"))
         );
+    }
+
+    #[test]
+    fn path_first_does_not_link_multiple_attribute_guids_to_same_strong_path() {
+        let mut store = ObjectStateStore::default();
+        let resources = ResourceIndex::default();
+        let strong_path = "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C";
+
+        store.observe_path_candidate(1.0, &path(strong_path), &resources);
+        let first = store.observe_hp_guid_update(1.1, [7_u8; 16], 900.0, None, "hp=900".to_owned());
+        let second =
+            store.observe_hp_guid_update(1.2, [8_u8; 16], 800.0, None, "hp=800".to_owned());
+
+        assert_eq!(
+            store.objects.get(&first).unwrap().object_path.as_deref(),
+            Some(strong_path)
+        );
+        assert!(store.objects.get(&second).unwrap().object_path.is_none());
+        let linked_count = store
+            .objects
+            .values()
+            .filter(|object| object.handle_kind == ObjectHandleKind::AttributeGuid)
+            .filter(|object| object.object_path.as_deref() == Some(strong_path))
+            .count();
+        assert_eq!(linked_count, 1);
     }
 }
