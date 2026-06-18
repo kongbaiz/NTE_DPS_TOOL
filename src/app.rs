@@ -4221,7 +4221,7 @@ fn draw_character_hit_row(
         egui::FontId::proportional(12.0),
         contrast_text(type_color),
         egui::Align::Center,
-        Some(hit_specific_type(hit)),
+        None,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
@@ -4254,28 +4254,12 @@ fn draw_character_hit_row(
     );
     draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono.clone());
     if response.hovered() {
-        let mut details = if incoming {
-            "角色受到的伤害".to_owned()
-        } else if hit.direction == "unknown" {
-            "候选输出：方向尚未确认".to_owned()
+        let tooltip = if ui.ctx().input(|input| input.modifiers.shift) {
+            debug_hit_tooltip(hit)
         } else {
-            format!("攻击类型：{}", hit_specific_type(hit))
+            compact_hit_tooltip(hit)
         };
-        details.push_str(&format!(
-            "\ndirection={}\nchar_source={}",
-            hit.direction, hit.char_source
-        ));
-        if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\nGA：{ability_name}"));
-        }
-        if let Some(damage_name) = hit.damage_name.as_deref() {
-            details.push_str(&format!("\n招式：{damage_name}"));
-        }
-        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
-        }
-        append_hit_target_hover_details(&mut details, hit);
-        response.on_hover_text(details);
+        response.on_hover_text(tooltip);
     }
 }
 
@@ -4410,7 +4394,7 @@ fn draw_team_hit_row(
         egui::FontId::proportional(12.0),
         contrast_text(type_color),
         egui::Align::Center,
-        Some(hit_specific_type(hit)),
+        None,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
@@ -4448,33 +4432,12 @@ fn draw_team_hit_row(
     );
     draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono);
     if response.hovered() {
-        let mut details = format!(
-            "{} · 角色 ID {} · {}",
-            hit.char_name,
-            hit.char_id,
-            if incoming {
-                "角色受到的伤害"
-            } else if hit.direction == "unknown" {
-                "候选输出：方向尚未确认"
-            } else {
-                hit.attack_type.as_deref().unwrap_or("攻击类型未知")
-            }
-        );
-        details.push_str(&format!(
-            "\ndirection={}\nchar_source={}",
-            hit.direction, hit.char_source
-        ));
-        if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\nGA：{ability_name}"));
-        }
-        if let Some(damage_name) = hit.damage_name.as_deref() {
-            details.push_str(&format!("\n招式：{damage_name}"));
-        }
-        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
-        }
-        append_hit_target_hover_details(&mut details, hit);
-        response.on_hover_text(details);
+        let tooltip = if ui.ctx().input(|input| input.modifiers.shift) {
+            debug_hit_tooltip(hit)
+        } else {
+            compact_hit_tooltip(hit)
+        };
+        response.on_hover_text(tooltip);
     }
 }
 
@@ -4634,7 +4597,6 @@ fn draw_target_hp_text(
         format_number(hit.target_max_hp),
         hit.target_hp_percent
     );
-    let hp_tooltip = hit_target_tooltip(hit, &target, &hp);
     draw_clipped_label(
         ui,
         target_rect,
@@ -4642,7 +4604,7 @@ fn draw_target_hp_text(
         egui::FontId::proportional(12.0),
         target_color,
         egui::Align::Min,
-        Some(&hp_tooltip),
+        None,
     );
     draw_clipped_label(
         ui,
@@ -4651,7 +4613,7 @@ fn draw_target_hp_text(
         hp_font,
         ui.visuals().weak_text_color(),
         egui::Align::Min,
-        Some(&hp_tooltip),
+        None,
     );
 }
 
@@ -4668,35 +4630,245 @@ fn hit_target_label(hit: &crate::model::Hit) -> String {
     "无目标 HP".to_owned()
 }
 
-fn hit_target_tooltip(hit: &crate::model::Hit, target: &str, hp: &str) -> String {
-    let mut tooltip = format!("{target}\nHP：{hp}");
-    if !hit.target_context.is_empty() {
-        tooltip.push_str("\n\n目标解析证据：");
-        for value in hit.target_context.iter().take(8) {
-            tooltip.push('\n');
-            tooltip.push_str(value);
-        }
-    }
-    tooltip
-}
-
-fn append_hit_target_hover_details(details: &mut String, hit: &crate::model::Hit) {
+fn compact_hit_tooltip(hit: &crate::model::Hit) -> String {
+    let attack_type = hit
+        .attack_type
+        .as_deref()
+        .unwrap_or_else(|| hit_type_label(hit));
+    let move_name = hit
+        .damage_name
+        .as_deref()
+        .or(hit.gameplay_effect_name.as_deref())
+        .unwrap_or("未知招式");
     let target = hit_target_label(hit);
-    details.push_str(&format!("\n目标：{target}"));
+    let mut tooltip = format!(
+        "{} · {}\n角色 ID：{}\n伤害：{}\n招式：{}\n目标：{}",
+        hit.char_name,
+        attack_type,
+        hit.char_id,
+        format_number(hit.damage),
+        move_name,
+        target
+    );
     if hit.target_max_hp > 0.0 || hit.target_hp_after > 0.0 {
-        details.push_str(&format!(
-            "\n目标 HP：{} / {}  {:.1}%",
+        tooltip.push_str(&format!(
+            "\nHP：{} / {}  {:.1}%",
             format_number(hit.target_hp_after),
             format_number(hit.target_max_hp),
             hit.target_hp_percent
         ));
     }
+    tooltip.push_str(&format!("\n识别：{}", target_resolution_summary(hit)));
+    if hit.target_name.is_none()
+        && clean_target_value(hit_target_context_value(hit, "target_name")).is_none()
+    {
+        tooltip.push_str(&format!("\n原因：{}", target_unresolved_reason(hit)));
+    }
     if !hit.target_context.is_empty() {
-        details.push_str("\n目标解析证据：");
-        for value in hit.target_context.iter().take(6) {
-            details.push('\n');
-            details.push_str(value);
+        tooltip.push_str("\n按住 Shift 查看目标解析证据");
+    }
+    tooltip
+}
+
+fn debug_hit_tooltip(hit: &crate::model::Hit) -> String {
+    let mut tooltip = compact_hit_tooltip(hit);
+    if hit.target_context.is_empty() {
+        return tooltip;
+    }
+    tooltip.push_str("\n\n目标解析证据：");
+    for value in hit.target_context.iter().take(8) {
+        tooltip.push('\n');
+        tooltip.push_str(&debug_target_context_line(value));
+    }
+    tooltip
+}
+
+fn target_resolution_summary(hit: &crate::model::Hit) -> String {
+    if hit_target_label(hit) == "目标未识别" {
+        return "未识别".to_owned();
+    }
+    match target_confidence_value(hit) {
+        Some("confirmed") | Some("probable") => "已确认".to_owned(),
+        Some("possible") | Some("unknown") => "可能".to_owned(),
+        _ if hit.target_id.is_some() => "已确认".to_owned(),
+        _ => "可能".to_owned(),
+    }
+}
+
+fn compact_target_reason(reason: &str) -> Option<String> {
+    let reason = reason.strip_prefix("reason=").unwrap_or(reason);
+    if reason.starts_with("hp_guid_timeline_match")
+        || reason.starts_with("net_target_hp_timeline_match")
+        || reason.starts_with("hp_timeline_match")
+    {
+        return Some(format_hp_timeline_reason(reason));
+    }
+    if let Some(value) = reason.strip_prefix("boss_hp_delta_match:") {
+        return Some(format!(
+            "Boss HP 差值匹配：{}",
+            format_context_number(value)
+        ));
+    }
+    if let Some(value) = reason.strip_prefix("net_target_hp_delta_match:") {
+        return Some(format!(
+            "目标 HP 差值匹配：{}",
+            format_context_number(value)
+        ));
+    }
+    if let Some(value) = reason.strip_prefix("hp_delta_match:") {
+        return Some(format!("HP 差值匹配：{}", format_context_number(value)));
+    }
+    if reason == "target_max_hp_only_weak" {
+        return Some("仅 HP 上限弱证据".to_owned());
+    }
+    if reason == "resolved_target_name_table" {
+        return Some("名称来自怪物表".to_owned());
+    }
+    if let Some(path) = reason.strip_prefix("near_object_path:") {
+        return Some(format!("近邻对象：{}", path_basename(path)));
+    }
+    if let Some(path) = reason.strip_prefix("path_candidate:") {
+        return Some(format!("候选路径：{}", path_basename(path)));
+    }
+    if reason == "runtime_hp_timeline" {
+        return Some("运行时实例 HP 时间线匹配".to_owned());
+    }
+    if reason.starts_with("runtime_alias:") {
+        return Some("运行时实例别名匹配".to_owned());
+    }
+    None
+}
+
+fn target_unresolved_reason(hit: &crate::model::Hit) -> String {
+    if hit.target_context.is_empty() {
+        return "未找到目标候选".to_owned();
+    }
+    if hit.target_context.iter().any(|entry| {
+        entry.contains("Default__Buff_")
+            || entry.contains("Buff_")
+            || entry.contains("GE_")
+            || entry.contains("GA_")
+    }) {
+        return "候选路径是 Buff/效果路径，不是怪物本体".to_owned();
+    }
+    if hit.target_context.iter().any(|entry| {
+        entry.contains("hp_guid_timeline_match") || entry.contains("boss_hp_delta_match")
+    }) {
+        return "有 HP 证据，但未绑定到怪物表名称".to_owned();
+    }
+    if hit
+        .target_context
+        .iter()
+        .any(|entry| entry.contains("target_max_hp_only_weak"))
+    {
+        return "只有 HP 上限弱证据".to_owned();
+    }
+    "目标候选不足以绑定怪物表名称".to_owned()
+}
+
+fn debug_target_context_line(value: &str) -> String {
+    if let Some(reason) = compact_target_reason(value) {
+        return truncate_debug_line(&reason);
+    }
+    let shortened = shorten_guids(value);
+    truncate_debug_line(&shortened)
+}
+
+fn format_hp_timeline_reason(reason: &str) -> String {
+    let handle = first_hex_run(reason, 24)
+        .map(shorten_guid)
+        .unwrap_or_else(|| "未知目标".to_owned());
+    if let Some((before, after)) = reason.rsplit_once("->") {
+        let before = before
+            .split('@')
+            .next()
+            .unwrap_or(before)
+            .rsplit('=')
+            .next()
+            .unwrap_or(before);
+        let after = after
+            .split('@')
+            .next()
+            .unwrap_or(after)
+            .rsplit('=')
+            .next()
+            .unwrap_or(after);
+        return format!(
+            "HP 时间线匹配：{} {} → {}",
+            handle,
+            format_context_number(before),
+            format_context_number(after)
+        );
+    }
+    format!("HP 时间线匹配：{handle}")
+}
+
+fn first_hex_run(value: &str, min_len: usize) -> Option<&str> {
+    let mut start = None;
+    for (index, character) in value.char_indices() {
+        if character.is_ascii_hexdigit() {
+            start.get_or_insert(index);
+            continue;
         }
+        if let Some(run_start) = start.take()
+            && index - run_start >= min_len
+        {
+            return Some(&value[run_start..index]);
+        }
+    }
+    if let Some(run_start) = start
+        && value.len() - run_start >= min_len
+    {
+        return Some(&value[run_start..]);
+    }
+    None
+}
+
+fn format_context_number(value: &str) -> String {
+    value
+        .trim()
+        .parse::<f64>()
+        .map(format_number)
+        .unwrap_or_else(|_| value.trim().to_owned())
+}
+
+fn path_basename(path: &str) -> &str {
+    path.rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .rsplit('.')
+        .next()
+        .unwrap_or(path)
+}
+
+fn shorten_guids(value: &str) -> String {
+    value
+        .split(|character: char| !character.is_ascii_hexdigit())
+        .filter(|part| part.len() >= 24)
+        .fold(value.to_owned(), |text, guid| {
+            text.replace(guid, &shorten_guid(guid))
+        })
+}
+
+fn shorten_guid(value: &str) -> String {
+    let value = value.trim();
+    if value.len() <= 12 {
+        return value.to_owned();
+    }
+    format!("{}...{}", &value[..4], &value[value.len() - 4..])
+}
+
+fn truncate_debug_line(value: &str) -> String {
+    const MAX_DEBUG_CONTEXT_CHARS: usize = 120;
+    let mut chars = value.chars();
+    let truncated = chars
+        .by_ref()
+        .take(MAX_DEBUG_CONTEXT_CHARS)
+        .collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 
@@ -4712,6 +4884,10 @@ fn hit_target_context_value<'a>(hit: &'a crate::model::Hit, key: &str) -> Option
         .iter()
         .find_map(|value| value.strip_prefix(&prefix))
         .and_then(|value| clean_target_value(Some(value)))
+}
+
+fn target_confidence_value(hit: &crate::model::Hit) -> Option<&str> {
+    hit_target_context_value(hit, "confidence").and_then(|value| value.split_whitespace().next())
 }
 
 fn draw_direction_summary(ui: &mut egui::Ui, summary: HitDirectionSummary) {
@@ -5231,7 +5407,9 @@ fn data_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        DpsApp, UiConfigSavePlan, adjusted_cached_index, hit_target_label, hit_type_label,
+        DpsApp, UiConfigSavePlan, adjusted_cached_index, compact_hit_tooltip,
+        compact_target_reason, debug_hit_tooltip, hit_target_label, hit_type_label,
+        target_resolution_summary,
     };
     use crate::config::UiConfig;
     use crate::model::Hit;
@@ -5341,6 +5519,82 @@ mod tests {
         hit.target_max_hp = 51_880.0;
 
         assert_eq!(hit_target_label(&hit), "目标未识别");
+    }
+
+    #[test]
+    fn compact_tooltip_hides_raw_target_context() {
+        let mut hit = hit_with_direction("outgoing");
+        hit.char_name = "安魂曲".to_owned();
+        hit.damage = 3_875.0;
+        hit.attack_type = Some("普攻".to_owned());
+        hit.damage_name = Some("GE_Player_Lacrimosa_B_Melee3_Explode_Damage".to_owned());
+        hit.target_hp_after = 973_097.0;
+        hit.target_max_hp = 1_340_627.0;
+        hit.target_hp_percent = 72.6;
+        hit.target_context = vec![
+            "confidence=confirmed score=175".to_owned(),
+            "reason=boss_hp_delta_match:3875".to_owned(),
+        ];
+
+        let tooltip = compact_hit_tooltip(&hit);
+
+        assert!(tooltip.contains("安魂曲 · 普攻"));
+        assert!(tooltip.contains("伤害：3,875"));
+        assert!(tooltip.contains("识别：未识别"));
+        assert!(tooltip.contains("有 HP 证据，但未绑定到怪物表名称"));
+        assert!(tooltip.contains("按住 Shift 查看目标解析证据"));
+        assert!(!tooltip.contains("confidence=confirmed"));
+        assert!(!tooltip.contains("boss_hp_delta_match"));
+    }
+
+    #[test]
+    fn debug_tooltip_summarizes_context_and_shortens_guids() {
+        let mut hit = hit_with_direction("outgoing");
+        hit.target_name = Some("塞润尼缇".to_owned());
+        hit.target_context = vec![
+            "confidence=confirmed score=175".to_owned(),
+            "reason=hp_guid_timeline_match:boss_hp:c55c885903e84940936c7d0915dc8cad=976972@1:0->boss_hp:c55c885903e84940936c7d0915dc8cad=973097@2:0".to_owned(),
+            "reason=target_max_hp_only_weak".to_owned(),
+        ];
+
+        let tooltip = debug_hit_tooltip(&hit);
+
+        assert!(
+            tooltip.contains("HP 时间线匹配：c55c...8cad 976,972 → 973,097"),
+            "{tooltip}"
+        );
+        assert!(tooltip.contains("仅 HP 上限弱证据"));
+        assert!(!tooltip.contains("c55c885903e84940936c7d0915dc8cad"));
+    }
+
+    #[test]
+    fn target_resolution_summary_uses_confidence_context() {
+        let mut hit = hit_with_direction("outgoing");
+        hit.target_name = Some("长明灯".to_owned());
+        hit.target_context = vec!["confidence=possible score=40".to_owned()];
+        assert_eq!(target_resolution_summary(&hit), "可能");
+
+        hit.target_context = vec!["confidence=confirmed score=90".to_owned()];
+        assert_eq!(target_resolution_summary(&hit), "已确认");
+    }
+
+    #[test]
+    fn compact_reason_translates_known_evidence() {
+        assert_eq!(
+            compact_target_reason("reason=boss_hp_delta_match:3875").as_deref(),
+            Some("Boss HP 差值匹配：3,875")
+        );
+        assert_eq!(
+            compact_target_reason("reason=resolved_target_name_table").as_deref(),
+            Some("名称来自怪物表")
+        );
+        assert_eq!(
+            compact_target_reason(
+                "reason=near_object_path:/Game/Blueprints/Character/Monster/mon_01/mon_01_BP"
+            )
+            .as_deref(),
+            Some("近邻对象：mon_01_BP")
+        );
     }
 
     #[test]
