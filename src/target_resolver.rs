@@ -232,6 +232,7 @@ fn apply_candidates_to_hit(hit: &mut Hit, candidates: &[TargetCandidate]) {
         hit.target_context
             .push(format!("ignored_non_target_path={path}"));
     }
+    append_target_handle_context(hit, top);
     if top.confidence != TargetConfidence::Unknown {
         hit.target_id = Some(if top.handle_kind == ObjectHandleKind::RuntimeInstance {
             top.handle.clone()
@@ -272,6 +273,29 @@ fn apply_candidates_to_hit(hit: &mut Hit, candidates: &[TargetCandidate]) {
     if candidates.len() > 1 {
         hit.target_context
             .push(format!("candidate_count={}", candidates.len()));
+    }
+}
+
+fn append_target_handle_context(hit: &mut Hit, candidate: &TargetCandidate) {
+    match candidate.handle_kind {
+        ObjectHandleKind::AttributeGuid => {
+            hit.target_context.push(format!(
+                "target_handle_candidate=AttributeGuid:{}",
+                candidate.handle
+            ));
+            hit.target_context
+                .push(format!("boss_hp_guid={}", candidate.handle));
+        }
+        ObjectHandleKind::NetRefHandleCandidate => {
+            hit.target_context.push(format!(
+                "target_handle_candidate=NetRefHandleCandidate:{}",
+                candidate.handle
+            ));
+            if let Some(token) = candidate.handle.strip_prefix("currenthp:") {
+                hit.target_context.push(format!("current_hp_token={token}"));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -917,6 +941,32 @@ mod tests {
                 .reasons
                 .iter()
                 .any(|reason| reason == "conflict:multiple_candidates")
+        );
+    }
+
+    #[test]
+    fn unknown_attribute_candidate_still_writes_backfill_handle_context() {
+        let mut store = ObjectStateStore::default();
+        let guid = [
+            0xc5, 0x5c, 0x88, 0x59, 0x03, 0xe8, 0x49, 0x40, 0x93, 0x6c, 0x7d, 0x09, 0x15, 0xdc,
+            0x8c, 0xad,
+        ];
+        store.observe_hp_guid_update(10.0, guid, 12_345.0, None, "hp=12345".to_owned());
+        let mut hit = hit();
+        hit.target_hp_before = 900_000.0;
+        hit.target_hp_after = 880_000.0;
+        hit.target_max_hp = 1_304_923.0;
+
+        TargetResolver.apply_to_hit(&mut hit, &store, &[], &ResourceIndex::default());
+
+        assert!(hit.target_id.is_none());
+        assert!(hit.target_context.iter().any(|entry| {
+            entry == "target_handle_candidate=AttributeGuid:c55c885903e84940936c7d0915dc8cad"
+        }));
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| entry == "boss_hp_guid=c55c885903e84940936c7d0915dc8cad")
         );
     }
 

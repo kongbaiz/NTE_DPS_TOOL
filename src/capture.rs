@@ -1228,7 +1228,15 @@ impl PacketDecoder {
         let discovered_aliases = self
             .recent_target_hits
             .iter()
-            .filter_map(|recent| {
+            .flat_map(|recent| {
+                let old_alias_keys = target_alias_lookup_keys(
+                    recent
+                        .hit
+                        .target_id
+                        .as_ref()
+                        .or(recent.summary.target_id.as_ref()),
+                    &recent.hit.target_context,
+                );
                 let mut resolved = recent.hit.clone();
                 resolved.target_id = None;
                 resolved.target_name = None;
@@ -1240,7 +1248,14 @@ impl PacketDecoder {
                     &[],
                     &self.resource_index,
                 );
-                target_handle_alias_from_summary(&resolved_summary, recent.hit.timestamp)
+                let mut aliases =
+                    target_handle_aliases_from_summary(&resolved_summary, recent.hit.timestamp);
+                if let Some(alias) =
+                    handle_target_alias_from_summary(&resolved_summary, recent.hit.timestamp)
+                {
+                    aliases.extend(old_alias_keys.into_iter().map(|key| (key, alias.clone())));
+                }
+                aliases
             })
             .collect::<Vec<_>>();
         for (target_id, alias) in discovered_aliases {
@@ -1255,6 +1270,14 @@ impl PacketDecoder {
                 )));
                 continue;
             }
+            let old_alias_keys = target_alias_lookup_keys(
+                recent
+                    .hit
+                    .target_id
+                    .as_ref()
+                    .or(recent.summary.target_id.as_ref()),
+                &recent.hit.target_context,
+            );
             let mut resolved = recent.hit.clone();
             resolved.target_id = None;
             resolved.target_name = None;
@@ -1284,10 +1307,21 @@ impl PacketDecoder {
                     resolved_summary.target_context = resolved.target_context.clone();
                 }
                 recent.hit = resolved;
-                if let Some((target_id, alias)) =
-                    target_handle_alias_from_summary(&resolved_summary, recent.hit.timestamp)
+                for (target_id, alias) in
+                    target_handle_aliases_from_summary(&resolved_summary, recent.hit.timestamp)
                 {
                     merge_target_handle_alias(&mut self.target_handle_aliases, target_id, alias);
+                }
+                if let Some(alias) =
+                    handle_target_alias_from_summary(&resolved_summary, recent.hit.timestamp)
+                {
+                    for target_id in old_alias_keys {
+                        merge_target_handle_alias(
+                            &mut self.target_handle_aliases,
+                            target_id,
+                            alias.clone(),
+                        );
+                    }
                 }
                 recent.summary = resolved_summary;
                 let _ = sender.send(EngineEvent::HitTargetUpdate(target_update_from_hit(
@@ -1299,17 +1333,55 @@ impl PacketDecoder {
     }
 
     fn register_target_handle_alias(&mut self, summary: &TargetResolutionSummary, timestamp: f64) {
-        if let Some((target_id, alias)) = target_handle_alias_from_summary(summary, timestamp) {
+        for (target_id, alias) in target_handle_aliases_from_summary(summary, timestamp) {
             merge_target_handle_alias(&mut self.target_handle_aliases, target_id, alias);
+        }
+    }
+
+    fn register_target_instance_alias_keys(
+        &mut self,
+        keys: impl IntoIterator<Item = String>,
+        instance_id: &str,
+        timestamp: f64,
+    ) {
+        let Some(instance) = self.target_instances.instance(instance_id) else {
+            return;
+        };
+        if instance.target_name.trim().is_empty()
+            || is_ignored_non_target_path(&instance.canonical_path)
+        {
+            return;
+        }
+        let alias = HandleTargetAlias {
+            target_path: instance.canonical_path.clone(),
+            target_name: instance.target_name.clone(),
+            source: "runtime_instance_handle_alias".to_owned(),
+            first_seen_at: timestamp.to_bits(),
+            last_seen_at: timestamp.to_bits(),
+        };
+        for key in keys {
+            merge_target_handle_alias(&mut self.target_handle_aliases, key, alias.clone());
         }
     }
 }
 
-fn target_handle_alias_from_summary(
+fn target_handle_aliases_from_summary(
     summary: &TargetResolutionSummary,
     timestamp: f64,
-) -> Option<(String, HandleTargetAlias)> {
-    let target_id = normalize_target_id(summary.target_id.as_ref()?);
+) -> Vec<(String, HandleTargetAlias)> {
+    let Some(alias) = handle_target_alias_from_summary(summary, timestamp) else {
+        return Vec::new();
+    };
+    target_alias_lookup_keys(summary.target_id.as_ref(), &summary.target_context)
+        .into_iter()
+        .map(|key| (key, alias.clone()))
+        .collect()
+}
+
+fn handle_target_alias_from_summary(
+    summary: &TargetResolutionSummary,
+    timestamp: f64,
+) -> Option<HandleTargetAlias> {
     let target_name = summary.target_name.as_ref()?.trim();
     if target_name.is_empty() {
         return None;
@@ -1318,16 +1390,13 @@ fn target_handle_alias_from_summary(
     if is_ignored_non_target_path(target_path) {
         return None;
     }
-    Some((
-        target_id,
-        HandleTargetAlias {
-            target_path: target_path.to_owned(),
-            target_name: target_name.to_owned(),
-            source: "table_resolved_handle_alias".to_owned(),
-            first_seen_at: timestamp.to_bits(),
-            last_seen_at: timestamp.to_bits(),
-        },
-    ))
+    Some(HandleTargetAlias {
+        target_path: target_path.to_owned(),
+        target_name: target_name.to_owned(),
+        source: "table_resolved_handle_alias".to_owned(),
+        first_seen_at: timestamp.to_bits(),
+        last_seen_at: timestamp.to_bits(),
+    })
 }
 
 fn merge_target_handle_alias(
@@ -1335,16 +1404,18 @@ fn merge_target_handle_alias(
     target_id: String,
     alias: HandleTargetAlias,
 ) {
-    aliases
-        .entry(target_id)
-        .and_modify(|existing| {
-            existing.target_path = alias.target_path.clone();
-            existing.target_name = alias.target_name.clone();
-            existing.source = alias.source.clone();
-            existing.first_seen_at = existing.first_seen_at.min(alias.first_seen_at);
-            existing.last_seen_at = existing.last_seen_at.max(alias.last_seen_at);
-        })
-        .or_insert(alias);
+    for target_id in equivalent_target_alias_keys(&target_id) {
+        aliases
+            .entry(target_id)
+            .and_modify(|existing| {
+                existing.target_path = alias.target_path.clone();
+                existing.target_name = alias.target_name.clone();
+                existing.source = alias.source.clone();
+                existing.first_seen_at = existing.first_seen_at.min(alias.first_seen_at);
+                existing.last_seen_at = existing.last_seen_at.max(alias.last_seen_at);
+            })
+            .or_insert_with(|| alias.clone());
+    }
 }
 
 fn apply_handle_alias_backfill(
@@ -1354,16 +1425,16 @@ fn apply_handle_alias_backfill(
     if recent.hit.target_name.is_some() {
         return false;
     }
-    let Some(target_id) = recent
-        .hit
-        .target_id
-        .as_ref()
-        .or(recent.summary.target_id.as_ref())
-        .map(|target_id| normalize_target_id(target_id))
-    else {
-        return false;
-    };
-    let Some(alias) = aliases.get(&target_id) else {
+    let Some(alias) = target_alias_lookup_keys(
+        recent
+            .hit
+            .target_id
+            .as_ref()
+            .or(recent.summary.target_id.as_ref()),
+        &recent.hit.target_context,
+    )
+    .into_iter()
+    .find_map(|key| aliases.get(&key)) else {
         return false;
     };
     apply_alias_to_hit(&mut recent.hit, alias);
@@ -1380,15 +1451,12 @@ fn apply_handle_alias_to_hit_summary(
     if hit.target_name.is_some() {
         return false;
     }
-    let Some(target_id) = hit
-        .target_id
-        .as_ref()
-        .or(summary.target_id.as_ref())
-        .map(|target_id| normalize_target_id(target_id))
-    else {
-        return false;
-    };
-    let Some(alias) = aliases.get(&target_id) else {
+    let Some(alias) = target_alias_lookup_keys(
+        hit.target_id.as_ref().or(summary.target_id.as_ref()),
+        &hit.target_context,
+    )
+    .into_iter()
+    .find_map(|key| aliases.get(&key)) else {
         return false;
     };
     apply_alias_to_hit(hit, alias);
@@ -1436,18 +1504,72 @@ fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str>
         .filter(|value| !value.is_empty() && *value != "None")
 }
 
+fn target_context_values<'a>(context: &'a [String], key: &str) -> impl Iterator<Item = &'a str> {
+    let prefix = format!("{key}=");
+    context
+        .iter()
+        .filter_map(move |value| value.strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "None")
+}
+
 fn push_unique_context(context: &mut Vec<String>, value: String) {
     if !context.iter().any(|entry| entry == &value) {
         context.push(value);
     }
 }
 
-fn normalize_target_id(target_id: &str) -> String {
-    let target_id = target_id.trim();
-    let Some((kind, value)) = target_id.split_once(':') else {
-        return target_id.to_owned();
+fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> Vec<String> {
+    let mut keys = Vec::new();
+    if let Some(target_id) = target_id {
+        extend_equivalent_target_alias_keys(&mut keys, target_id);
+    }
+    for value in target_context_values(context, "target_handle_candidate") {
+        extend_equivalent_target_alias_keys(&mut keys, value);
+    }
+    for value in target_context_values(context, "boss_hp_guid") {
+        extend_equivalent_target_alias_keys(&mut keys, &format!("boss_hp_guid:{value}"));
+    }
+    for value in target_context_values(context, "current_hp_token") {
+        extend_equivalent_target_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
+    }
+    for key in ["iris_ref32", "netguid32", "netguid_packed"] {
+        for value in target_context_values(context, key) {
+            extend_equivalent_target_alias_keys(&mut keys, &format!("{key}:{value}"));
+        }
+    }
+    keys
+}
+
+fn extend_equivalent_target_alias_keys(keys: &mut Vec<String>, key: &str) {
+    for key in equivalent_target_alias_keys(key) {
+        if !keys.iter().any(|existing| existing == &key) {
+            keys.push(key);
+        }
+    }
+}
+
+fn equivalent_target_alias_keys(key: &str) -> Vec<String> {
+    let key = normalize_target_alias_key(key);
+    let mut keys = vec![key.clone()];
+    if let Some(value) = key.strip_prefix("AttributeGuid:") {
+        keys.push(format!("boss_hp_guid:{value}"));
+    } else if let Some(value) = key.strip_prefix("boss_hp_guid:") {
+        keys.push(format!("AttributeGuid:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:currenthp:") {
+        keys.push(format!("current_hp_token:{value}"));
+    } else if let Some(value) = key.strip_prefix("current_hp_token:") {
+        keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
+    }
+    keys
+}
+
+fn normalize_target_alias_key(key: &str) -> String {
+    let key = key.trim();
+    let Some((kind, value)) = key.split_once(':') else {
+        return key.to_owned();
     };
-    format!("{kind}:{}", value.to_ascii_lowercase())
+    format!("{kind}:{}", value.trim().to_ascii_lowercase())
 }
 
 fn should_apply_target_update(
@@ -1761,7 +1883,7 @@ impl PacketDecoder {
                     update.bit_shift
                 ),
             );
-            self.target_instances.observe_current_hp_token(
+            if let Some(instance_id) = self.target_instances.observe_current_hp_token(
                 timestamp,
                 &target_token,
                 update.current_hp as f64,
@@ -1772,7 +1894,17 @@ impl PacketDecoder {
                     update.byte_offset,
                     update.bit_shift
                 ),
-            );
+            ) {
+                let token = hex::encode(target_token);
+                self.register_target_instance_alias_keys(
+                    [
+                        format!("current_hp_token:{token}"),
+                        format!("NetRefHandleCandidate:currenthp:{token}"),
+                    ],
+                    &instance_id,
+                    timestamp,
+                );
+            }
         }
         for update in &boss_hp_updates {
             self.object_state.observe_hp_guid_update(
@@ -1788,7 +1920,7 @@ impl PacketDecoder {
                     update.bit_shift
                 ),
             );
-            self.target_instances.observe_boss_hp_guid(
+            if let Some(instance_id) = self.target_instances.observe_boss_hp_guid(
                 timestamp,
                 update.target_handle,
                 update.current_hp as f64,
@@ -1799,7 +1931,17 @@ impl PacketDecoder {
                     update.byte_offset,
                     update.bit_shift
                 ),
-            );
+            ) {
+                let handle = hex::encode(update.target_handle);
+                self.register_target_instance_alias_keys(
+                    [
+                        format!("boss_hp_guid:{handle}"),
+                        format!("AttributeGuid:{handle}"),
+                    ],
+                    &instance_id,
+                    timestamp,
+                );
+            }
         }
         let targetish_path_candidates = path_candidates
             .iter()
@@ -2957,6 +3099,163 @@ mod tests {
                     .iter()
                     .any(|entry| entry == "target_name_resolution=handle_alias_applied")
             );
+            assert!(
+                recent
+                    .hit
+                    .target_context
+                    .iter()
+                    .any(|entry| entry == "target_path=Boss_07_BP_WorldBoss")
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_hp_alias_backfills_weak_hits_without_formal_target_id() {
+        let (sender, receiver) = unbounded();
+        let mut decoder = PacketDecoder::default();
+        let boss18_handle = [
+            0xd7, 0x3c, 0x42, 0x9e, 0xdf, 0x9f, 0x21, 0x48, 0x8f, 0x39, 0x25, 0x1e, 0xda, 0xd0,
+            0x31, 0xea,
+        ];
+        let boss07_handle = [
+            0xc5, 0x5c, 0x88, 0x59, 0x03, 0xe8, 0x49, 0x40, 0x93, 0x6c, 0x7d, 0x09, 0x15, 0xdc,
+            0x8c, 0xad,
+        ];
+        let boss07_hex = hex::encode(boss07_handle);
+        decoder.target_instances.observe_paths(
+            0.0,
+            &[PathCandidate {
+                value: "boss_18_BP_DiyBoss".to_owned(),
+                byte_offset: 0,
+                bit_shift: 0,
+                score: 240,
+            }],
+            &[],
+            &decoder.resource_index,
+        );
+        let boss18_instance = decoder
+            .target_instances
+            .observe_boss_hp_guid(1.0, boss18_handle, 1_000_000.0, "boss18_hp".to_owned())
+            .expect("boss18 hp should bind");
+        decoder.register_target_instance_alias_keys(
+            [
+                format!("boss_hp_guid:{}", hex::encode(boss18_handle)),
+                format!("AttributeGuid:{}", hex::encode(boss18_handle)),
+            ],
+            &boss18_instance,
+            1.0,
+        );
+        decoder.target_instances.observe_paths(
+            40.0,
+            &[PathCandidate {
+                value: "Boss_07_BP_WorldBoss".to_owned(),
+                byte_offset: 0,
+                bit_shift: 0,
+                score: 240,
+            }],
+            &[],
+            &decoder.resource_index,
+        );
+        assert!(
+            decoder
+                .target_instances
+                .instance("Boss_07_BP_WorldBoss#1")
+                .is_some(),
+            "Boss07 pending instance was not created"
+        );
+        let boss07_instance = decoder
+            .target_instances
+            .observe_boss_hp_guid(49.0, boss07_handle, 973_097.0, "boss07_hp".to_owned())
+            .expect("boss07 hp should bind despite boss18 active ttl");
+        decoder.register_target_instance_alias_keys(
+            [
+                format!("boss_hp_guid:{boss07_hex}"),
+                format!("AttributeGuid:{boss07_hex}"),
+            ],
+            &boss07_instance,
+            49.0,
+        );
+        assert!(
+            decoder
+                .target_handle_aliases
+                .get(&format!("AttributeGuid:{boss07_hex}"))
+                .is_some_and(|alias| alias.target_name == "塞润尼缇"),
+            "Boss07 handle alias should resolve to 塞润尼缇"
+        );
+
+        let target_id = format!("AttributeGuid:{boss07_hex}");
+        let mut direct = targetless_hit();
+        direct.timestamp = 49.1;
+        direct.target_id = Some(target_id.clone());
+        direct.target_context = vec![
+            "confidence=confirmed score=100".to_owned(),
+            "reason=boss_hp_delta_match:3875".to_owned(),
+            format!("boss_hp_guid={boss07_hex}"),
+        ];
+        decoder.recent_target_hits.push_back(RecentTargetHit {
+            hit: direct,
+            summary: TargetResolutionSummary {
+                target_id: Some(target_id),
+                target_name: None,
+                target_context: vec![format!("boss_hp_guid={boss07_hex}")],
+                score: 100,
+                confidence: TargetConfidence::Confirmed,
+                direct_hp_evidence: true,
+            },
+        });
+
+        for (timestamp, context) in [
+            (
+                49.2,
+                vec![
+                    "confidence=unknown score=5".to_owned(),
+                    "reason=target_max_hp_only_weak".to_owned(),
+                    format!("target_handle_candidate=AttributeGuid:{boss07_hex}"),
+                    format!("boss_hp_guid={boss07_hex}"),
+                ],
+            ),
+            (
+                49.3,
+                vec![
+                    "confidence=possible score=40".to_owned(),
+                    "reason=single_high_confidence_target_window:35".to_owned(),
+                    "reason=target_max_hp_only_weak".to_owned(),
+                    format!("target_handle_candidate=AttributeGuid:{boss07_hex}"),
+                ],
+            ),
+        ] {
+            let mut hit = targetless_hit();
+            hit.timestamp = timestamp;
+            hit.target_context = context.clone();
+            decoder.recent_target_hits.push_back(RecentTargetHit {
+                hit,
+                summary: TargetResolutionSummary {
+                    target_id: None,
+                    target_name: None,
+                    target_context: context,
+                    score: 5,
+                    confidence: TargetConfidence::Unknown,
+                    direct_hp_evidence: false,
+                },
+            });
+        }
+
+        decoder.backfill_recent_targets(50.0, &sender);
+
+        assert!(
+            decoder
+                .recent_target_hits
+                .iter()
+                .all(|recent| recent.hit.target_name.as_deref() == Some("塞润尼缇"))
+        );
+        assert_eq!(
+            receiver
+                .try_iter()
+                .filter(|event| matches!(event, EngineEvent::HitTargetUpdate(_)))
+                .count(),
+            3
+        );
+        for recent in &decoder.recent_target_hits {
             assert!(
                 recent
                     .hit

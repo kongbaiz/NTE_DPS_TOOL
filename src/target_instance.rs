@@ -297,7 +297,7 @@ impl TargetInstanceStore {
             .alias_index
             .get(&alias.key())
             .cloned()
-            .or_else(|| self.unique_pending_instance_id(timestamp))?;
+            .or_else(|| self.best_pending_instance_id(timestamp, &alias))?;
         self.add_alias_and_maybe_rename(&instance_id, alias);
         let current_id = self.current_id_for(&instance_id);
         let instance = self.instances.get_mut(&current_id)?;
@@ -371,12 +371,26 @@ impl TargetInstanceStore {
             .map(|instance| instance.instance_id.clone())
     }
 
-    fn unique_pending_instance_id(&self, timestamp: f64) -> Option<String> {
-        let candidates = self
-            .active_named_instances(timestamp)
-            .filter(|instance| timestamp - instance.last_seen_at <= INSTANCE_PENDING_WINDOW_SECONDS)
+    fn best_pending_instance_id(&self, timestamp: f64, alias: &TargetAlias) -> Option<String> {
+        let mut candidates = self
+            .instances
+            .values()
+            .filter_map(|instance| {
+                let score = pending_instance_score(instance, timestamp, alias)?;
+                Some((score, instance))
+            })
             .collect::<Vec<_>>();
-        (candidates.len() == 1).then(|| candidates[0].instance_id.clone())
+        candidates.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| right.1.last_seen_at.total_cmp(&left.1.last_seen_at))
+        });
+        let (best_score, best) = candidates.first()?;
+        let Some((second_score, _)) = candidates.get(1) else {
+            return Some(best.instance_id.clone());
+        };
+        (best_score - second_score >= 25).then(|| best.instance_id.clone())
     }
 
     fn active_named_instances(
@@ -461,6 +475,41 @@ fn alias_key(kind: TargetAliasKind, value: &str) -> String {
         kind.label(),
         normalize_alias_value(value.to_owned())
     )
+}
+
+fn pending_instance_score(
+    instance: &RuntimeTargetInstance,
+    timestamp: f64,
+    incoming_alias: &TargetAlias,
+) -> Option<i32> {
+    if is_ignored_non_target_path(&instance.canonical_path) || instance.target_name.is_empty() {
+        return None;
+    }
+    if instance
+        .aliases
+        .iter()
+        .any(|alias| alias.kind == incoming_alias.kind && alias.value != incoming_alias.value)
+    {
+        return None;
+    }
+    let age = timestamp - instance.last_seen_at;
+    if !(0.0..=INSTANCE_PENDING_WINDOW_SECONDS).contains(&age) {
+        return None;
+    }
+    let mut score = 100;
+    score += match instance.state {
+        RuntimeTargetState::Active => 80,
+        RuntimeTargetState::Dead => 20,
+        RuntimeTargetState::Expired => 0,
+    };
+    score += ((INSTANCE_PENDING_WINDOW_SECONDS - age).max(0.0) * 2.0).round() as i32;
+    if instance.canonical_path.contains("Boss") || instance.canonical_path.contains("boss") {
+        score += 20;
+    }
+    if !instance.aliases.is_empty() {
+        score += 10;
+    }
+    Some(score)
 }
 
 fn normalize_alias_value(value: String) -> String {
