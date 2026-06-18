@@ -1123,6 +1123,9 @@ struct RecentTargetHit {
 struct HandleTargetAlias {
     target_path: String,
     target_name: String,
+    source: String,
+    first_seen_at: u64,
+    last_seen_at: u64,
 }
 
 impl Default for PacketDecoder {
@@ -1209,7 +1212,7 @@ impl PacketDecoder {
         if hit.direction == "incoming" {
             return;
         }
-        self.register_target_handle_alias(&summary);
+        self.register_target_handle_alias(&summary, hit.timestamp);
         self.recent_target_hits.push_back(RecentTargetHit {
             hit: hit.clone(),
             summary,
@@ -1237,11 +1240,11 @@ impl PacketDecoder {
                     &[],
                     &self.resource_index,
                 );
-                target_handle_alias_from_summary(&resolved_summary)
+                target_handle_alias_from_summary(&resolved_summary, recent.hit.timestamp)
             })
             .collect::<Vec<_>>();
         for (target_id, alias) in discovered_aliases {
-            self.target_handle_aliases.insert(target_id, alias);
+            merge_target_handle_alias(&mut self.target_handle_aliases, target_id, alias);
         }
         let target_handle_aliases = self.target_handle_aliases.clone();
         for recent in &mut self.recent_target_hits {
@@ -1282,9 +1285,9 @@ impl PacketDecoder {
                 }
                 recent.hit = resolved;
                 if let Some((target_id, alias)) =
-                    target_handle_alias_from_summary(&resolved_summary)
+                    target_handle_alias_from_summary(&resolved_summary, recent.hit.timestamp)
                 {
-                    self.target_handle_aliases.insert(target_id, alias);
+                    merge_target_handle_alias(&mut self.target_handle_aliases, target_id, alias);
                 }
                 recent.summary = resolved_summary;
                 let _ = sender.send(EngineEvent::HitTargetUpdate(target_update_from_hit(
@@ -1295,17 +1298,18 @@ impl PacketDecoder {
         }
     }
 
-    fn register_target_handle_alias(&mut self, summary: &TargetResolutionSummary) {
-        if let Some((target_id, alias)) = target_handle_alias_from_summary(summary) {
-            self.target_handle_aliases.insert(target_id, alias);
+    fn register_target_handle_alias(&mut self, summary: &TargetResolutionSummary, timestamp: f64) {
+        if let Some((target_id, alias)) = target_handle_alias_from_summary(summary, timestamp) {
+            merge_target_handle_alias(&mut self.target_handle_aliases, target_id, alias);
         }
     }
 }
 
 fn target_handle_alias_from_summary(
     summary: &TargetResolutionSummary,
+    timestamp: f64,
 ) -> Option<(String, HandleTargetAlias)> {
-    let target_id = summary.target_id.as_ref()?;
+    let target_id = normalize_target_id(summary.target_id.as_ref()?);
     let target_name = summary.target_name.as_ref()?.trim();
     if target_name.is_empty() {
         return None;
@@ -1315,19 +1319,39 @@ fn target_handle_alias_from_summary(
         return None;
     }
     Some((
-        target_id.clone(),
+        target_id,
         HandleTargetAlias {
             target_path: target_path.to_owned(),
             target_name: target_name.to_owned(),
+            source: "table_resolved_handle_alias".to_owned(),
+            first_seen_at: timestamp.to_bits(),
+            last_seen_at: timestamp.to_bits(),
         },
     ))
+}
+
+fn merge_target_handle_alias(
+    aliases: &mut HashMap<String, HandleTargetAlias>,
+    target_id: String,
+    alias: HandleTargetAlias,
+) {
+    aliases
+        .entry(target_id)
+        .and_modify(|existing| {
+            existing.target_path = alias.target_path.clone();
+            existing.target_name = alias.target_name.clone();
+            existing.source = alias.source.clone();
+            existing.first_seen_at = existing.first_seen_at.min(alias.first_seen_at);
+            existing.last_seen_at = existing.last_seen_at.max(alias.last_seen_at);
+        })
+        .or_insert(alias);
 }
 
 fn apply_handle_alias_backfill(
     recent: &mut RecentTargetHit,
     aliases: &HashMap<String, HandleTargetAlias>,
 ) -> bool {
-    if recent.hit.target_name.is_some() || recent.summary.target_name.is_some() {
+    if recent.hit.target_name.is_some() {
         return false;
     }
     let Some(target_id) = recent
@@ -1335,28 +1359,72 @@ fn apply_handle_alias_backfill(
         .target_id
         .as_ref()
         .or(recent.summary.target_id.as_ref())
+        .map(|target_id| normalize_target_id(target_id))
     else {
         return false;
     };
-    let Some(alias) = aliases.get(target_id) else {
+    let Some(alias) = aliases.get(&target_id) else {
         return false;
     };
-    recent.hit.target_name = Some(alias.target_name.clone());
-    push_unique_context(
-        &mut recent.hit.target_context,
-        format!("target_path={}", alias.target_path),
-    );
-    push_unique_context(
-        &mut recent.hit.target_context,
-        format!("target_name={}", alias.target_name),
-    );
-    push_unique_context(
-        &mut recent.hit.target_context,
-        "target_name_resolution=handle_alias_backfill".to_owned(),
-    );
+    apply_alias_to_hit(&mut recent.hit, alias);
     recent.summary.target_name = recent.hit.target_name.clone();
     recent.summary.target_context = recent.hit.target_context.clone();
     true
+}
+
+fn apply_handle_alias_to_hit_summary(
+    hit: &mut Hit,
+    summary: &mut TargetResolutionSummary,
+    aliases: &HashMap<String, HandleTargetAlias>,
+) -> bool {
+    if hit.target_name.is_some() {
+        return false;
+    }
+    let Some(target_id) = hit
+        .target_id
+        .as_ref()
+        .or(summary.target_id.as_ref())
+        .map(|target_id| normalize_target_id(target_id))
+    else {
+        return false;
+    };
+    let Some(alias) = aliases.get(&target_id) else {
+        return false;
+    };
+    apply_alias_to_hit(hit, alias);
+    summary.target_name = hit.target_name.clone();
+    summary.target_context = hit.target_context.clone();
+    true
+}
+
+fn apply_alias_to_hit(hit: &mut Hit, alias: &HandleTargetAlias) {
+    hit.target_name = Some(alias.target_name.clone());
+    replace_target_path_context(&mut hit.target_context, &alias.target_path);
+    push_unique_context(
+        &mut hit.target_context,
+        format!("target_name={}", alias.target_name),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        "target_name_resolution=handle_alias_applied".to_owned(),
+    );
+}
+
+fn replace_target_path_context(context: &mut Vec<String>, target_path: &str) {
+    let mut ignored_paths = Vec::new();
+    context.retain(|entry| {
+        let Some(path) = entry.strip_prefix("target_path=") else {
+            return true;
+        };
+        if is_ignored_non_target_path(path) {
+            ignored_paths.push(path.to_owned());
+        }
+        false
+    });
+    for path in ignored_paths {
+        push_unique_context(context, format!("ignored_non_target_path={path}"));
+    }
+    push_unique_context(context, format!("target_path={target_path}"));
 }
 
 fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str> {
@@ -1372,6 +1440,14 @@ fn push_unique_context(context: &mut Vec<String>, value: String) {
     if !context.iter().any(|entry| entry == &value) {
         context.push(value);
     }
+}
+
+fn normalize_target_id(target_id: &str) -> String {
+    let target_id = target_id.trim();
+    let Some((kind, value)) = target_id.split_once(':') else {
+        return target_id.to_owned();
+    };
+    format!("{kind}:{}", value.to_ascii_lowercase())
 }
 
 fn should_apply_target_update(
@@ -1623,7 +1699,7 @@ impl PacketDecoder {
                     hit.attack_type = Some(format!("环合·{reaction_type}"));
                 }
             }
-            let summary = if hit.direction != "incoming" {
+            let mut summary = if hit.direction != "incoming" {
                 self.target_resolver.apply_to_hit_with_summary(
                     hit,
                     &self.object_state,
@@ -1634,7 +1710,17 @@ impl PacketDecoder {
             } else {
                 TargetResolutionSummary::from_hit_and_candidates(hit, &[])
             };
+            if hit.direction != "incoming" {
+                self.register_target_handle_alias(&summary, hit.timestamp);
+                apply_handle_alias_to_hit_summary(hit, &mut summary, &self.target_handle_aliases);
+                self.register_target_handle_alias(&summary, hit.timestamp);
+            }
             hit_summaries.push(summary);
+        }
+        for (hit, summary) in hits.iter_mut().zip(&mut hit_summaries) {
+            if hit.direction != "incoming" {
+                apply_handle_alias_to_hit_summary(hit, summary, &self.target_handle_aliases);
+            }
         }
         for character_id in &ids {
             self.character_declarations.insert(*character_id, timestamp);
@@ -1881,7 +1967,7 @@ impl PacketDecoder {
                 )),
             );
         }
-        let inferred_follow_up_hits = boss_hp_updates
+        let mut inferred_follow_up_hits = boss_hp_updates
             .iter()
             .filter_map(|update| {
                 self.follow_up_damage
@@ -1898,6 +1984,11 @@ impl PacketDecoder {
                 (hit, summary)
             })
             .collect::<Vec<_>>();
+        for (hit, summary) in &mut inferred_follow_up_hits {
+            self.register_target_handle_alias(summary, hit.timestamp);
+            apply_handle_alias_to_hit_summary(hit, summary, &self.target_handle_aliases);
+            self.register_target_handle_alias(summary, hit.timestamp);
+        }
         if let Some(TransportPacket::Sequenced(packet)) = parse_transport_packet(payload) {
             if packet.mode != 0 {
                 append_packet_note(
@@ -2748,6 +2839,9 @@ mod tests {
             HandleTargetAlias {
                 target_path: "Boss_07_BP_WorldBoss".to_owned(),
                 target_name: "塞润尼缇".to_owned(),
+                source: "table_resolved_handle_alias".to_owned(),
+                first_seen_at: 1.0_f64.to_bits(),
+                last_seen_at: 1.0_f64.to_bits(),
             },
         );
 
@@ -2775,8 +2869,102 @@ mod tests {
             update
                 .target_context
                 .iter()
-                .any(|entry| entry == "target_name_resolution=handle_alias_backfill")
+                .any(|entry| entry == "target_name_resolution=handle_alias_applied")
         );
+    }
+
+    #[test]
+    fn handle_alias_backfill_names_weak_evidence_hits_with_same_target_id() {
+        let (sender, receiver) = unbounded();
+        let mut decoder = PacketDecoder::default();
+        let target_id = "AttributeGuid:c55c885903e84940936c7d0915dc8cad".to_owned();
+
+        let mut confirmed = targetless_hit();
+        confirmed.timestamp = 1.0;
+        confirmed.target_id = Some(target_id.clone());
+        confirmed.target_name = Some("塞润尼缇".to_owned());
+        confirmed.target_context = vec![
+            "confidence=confirmed score=100".to_owned(),
+            "reason=boss_hp_delta_match:3875".to_owned(),
+            "target_path=Boss_07_BP_WorldBoss".to_owned(),
+            "target_name=塞润尼缇".to_owned(),
+        ];
+        let confirmed_summary = TargetResolutionSummary {
+            target_id: confirmed.target_id.clone(),
+            target_name: confirmed.target_name.clone(),
+            target_context: confirmed.target_context.clone(),
+            score: 100,
+            confidence: TargetConfidence::Confirmed,
+            direct_hp_evidence: true,
+        };
+        decoder.remember_target_hit(&confirmed, confirmed_summary);
+
+        for (timestamp, context) in [
+            (
+                2.0,
+                vec![
+                    "confidence=unknown score=5".to_owned(),
+                    "reason=target_max_hp_only_weak".to_owned(),
+                ],
+            ),
+            (
+                3.0,
+                vec![
+                    "confidence=possible score=40".to_owned(),
+                    "reason=single_high_confidence_target_window:35".to_owned(),
+                    "reason=target_max_hp_only_weak".to_owned(),
+                ],
+            ),
+        ] {
+            let mut hit = targetless_hit();
+            hit.timestamp = timestamp;
+            hit.target_id = Some(target_id.clone());
+            hit.target_context = context.clone();
+            decoder.recent_target_hits.push_back(RecentTargetHit {
+                hit,
+                summary: TargetResolutionSummary {
+                    target_id: Some(target_id.clone()),
+                    target_name: None,
+                    target_context: context,
+                    score: 5,
+                    confidence: TargetConfidence::Unknown,
+                    direct_hp_evidence: false,
+                },
+            });
+        }
+
+        decoder.backfill_recent_targets(4.0, &sender);
+
+        assert!(
+            decoder
+                .recent_target_hits
+                .iter()
+                .all(|recent| recent.hit.target_name.as_deref() == Some("塞润尼缇"))
+        );
+        let updates = receiver.try_iter().collect::<Vec<_>>();
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|event| matches!(event, EngineEvent::HitTargetUpdate(_)))
+                .count(),
+            2
+        );
+        for recent in decoder.recent_target_hits.iter().skip(1) {
+            assert!(
+                recent
+                    .hit
+                    .target_context
+                    .iter()
+                    .any(|entry| entry == "target_name_resolution=handle_alias_applied")
+            );
+            assert!(
+                recent
+                    .hit
+                    .target_context
+                    .iter()
+                    .any(|entry| entry == "target_path=Boss_07_BP_WorldBoss")
+            );
+        }
     }
 
     #[test]
