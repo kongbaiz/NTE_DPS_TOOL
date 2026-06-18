@@ -15,9 +15,11 @@ const HP_MATCH_TOLERANCE_RATIO: f64 = 0.002;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum TargetAliasKind {
+    ActorChannel,
     IrisRef32,
     NetGuid32,
     NetGuidPacked,
+    SdkNetTarget,
     BossHpGuid,
     CurrentHpToken,
     HitTargetToken,
@@ -27,9 +29,11 @@ pub enum TargetAliasKind {
 impl TargetAliasKind {
     pub fn label(self) -> &'static str {
         match self {
+            Self::ActorChannel => "actor_channel",
             Self::IrisRef32 => "iris_ref32",
             Self::NetGuid32 => "netguid32",
             Self::NetGuidPacked => "netguid_packed",
+            Self::SdkNetTarget => "sdk_net_target",
             Self::BossHpGuid => "boss_hp_guid",
             Self::CurrentHpToken => "current_hp_token",
             Self::HitTargetToken => "hit_target_token",
@@ -39,9 +43,11 @@ impl TargetAliasKind {
 
     fn instance_id_priority(self) -> u8 {
         match self {
-            Self::IrisRef32 => 7,
-            Self::NetGuid32 => 6,
-            Self::NetGuidPacked => 5,
+            Self::IrisRef32 => 8,
+            Self::NetGuid32 => 7,
+            Self::NetGuidPacked => 6,
+            Self::ActorChannel => 5,
+            Self::SdkNetTarget => 4,
             Self::BossHpGuid => 4,
             Self::CurrentHpToken => 3,
             Self::HitTargetToken => 2,
@@ -148,6 +154,59 @@ impl TargetInstanceStore {
         notes
     }
 
+    pub fn observe_runtime_mapping(
+        &mut self,
+        timestamp: f64,
+        canonical_path: String,
+        target_name: String,
+        aliases: Vec<TargetAlias>,
+    ) -> String {
+        let instance_id =
+            self.observe_monster_actor(timestamp, canonical_path, target_name, aliases);
+        self.expire_old(timestamp);
+        instance_id
+    }
+
+    pub fn close_alias(
+        &mut self,
+        timestamp: f64,
+        alias: &TargetAlias,
+        expire_instance: bool,
+    ) -> Option<String> {
+        let instance_id = self.alias_index.remove(&alias.key())?;
+        let instance = self.instances.get_mut(&instance_id)?;
+        instance.aliases.remove(alias);
+        instance.last_seen_at = timestamp;
+        if expire_instance {
+            instance.state = RuntimeTargetState::Expired;
+        }
+        Some(instance.instance_id.clone())
+    }
+
+    pub fn expire_path(&mut self, timestamp: f64, canonical_path: &str) -> Vec<String> {
+        let instance_ids = self
+            .instances
+            .values()
+            .filter(|instance| instance.canonical_path == canonical_path)
+            .filter(|instance| instance.state == RuntimeTargetState::Active)
+            .map(|instance| instance.instance_id.clone())
+            .collect::<Vec<_>>();
+        let mut removed_alias_keys = Vec::new();
+        for instance_id in instance_ids {
+            let Some(instance) = self.instances.get_mut(&instance_id) else {
+                continue;
+            };
+            instance.last_seen_at = timestamp;
+            instance.state = RuntimeTargetState::Expired;
+            for alias in &instance.aliases {
+                let key = alias.key();
+                self.alias_index.remove(&key);
+                removed_alias_keys.push(key);
+            }
+        }
+        removed_alias_keys
+    }
+
     pub fn observe_boss_hp_guid(
         &mut self,
         timestamp: f64,
@@ -167,6 +226,17 @@ impl TargetInstanceStore {
         evidence: String,
     ) -> Option<String> {
         let alias = TargetAlias::new(TargetAliasKind::CurrentHpToken, hex::encode(token));
+        self.observe_hp_alias(timestamp, alias, current_hp, evidence)
+    }
+
+    pub fn observe_sdk_net_target(
+        &mut self,
+        timestamp: f64,
+        token: &[u8],
+        current_hp: f64,
+        evidence: String,
+    ) -> Option<String> {
+        let alias = TargetAlias::new(TargetAliasKind::SdkNetTarget, hex::encode(token));
         self.observe_hp_alias(timestamp, alias, current_hp, evidence)
     }
 
@@ -240,10 +310,11 @@ impl TargetInstanceStore {
                 &aliases,
             )
         };
+        let mut current_id = instance_id.clone();
         for alias in aliases {
-            self.add_alias_and_maybe_rename(&instance_id, alias);
+            current_id = self.add_alias_and_maybe_rename(&current_id, alias);
         }
-        if let Some(instance) = self.instances.get_mut(&self.current_id_for(&instance_id)) {
+        if let Some(instance) = self.instances.get_mut(&current_id) {
             instance.last_seen_at = timestamp;
             instance.target_name = target_name;
             instance.canonical_path = canonical_path;
@@ -298,8 +369,7 @@ impl TargetInstanceStore {
             .get(&alias.key())
             .cloned()
             .or_else(|| self.best_pending_instance_id(timestamp, &alias))?;
-        self.add_alias_and_maybe_rename(&instance_id, alias);
-        let current_id = self.current_id_for(&instance_id);
+        let current_id = self.add_alias_and_maybe_rename(&instance_id, alias);
         let instance = self.instances.get_mut(&current_id)?;
         instance.last_seen_at = timestamp;
         instance.hp_current = Some(current_hp);
@@ -523,8 +593,10 @@ fn aliases_from_hit_context(hit: &Hit) -> Vec<TargetAlias> {
             let (key, value) = entry.split_once('=')?;
             let kind = match key {
                 "iris_ref32" => TargetAliasKind::IrisRef32,
+                "actor_channel" => TargetAliasKind::ActorChannel,
                 "netguid32" => TargetAliasKind::NetGuid32,
                 "netguid_packed" => TargetAliasKind::NetGuidPacked,
+                "sdk_net_target" => TargetAliasKind::SdkNetTarget,
                 "boss_hp_guid" => TargetAliasKind::BossHpGuid,
                 "current_hp_token" => TargetAliasKind::CurrentHpToken,
                 "hit_target_token" => TargetAliasKind::HitTargetToken,

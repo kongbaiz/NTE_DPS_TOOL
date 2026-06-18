@@ -1,5 +1,30 @@
 # Packet Content Parser V2
 
+## 2026-06-18 Net Runtime Events
+
+- 新增 `net_event` 层，把之前没有进入状态链的包先归一成事件：`package_map_export`、`iris_reference`、`transport_bunch`、`actor_channel`、`sdk_target_data`、`object_lifecycle`、`ability_lifecycle`、`gameplay_effect_lifecycle`。
+- `PackageMap/NetGUID` 和 `Iris` 目前仍基于路径锚点附近的候选值，不声称已经完成 UE `PackageMapClient::SerializeObject` 或 Iris NetSerializer 解码；但事件会统一写入 `Net runtime events` debug note，并把可确认的 `netguid32`、`netguid_packed`、`iris_ref32` 作为 runtime alias 进入 `TargetInstanceStore`。
+- `sdk_target_data` 使用 Dumper-7 SDK 推出的 `FCharacterForNet` 0x28 字节 NetTarget 形状，提取 `FClientRepFightData` / `FClientRepExtraDamageInfo` 的 HP 和 dead state 候选。为避免把 BossHP 包误扫成 SDK target-data，实时解码只在 S2C 且存在目标路径、GameplayEffect 或显式 SDK/Ability 文本锚点时启用；不会仅因为 BossHP/CurrentHP 出现就全包扫描。
+- 新增 `sdk_net_target` alias，和 `NetRefHandleCandidate:sdk_target:<hex>` 建立等价键；这和 `current_hp_token` 分开，避免把 0x28 字节 SDK NetTarget 与 CurrentHP 的 4 字节弱 token 混用。
+- `object_lifecycle` 的 close/destroy 文本事件如果能关联到目标路径，会让同路径 runtime instance 过期并移除其 alias，降低 channel/handle 复用污染。没有路径或别名的生命周期文本只作为 debug 证据保留。
+- `transport_bunch` / `actor_channel` 目前记录已识别的 transport/sequenced/single-bunch 轮廓；字段级 ActorChannel id、可靠序列、RPC/property 边界仍未完整解码。
+- 在三份真实抓包上验证：`001418` 命中 runtime notes 70、PackageMap 14、Iris 18、SDK target-data 8、transport 52；`030535` 命中 runtime notes 49、PackageMap 3、Iris 3、SDK target-data 0、transport 46；`033550` 命中 runtime notes 73、PackageMap 6、Iris 7、SDK target-data 2、transport 66。原有 hit 数保持 166/48/262，未出现明显倒退。
+
+## 2026-06-18 Runtime Mapping Sidecar
+
+- 新增可选运行时映射 sidecar 输入，导入 `foo.pcapng` 时会自动查找同目录 `foo.sidecar.jsonl`、`foo.sidecar.json`、`foo.runtime.jsonl`、`foo.runtime.json`、`foo.mapping.jsonl`、`foo.mapping.json`，以及 `foo.pcapng.sidecar.jsonl/json`。
+- Sidecar 支持 JSON 数组、`{"events":[...]}` 或 JSONL。每条事件至少包含 `time`/`timestamp`/`ts`，并可包含 `event`、`connection`、`channel`、`path`/`object_path`/`class_path`、`target_name`、`netguid32`/`netguid_packed`、`iris_ref32`、`boss_hp_guid`、`current_hp_token`。
+- `actor_channel_open`、`netguid_resolved`、`iris_ref_resolved` 等 map 事件会进入 `TargetInstanceStore`，把 ActorChannel/NetGUID/Iris/HP token 作为当前会话实例别名；`close`/`destroy` 类事件会移除或过期相关 alias，避免 channel 复用污染后续命中。
+- Sidecar 时间戳如果是小于 `10000000` 的相对秒，并且 pcap 时间戳是 epoch 秒，会自动把第一条 sidecar 事件对齐到第一条 pcap Ethernet 包时间；若 sidecar 已使用 epoch 时间，则原样使用。
+- 这层映射是“本次 pcap 会话状态流”，不是全局缓存。静态资源路径和 DataTable 名称可以复用，`actor_channel`、`netguid32`、`iris_ref32` 等数字身份不能跨连接信任。
+
+最小 JSONL 示例：
+
+```jsonl
+{"time":1.234,"event":"actor_channel_open","connection":"GameNetDriver.ServerConnection","channel":42,"path":"WorldBoss_Boss33","target_name":"目标名","netguid32":"0x40a54cd0","iris_ref32":"0x2c981ed9"}
+{"time":9.876,"event":"actor_channel_close","connection":"GameNetDriver.ServerConnection","channel":42}
+```
+
 ## 2026-06-18 Net Identity Probe
 
 - 新增 `net_identity` 层，围绕目标路径锚点尝试提取 UE `SerializeIntPacked` 风格 NetGUID 候选、byte-aligned `netguid32` 候选和 `iris_ref32` 候选。
@@ -26,6 +51,7 @@
 - `resource_index`：合并 `res/data/targets/*.json` 手工覆盖、MonsterManual 和 MonsterStatic DataTable，按封包内部 ID/path 生成别名并解析真实怪物显示名；目录或文件不存在时静默降级，已存在文件的读取/JSON/结构错误会产生 warning，并从路径 basename 生成 fallback name。
 - `target_resolver`：按可解释 reason 生成 `TargetCandidate`，并只在 probable/confirmed 时填充 `target_name`。
 - `PacketDecoder` 集成：S2C 观察 Boss HP、CurrentHP NetTarget 候选和路径候选；C2S 观察伤害、角色声明、GameplayEffect 和路径候选；发送 `Hit` 前附加 `target_id`、`target_name`、`target_context`。
+- `runtime_mapping`：可选消费外部 sidecar 中的 ActorChannel/PackageMap/Iris 运行时映射事件，将 NetGUID/Iris/HP token 作为 `TargetInstanceStore` 的强 alias，并在事件到达时回填最近 Hit。
 - AttributeGuid 只会在短时间窗口内存在唯一高置信近邻目标路径时链接路径，从而让 HP 属性实例获得 `object_path` / fallback name。
 - CurrentHP 的 16 字节前缀只提取未被固定模式约束的 4 个变动字节，作为低置信 `NetRefHandleCandidate` token 进入 `ObjectStateStore`。它不会单独确认目标；只有同一 token 的 HP 时间线与伤害 delta 或 `target_hp_before/after` 对齐时，才会参与目标回填。
 - 基于 Dumper-7 SDK 中 `FCharacterForNet`、`FClientRepExtraDamageInfo` 和 `FClientRepFightData` 的字段大小，保留了离线候选扫描函数；但完整进图包显示泛化扫描噪声过高，实时 `PacketDecoder` 默认不启用这类无锚点扫描。

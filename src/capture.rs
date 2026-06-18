@@ -27,6 +27,10 @@ use serde::Deserialize;
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, HitTargetUpdate, PacketDebug,
 };
+use crate::net_event::{
+    NetRuntimeAction, NetRuntimeEvent, NetRuntimeEventKind, NetRuntimeScanOptions,
+    extract_net_runtime_events,
+};
 use crate::net_identity::{NetIdentityCandidateKind, extract_net_identity_candidates};
 use crate::object_state::{ObjectHandleKind, ObjectStateStore, is_ignored_non_target_path};
 use crate::parser::{
@@ -40,7 +44,11 @@ use crate::parser::{
 
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 use crate::resource_index::ResourceIndex;
-use crate::target_instance::TargetInstanceStore;
+use crate::runtime_mapping::{
+    RuntimeMappingAction, RuntimeMappingEvent, RuntimeMappingTimeline,
+    find_companion_runtime_mapping_sidecar, load_runtime_mapping_sidecar,
+};
+use crate::target_instance::{TargetAlias, TargetAliasKind, TargetInstanceStore};
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary, TargetResolver};
 use crate::ue_bitstream::extract_path_candidates;
 
@@ -721,6 +729,31 @@ fn should_keep_debug_packet(
     !is_padding_payload(payload) && payload.len() > MAX_IGNORABLE_BINARY_PACKET_LEN
 }
 
+fn has_net_runtime_text_hint(decoded_text: &str) -> bool {
+    if decoded_text == UNREADABLE_PROTOCOL_TEXT {
+        return false;
+    }
+    let lower = decoded_text.to_ascii_lowercase();
+    [
+        "actorchannel",
+        "packagemap",
+        "netguid",
+        "netrefhandle",
+        "iris",
+        "clientsetreplicatedtargetdata",
+        "clientupdatetargetextradamageinfos",
+        "clientserverabilityactorsetcurrenthp",
+        "fclientrepfightdata",
+        "fclientrepextradamageinfo",
+        "gameplayeffect",
+        "gameplaycue",
+        "serverreceivegameplayeventtoactor",
+        "netmulticast_onsendhandledamageinfos",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
 fn shannon_entropy(data: &[u8]) -> f64 {
     if data.is_empty() {
         return 0.0;
@@ -809,6 +842,7 @@ fn short_hex(bytes: &[u8]) -> String {
 fn attach_runtime_alias_context(
     hit: &mut Hit,
     net_identity_candidates: &[crate::net_identity::NetIdentityCandidate],
+    net_runtime_events: &[NetRuntimeEvent],
 ) {
     const HIT_ALIAS_WINDOW_BYTES: usize = 128;
     for candidate in net_identity_candidates
@@ -821,6 +855,18 @@ fn attach_runtime_alias_context(
     {
         hit.target_context
             .push(format!("{}={}", candidate.kind.label(), candidate.handle));
+    }
+    for event in net_runtime_events
+        .iter()
+        .filter(|event| event.bit_shift == hit.bit_shift)
+        .filter(|event| event.byte_offset.abs_diff(hit.byte_offset) <= HIT_ALIAS_WINDOW_BYTES)
+        .flat_map(|event| event.aliases.iter())
+        .take(4)
+    {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("{}={}", event.kind.label(), event.value),
+        );
     }
 }
 
@@ -1363,6 +1409,268 @@ impl PacketDecoder {
             merge_target_handle_alias(&mut self.target_handle_aliases, key, alias.clone());
         }
     }
+
+    fn apply_runtime_mapping_events(
+        &mut self,
+        events: Vec<RuntimeMappingEvent>,
+        sender: &Sender<EngineEvent>,
+    ) {
+        if events.is_empty() {
+            return;
+        }
+        let mut applied = 0_usize;
+        let mut latest_timestamp = 0.0_f64;
+        for event in events {
+            latest_timestamp = latest_timestamp.max(event.timestamp);
+            if self.apply_runtime_mapping_event(event) {
+                applied += 1;
+            }
+        }
+        if applied > 0 {
+            self.backfill_recent_targets(latest_timestamp, sender);
+        }
+    }
+
+    fn apply_runtime_mapping_event(&mut self, event: RuntimeMappingEvent) -> bool {
+        match event.action {
+            RuntimeMappingAction::Map => self.apply_runtime_mapping_map(event),
+            RuntimeMappingAction::Close | RuntimeMappingAction::Destroy => {
+                let expire_instance = event.action == RuntimeMappingAction::Destroy;
+                let mut applied = false;
+                for alias in &event.aliases {
+                    applied |= self
+                        .target_instances
+                        .close_alias(event.timestamp, alias, expire_instance)
+                        .is_some();
+                    self.target_handle_aliases.remove(&alias.key());
+                }
+                applied
+            }
+        }
+    }
+
+    fn apply_runtime_mapping_map(&mut self, event: RuntimeMappingEvent) -> bool {
+        let Some((canonical_path, target_name)) = self.runtime_mapping_target(&event) else {
+            return false;
+        };
+        let aliases = event.aliases.clone();
+        let instance_id = self.target_instances.observe_runtime_mapping(
+            event.timestamp,
+            canonical_path.clone(),
+            target_name,
+            aliases.clone(),
+        );
+        for alias in &aliases {
+            self.observe_runtime_alias_in_object_state(event.timestamp, alias, &canonical_path);
+        }
+        self.register_target_instance_alias_keys(
+            runtime_mapping_alias_keys(&aliases),
+            &instance_id,
+            event.timestamp,
+        );
+        true
+    }
+
+    fn runtime_mapping_target(&self, event: &RuntimeMappingEvent) -> Option<(String, String)> {
+        let raw_path = event
+            .object_path
+            .as_deref()
+            .or(event.class_path.as_deref())?;
+        if is_ignored_non_target_path(raw_path) && event.target_name.is_none() {
+            return None;
+        }
+        let canonical_path = self
+            .resource_index
+            .canonical_target_path_for_path(raw_path)
+            .unwrap_or_else(|| raw_path.to_owned());
+        let target_name = event
+            .target_name
+            .clone()
+            .or_else(|| self.resource_index.resolved_name_for_path(raw_path))
+            .or_else(|| self.resource_index.resolved_name_for_path(&canonical_path))
+            .or_else(|| self.resource_index.display_name_for_path(&canonical_path))?;
+        if target_name.trim().is_empty() {
+            return None;
+        }
+        Some((canonical_path, target_name))
+    }
+
+    fn observe_runtime_alias_in_object_state(
+        &mut self,
+        timestamp: f64,
+        alias: &TargetAlias,
+        canonical_path: &str,
+    ) {
+        let Some(handle_kind) = object_handle_kind_for_runtime_alias(alias.kind) else {
+            return;
+        };
+        self.object_state.observe_path_handle_candidate(
+            timestamp,
+            handle_kind,
+            alias.value.clone(),
+            canonical_path,
+            &self.resource_index,
+            format!("runtime_mapping:{}={}", alias.kind.label(), alias.value),
+            255,
+        );
+    }
+
+    fn apply_net_runtime_events(
+        &mut self,
+        timestamp: f64,
+        events: &[NetRuntimeEvent],
+    ) -> (Vec<String>, bool) {
+        let mut notes = Vec::new();
+        let mut applied = false;
+        for event in events {
+            applied |= self.apply_net_runtime_event(timestamp, event);
+            notes.push(event.summary());
+        }
+        (notes, applied)
+    }
+
+    fn apply_net_runtime_event(&mut self, timestamp: f64, event: &NetRuntimeEvent) -> bool {
+        let mut applied = false;
+        if event.kind == NetRuntimeEventKind::SdkTargetData
+            && let (Some(target_token), Some(current_hp)) =
+                (event.target_token.as_deref(), event.current_hp)
+        {
+            self.object_state.observe_net_target_hp_update(
+                timestamp,
+                "sdk_target",
+                target_token,
+                current_hp as f64,
+                None,
+                format!("sdk_target_data:{}", event.evidence),
+            );
+            if let Some(instance_id) = self.target_instances.observe_sdk_net_target(
+                timestamp,
+                target_token,
+                current_hp as f64,
+                format!("sdk_target_data:{}", event.evidence),
+            ) {
+                self.register_target_instance_alias_keys(
+                    runtime_mapping_alias_keys(&event.aliases),
+                    &instance_id,
+                    timestamp,
+                );
+            }
+            applied = true;
+        }
+
+        if matches!(
+            event.action,
+            NetRuntimeAction::Close | NetRuntimeAction::Destroy
+        ) && let Some((canonical_path, _)) = self.net_runtime_event_target(event)
+        {
+            for alias_key in self
+                .target_instances
+                .expire_path(timestamp, &canonical_path)
+                .into_iter()
+                .flat_map(|key| equivalent_target_alias_keys(&key))
+            {
+                self.target_handle_aliases.remove(&alias_key);
+            }
+            applied = true;
+        }
+
+        if event.aliases.is_empty() {
+            return applied;
+        }
+        let Some((canonical_path, target_name)) = self.net_runtime_event_target(event) else {
+            return applied;
+        };
+        let instance_id = self.target_instances.observe_runtime_mapping(
+            timestamp,
+            canonical_path.clone(),
+            target_name,
+            event.aliases.clone(),
+        );
+        for alias in &event.aliases {
+            self.observe_runtime_alias_in_object_state(timestamp, alias, &canonical_path);
+        }
+        self.register_target_instance_alias_keys(
+            runtime_mapping_alias_keys(&event.aliases),
+            &instance_id,
+            timestamp,
+        );
+        true
+    }
+
+    fn net_runtime_event_target(&self, event: &NetRuntimeEvent) -> Option<(String, String)> {
+        let raw_path = event.path.as_deref()?;
+        if is_ignored_non_target_path(raw_path) {
+            return None;
+        }
+        let canonical_path = self
+            .resource_index
+            .canonical_target_path_for_path(raw_path)
+            .unwrap_or_else(|| raw_path.to_owned());
+        let target_name = self
+            .resource_index
+            .resolved_name_for_path(raw_path)
+            .or_else(|| self.resource_index.resolved_name_for_path(&canonical_path))
+            .or_else(|| self.resource_index.display_name_for_path(&canonical_path))?;
+        Some((canonical_path, target_name))
+    }
+}
+
+fn object_handle_kind_for_runtime_alias(kind: TargetAliasKind) -> Option<ObjectHandleKind> {
+    match kind {
+        TargetAliasKind::NetGuid32 | TargetAliasKind::NetGuidPacked => {
+            Some(ObjectHandleKind::NetGuidCandidate)
+        }
+        TargetAliasKind::IrisRef32
+        | TargetAliasKind::CurrentHpToken
+        | TargetAliasKind::SdkNetTarget => Some(ObjectHandleKind::NetRefHandleCandidate),
+        TargetAliasKind::BossHpGuid => Some(ObjectHandleKind::AttributeGuid),
+        TargetAliasKind::ActorChannel
+        | TargetAliasKind::HitTargetToken
+        | TargetAliasKind::HitVectorToken => None,
+    }
+}
+
+fn runtime_mapping_alias_keys(aliases: &[TargetAlias]) -> Vec<String> {
+    let mut keys = Vec::new();
+    for alias in aliases {
+        extend_equivalent_target_alias_keys(&mut keys, &alias.key());
+        match alias.kind {
+            TargetAliasKind::NetGuid32 | TargetAliasKind::NetGuidPacked => {
+                extend_equivalent_target_alias_keys(
+                    &mut keys,
+                    &format!("NetGuidCandidate:{}", alias.value),
+                );
+            }
+            TargetAliasKind::IrisRef32 => {
+                extend_equivalent_target_alias_keys(
+                    &mut keys,
+                    &format!("NetRefHandleCandidate:{}", alias.value),
+                );
+            }
+            TargetAliasKind::CurrentHpToken => {
+                extend_equivalent_target_alias_keys(
+                    &mut keys,
+                    &format!("NetRefHandleCandidate:currenthp:{}", alias.value),
+                );
+            }
+            TargetAliasKind::SdkNetTarget => {
+                extend_equivalent_target_alias_keys(
+                    &mut keys,
+                    &format!("NetRefHandleCandidate:sdk_target:{}", alias.value),
+                );
+            }
+            TargetAliasKind::BossHpGuid => {
+                extend_equivalent_target_alias_keys(
+                    &mut keys,
+                    &format!("AttributeGuid:{}", alias.value),
+                );
+            }
+            TargetAliasKind::ActorChannel
+            | TargetAliasKind::HitTargetToken
+            | TargetAliasKind::HitVectorToken => {}
+        }
+    }
+    keys
 }
 
 fn target_handle_aliases_from_summary(
@@ -1533,7 +1841,13 @@ fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> V
     for value in target_context_values(context, "current_hp_token") {
         extend_equivalent_target_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
     }
-    for key in ["iris_ref32", "netguid32", "netguid_packed"] {
+    for key in [
+        "actor_channel",
+        "iris_ref32",
+        "netguid32",
+        "netguid_packed",
+        "sdk_net_target",
+    ] {
         for value in target_context_values(context, key) {
             extend_equivalent_target_alias_keys(&mut keys, &format!("{key}:{value}"));
         }
@@ -1560,6 +1874,23 @@ fn equivalent_target_alias_keys(key: &str) -> Vec<String> {
         keys.push(format!("current_hp_token:{value}"));
     } else if let Some(value) = key.strip_prefix("current_hp_token:") {
         keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:sdk_target:") {
+        keys.push(format!("sdk_net_target:{value}"));
+    } else if let Some(value) = key.strip_prefix("sdk_net_target:") {
+        keys.push(format!("NetRefHandleCandidate:sdk_target:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:") {
+        keys.push(format!("iris_ref32:{value}"));
+    } else if let Some(value) = key.strip_prefix("iris_ref32:") {
+        keys.push(format!("NetRefHandleCandidate:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetGuidCandidate:") {
+        keys.push(format!("netguid32:{value}"));
+        keys.push(format!("netguid_packed:{value}"));
+    } else if let Some(value) = key.strip_prefix("netguid32:") {
+        keys.push(format!("NetGuidCandidate:{value}"));
+        keys.push(format!("netguid_packed:{value}"));
+    } else if let Some(value) = key.strip_prefix("netguid_packed:") {
+        keys.push(format!("NetGuidCandidate:{value}"));
+        keys.push(format!("netguid32:{value}"));
     }
     keys
 }
@@ -1759,6 +2090,48 @@ impl PacketDecoder {
         }
         let direction = if outgoing { "C2S" } else { "S2C" };
         let gameplay_effects = parse_gameplay_effects(payload);
+        let current_hp_updates = if outgoing {
+            Vec::new()
+        } else {
+            parse_current_hp_updates(payload)
+        };
+        let boss_hp_updates = if outgoing {
+            Vec::new()
+        } else {
+            parse_boss_hp_updates(payload)
+        };
+        let targetish_path_candidates = path_candidates
+            .iter()
+            .filter(|candidate| {
+                self.resource_index
+                    .resolved_name_for_path(&candidate.value)
+                    .is_some()
+                    || crate::object_state::is_targetish_path(&candidate.value)
+            })
+            .collect::<Vec<_>>();
+        let transport_packet = parse_transport_packet(payload);
+        let single_bunch = match &transport_packet {
+            Some(TransportPacket::Sequenced(packet)) => parse_single_bunch(packet),
+            _ => None,
+        };
+        let sdk_target_scan_enabled = !outgoing
+            && (!targetish_path_candidates.is_empty()
+                || !gameplay_effects.is_empty()
+                || has_net_runtime_text_hint(&decoded_text));
+        let net_runtime_events = extract_net_runtime_events(
+            payload,
+            &path_candidates,
+            &net_identity_candidates,
+            transport_packet.as_ref(),
+            single_bunch.as_ref(),
+            NetRuntimeScanOptions {
+                include_text_markers: decoded_text != UNREADABLE_PROTOCOL_TEXT
+                    || !targetish_path_candidates.is_empty(),
+                include_sdk_target_data: sdk_target_scan_enabled,
+            },
+        );
+        let (net_runtime_notes, net_runtime_applied) =
+            self.apply_net_runtime_events(timestamp, &net_runtime_events);
         let mut hits = if outgoing {
             let packet_char_id = if ids.len() == 1 {
                 ids.first().copied()
@@ -1783,7 +2156,7 @@ impl PacketDecoder {
         };
         let mut hit_summaries = Vec::with_capacity(hits.len());
         for hit in &mut hits {
-            attach_runtime_alias_context(hit, &net_identity_candidates);
+            attach_runtime_alias_context(hit, &net_identity_candidates, &net_runtime_events);
             enrich_hit_with_gameplay_effect(
                 hit,
                 &gameplay_effects,
@@ -1855,16 +2228,6 @@ impl PacketDecoder {
             .count();
         let preview_len = payload.len().min(96);
         let payload_hex = hex::encode(payload);
-        let current_hp_updates = if outgoing {
-            Vec::new()
-        } else {
-            parse_current_hp_updates(payload)
-        };
-        let boss_hp_updates = if outgoing {
-            Vec::new()
-        } else {
-            parse_boss_hp_updates(payload)
-        };
         for update in &current_hp_updates {
             let Some(target_token) = current_hp_target_token(&update.target_hint) else {
                 continue;
@@ -1943,24 +2306,17 @@ impl PacketDecoder {
                 );
             }
         }
-        let targetish_path_candidates = path_candidates
-            .iter()
-            .filter(|candidate| {
-                self.resource_index
-                    .resolved_name_for_path(&candidate.value)
-                    .is_some()
-                    || crate::object_state::is_targetish_path(&candidate.value)
-            })
-            .collect::<Vec<_>>();
         if !current_hp_updates.is_empty()
             || !boss_hp_updates.is_empty()
             || !targetish_path_candidates.is_empty()
+            || net_runtime_applied
         {
             self.backfill_recent_targets(timestamp, sender);
         }
         if current_hp_updates.is_empty()
             && boss_hp_updates.is_empty()
             && targetish_path_candidates.is_empty()
+            && net_runtime_notes.is_empty()
             && !should_keep_debug_packet(payload, &ids, accepted, &decoded_text)
         {
             return;
@@ -2018,6 +2374,20 @@ impl PacketDecoder {
                 Some(format!(
                     "Runtime target instances: {}",
                     target_instance_notes
+                        .iter()
+                        .take(8)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            );
+        }
+        if !net_runtime_notes.is_empty() {
+            append_packet_note(
+                &mut note,
+                Some(format!(
+                    "Net runtime events: {}",
+                    net_runtime_notes
                         .iter()
                         .take(8)
                         .cloned()
@@ -2131,7 +2501,7 @@ impl PacketDecoder {
             apply_handle_alias_to_hit_summary(hit, summary, &self.target_handle_aliases);
             self.register_target_handle_alias(summary, hit.timestamp);
         }
-        if let Some(TransportPacket::Sequenced(packet)) = parse_transport_packet(payload) {
+        if let Some(TransportPacket::Sequenced(packet)) = &transport_packet {
             if packet.mode != 0 {
                 append_packet_note(
                     &mut note,
@@ -2143,7 +2513,7 @@ impl PacketDecoder {
                         packet.payload_bit_len
                     )),
                 );
-            } else if let Some(bunch) = parse_single_bunch(&packet) {
+            } else if let Some(bunch) = &single_bunch {
                 append_packet_note(
                     &mut note,
                     Some(format!(
@@ -2363,6 +2733,7 @@ pub fn import_pcapng(
             let file = File::open(&path).map_err(|error| error.to_string())?;
             let mut reader = PcapNgReader::new(file).map_err(|error| error.to_string())?;
             let mut decoder = PacketDecoder::default();
+            let mut runtime_mapping = load_companion_runtime_mapping(&path, &sender);
             if let Some(warning) = decoder.resource_warning() {
                 let _ = sender.send(EngineEvent::Warning(warning));
             }
@@ -2391,6 +2762,8 @@ pub fn import_pcapng(
                     continue;
                 }
                 supported_count += 1;
+                runtime_mapping.align_to_packet_time(timestamp);
+                decoder.apply_runtime_mapping_events(runtime_mapping.pop_due(timestamp), &sender);
                 decoder.process_ethernet_frame(
                     &data,
                     timestamp,
@@ -2400,6 +2773,7 @@ pub fn import_pcapng(
                     &sender,
                 );
             }
+            decoder.apply_runtime_mapping_events(runtime_mapping.pop_all(), &sender);
             if packet_count > 0 && supported_count == 0 {
                 return Err("pcapng contains no supported Ethernet packets".to_owned());
             }
@@ -2418,6 +2792,32 @@ pub fn import_pcapng(
             }
         }
     })
+}
+
+fn load_companion_runtime_mapping(
+    path: &Path,
+    sender: &Sender<EngineEvent>,
+) -> RuntimeMappingTimeline {
+    let Some(sidecar_path) = find_companion_runtime_mapping_sidecar(path) else {
+        return RuntimeMappingTimeline::default();
+    };
+    match load_runtime_mapping_sidecar(&sidecar_path) {
+        Ok(timeline) => {
+            let count = timeline.len();
+            let _ = sender.send(EngineEvent::Status(format!(
+                "loaded runtime mapping sidecar: {} ({count} events)",
+                sidecar_path.display()
+            )));
+            timeline
+        }
+        Err(error) => {
+            let _ = sender.send(EngineEvent::Warning(format!(
+                "runtime mapping sidecar ignored: {}: {error}",
+                sidecar_path.display()
+            )));
+            RuntimeMappingTimeline::default()
+        }
+    }
 }
 
 #[derive(Deserialize)]
