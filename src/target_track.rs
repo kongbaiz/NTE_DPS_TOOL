@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::model::Hit;
 use crate::object_state::is_ignored_non_target_path;
 use crate::target_fact::DamageHitFact;
-use crate::target_identity::canonical_target_key_from_name_and_path;
+use crate::target_identity::{
+    canonical_target_key_for_path, canonical_target_key_from_name_and_path,
+};
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary};
 
 const ACTIVE_TRACK_WINDOW_SECONDS: f64 = 3.5;
@@ -116,7 +118,7 @@ impl TargetTrackStore {
 
         let fact = DamageHitFact::from(&*hit);
         let mut result = AttributionResult::default();
-        if safe_named_hit(hit, summary) {
+        if can_learn_named_hit(hit, summary) {
             result = self.observe_named_hit(hit, summary, &fact);
         }
         if hit.target_name.is_none() || !has_target_track_id(hit) {
@@ -544,7 +546,7 @@ impl TargetTrackStore {
             .iter()
             .filter_map(|key| index.get(key))
             .filter_map(|track_key| self.tracks.get(track_key))
-            .filter(|track| track_is_active(track, timestamp))
+            .filter(|track| track_usable_for_exact_alias(track, timestamp, hp_handle))
             .filter(|track| !hp_handle || !hp_handle_quarantined(track, timestamp))
             .map(|track| track.track_id.0.clone())
             .collect::<Vec<_>>();
@@ -628,23 +630,14 @@ impl TargetTrackStore {
     }
 }
 
-fn safe_named_hit(hit: &Hit, summary: &TargetResolutionSummary) -> bool {
+fn can_learn_named_hit(hit: &Hit, summary: &TargetResolutionSummary) -> bool {
     hit.target_name
         .as_deref()
         .is_some_and(|name| !name.trim().is_empty())
         && !hit.target_context.iter().any(|entry| {
             entry.starts_with("target_conflict=")
-                || matches!(
-                    entry.as_str(),
-                    "reason=last_hp_close_to_hit_after"
-                        | "reason=path_only_target_name_suppressed"
-                        | "reason=runtime_unique_active_named_instance"
-                        | "reason=single_high_confidence_target_window"
-                        | "reason=hp_handle_path_without_direct_hp_suppressed"
-                        | "reason=net_identity_path_anchor_unconfirmed"
-                        | "target_name_resolution=state_backfill"
-                        | "target_name_resolution=handle_alias_applied"
-                )
+                || entry == "reason=recent_death_suppressed_stale_target"
+                || entry == "target_suppressed=ambiguous_multi_target"
         })
         && identity_source_from_hit(hit, summary).is_some()
 }
@@ -708,6 +701,7 @@ fn project_track_to_hit(
     reason: &str,
 ) {
     hit.target_id = Some(track.track_id.0.clone());
+    remove_same_canonical_path_mismatch(hit, track);
     if let Some(name) = &track.target_name {
         hit.target_name = Some(name.clone());
         replace_or_push_context(&mut hit.target_context, "target_name", name);
@@ -848,6 +842,18 @@ fn track_is_active(track: &TargetTrack, timestamp: f64) -> bool {
         TargetLifecycle::Provisional | TargetLifecycle::Active | TargetLifecycle::Dying
     ) && timestamp >= track.last_seen_at
         && timestamp - track.last_seen_at <= ACTIVE_TRACK_WINDOW_SECONDS
+}
+
+fn track_usable_for_exact_alias(track: &TargetTrack, timestamp: f64, hp_handle: bool) -> bool {
+    if timestamp < track.last_seen_at {
+        return false;
+    }
+    match track.lifecycle {
+        TargetLifecycle::Dead | TargetLifecycle::Expired => false,
+        TargetLifecycle::Quarantined if hp_handle => false,
+        TargetLifecycle::Quarantined => false,
+        TargetLifecycle::Provisional | TargetLifecycle::Active | TargetLifecycle::Dying => true,
+    }
 }
 
 fn hp_handle_quarantined(track: &TargetTrack, timestamp: f64) -> bool {
@@ -1078,6 +1084,16 @@ fn remove_stale_unresolved_context(context: &mut Vec<String>) {
                 | "target_unresolved=resource_name_missing"
         )
     });
+}
+
+fn remove_same_canonical_path_mismatch(hit: &mut Hit, track: &TargetTrack) {
+    let same_canonical = target_context_value(&hit.target_context, "target_path")
+        .and_then(canonical_target_key_for_path)
+        .is_some_and(|key| key == track.canonical_target_key);
+    if same_canonical {
+        hit.target_context
+            .retain(|entry| entry != "target_conflict=locked_path_mismatch");
+    }
 }
 
 fn append_track_diagnostics(context_hit: &mut Hit, active_count: usize, matching_count: usize) {
@@ -1557,6 +1573,169 @@ mod tests {
         );
         assert!(projected.projected);
         assert_eq!(second.target_name.as_deref(), Some("无首铁驭"));
+    }
+
+    #[test]
+    fn named_attribute_guid_hit_refreshes_existing_track() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1781881298.939,
+            1_000_000.0,
+            990_000.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+
+        let (mut named, mut named_summary) = named_hit(
+            1781881302.831,
+            980_000.0,
+            970_610.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        named.target_id =
+            Some("AttributeGuid:94b599e5291b934a8bef735771caa138|path=WorldBoss_Boss13".to_owned());
+        named
+            .target_context
+            .push("reason=boss_hp_delta_match:9390".to_owned());
+        named
+            .target_context
+            .push("reason=target_max_hp_only_weak".to_owned());
+        named_summary.target_context = named.target_context.clone();
+        named_summary.direct_hp_evidence = true;
+
+        store.attribute_damage_hit(
+            &mut named,
+            &mut named_summary,
+            TrackPacketContext::default(),
+        );
+        assert_eq!(named.target_id.as_deref(), Some("monster:boss_13#1"));
+        let track = store
+            .track(&TargetTrackId("monster:boss_13#1".to_owned()))
+            .expect("track refreshed");
+        assert_eq!(track.last_seen_at.to_bits(), 1781881302.831_f64.to_bits());
+        assert_eq!(
+            store
+                .hp_handle_index
+                .get("boss_hp_guid:94b599e5291b934a8bef735771caa138"),
+            Some(&"monster:boss_13#1".to_owned())
+        );
+    }
+
+    #[test]
+    fn exact_boss_hp_guid_projects_even_when_continuity_window_expired() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1000.0,
+            900.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+
+        let mut late = hit(10.0, 850.0, 830.0, 1000.0);
+        late.target_context
+            .push("boss_hp_guid=94b599e5291b934a8bef735771caa138".to_owned());
+        let mut late_summary = TargetResolutionSummary::default();
+        let result =
+            store.attribute_damage_hit(&mut late, &mut late_summary, TrackPacketContext::default());
+        assert!(result.projected);
+        assert_eq!(late.target_name.as_deref(), Some("无首铁驭"));
+        assert_eq!(late.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert!(
+            late.target_context
+                .iter()
+                .any(|entry| entry == "reason=unique_locked_hp_handle")
+        );
+        assert!(
+            !late
+                .target_context
+                .iter()
+                .any(|entry| entry == "track_reject_reason=hp_stream_mismatch")
+        );
+    }
+
+    #[test]
+    fn regression_timestamp_1781881303_978() {
+        let mut store = TargetTrackStore::default();
+        let (mut projected, mut projected_summary) = named_hit(
+            1781881298.939,
+            1_000_000.0,
+            990_000.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        store.attribute_damage_hit(
+            &mut projected,
+            &mut projected_summary,
+            TrackPacketContext::default(),
+        );
+        let (mut named, mut named_summary) = named_hit(
+            1781881302.831,
+            980_000.0,
+            970_610.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        named.target_id =
+            Some("AttributeGuid:94b599e5291b934a8bef735771caa138|path=WorldBoss_Boss13".to_owned());
+        named
+            .target_context
+            .push("reason=boss_hp_delta_match:9390".to_owned());
+        named_summary.target_context = named.target_context.clone();
+        named_summary.direct_hp_evidence = true;
+        store.attribute_damage_hit(
+            &mut named,
+            &mut named_summary,
+            TrackPacketContext::default(),
+        );
+
+        let mut unknown = hit(1781881303.978, 970_610.0, 960_000.0, 980_000.0);
+        unknown
+            .target_context
+            .push("boss_hp_guid=94b599e5291b934a8bef735771caa138".to_owned());
+        unknown
+            .target_context
+            .push("reason=near_object_path:WorldBoss_Boss13".to_owned());
+        unknown
+            .target_context
+            .push("reason=resolved_target_name_table".to_owned());
+        let mut unknown_summary = TargetResolutionSummary::default();
+        let result = store.attribute_damage_hit(
+            &mut unknown,
+            &mut unknown_summary,
+            TrackPacketContext::default(),
+        );
+        assert!(result.projected);
+        assert_eq!(unknown.target_name.as_deref(), Some("无首铁驭"));
+        assert_eq!(unknown.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert!(
+            unknown
+                .target_context
+                .iter()
+                .any(|entry| entry == "track_decision=projected")
+        );
+        assert!(
+            !unknown
+                .target_context
+                .iter()
+                .any(|entry| entry.starts_with("track_reject_reason="))
+        );
     }
 
     #[test]
