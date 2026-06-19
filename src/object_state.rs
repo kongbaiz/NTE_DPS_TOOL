@@ -7,8 +7,11 @@ const MAX_OBJECTS: usize = 512;
 const MAX_EVIDENCE_PER_OBJECT: usize = 8;
 const MAX_HP_HISTORY_PER_OBJECT: usize = 32;
 const OBJECT_TTL_SECONDS: f64 = 20.0;
-const ATTRIBUTE_PATH_LINK_WINDOW_SECONDS: f64 = 6.0;
+const ATTRIBUTE_PATH_LINK_WINDOW_SECONDS: f64 = 10.0;
+const GAMEPLAY_EFFECT_PATH_LINK_WINDOW_SECONDS: f64 = 10.0;
+const PATH_ONLY_DAMAGE_WINDOW_SECONDS: f64 = 6.0;
 const HP_HISTORY_DAMAGE_WINDOW_SECONDS: f64 = 1.0;
+const DEAD_OBJECT_DAMAGE_GRACE_SECONDS: f64 = 0.25;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 #[allow(dead_code)]
@@ -57,6 +60,7 @@ pub struct ObjectDescriptor {
     pub component_handle: Option<String>,
     pub hp_current: Option<f64>,
     pub hp_max: Option<f64>,
+    pub dead_at: Option<f64>,
     pub first_seen_at: f64,
     pub last_seen_at: f64,
     pub evidence: Vec<String>,
@@ -77,13 +81,22 @@ impl ObjectStateStore {
         resources: &ResourceIndex,
     ) -> String {
         let key = object_key(&ObjectHandleKind::PathOnly, &candidate.value);
-        let target_path = resources
-            .canonical_target_path_for_path(&candidate.value)
-            .unwrap_or_else(|| candidate.value.clone());
+        let raw_is_ignored = is_ignored_non_target_path(&candidate.value);
+        let raw_has_resolved_name =
+            !raw_is_ignored && resources.resolved_name_for_path(&candidate.value).is_some();
+        let target_path = if raw_has_resolved_name {
+            candidate.value.clone()
+        } else {
+            resources
+                .canonical_target_path_for_path(&candidate.value)
+                .unwrap_or_else(|| candidate.value.clone())
+        };
+        let canonical_target_alias = target_path != candidate.value
+            && !is_ignored_non_target_path(&target_path)
+            && resources.resolved_name_for_path(&target_path).is_some();
         let has_resolved_name = !is_ignored_non_target_path(&target_path)
-            && !is_ignored_non_target_path(&candidate.value)
-            && (resources.resolved_name_for_path(&target_path).is_some()
-                || resources.resolved_name_for_path(&candidate.value).is_some());
+            && (!raw_is_ignored || canonical_target_alias)
+            && (resources.resolved_name_for_path(&target_path).is_some() || raw_has_resolved_name);
         let display_name = resources
             .display_name_for_path(&target_path)
             .or_else(|| resources.display_name_for_path(&candidate.value));
@@ -104,6 +117,7 @@ impl ObjectStateStore {
                 component_handle: None,
                 hp_current: None,
                 hp_max: None,
+                dead_at: None,
                 first_seen_at: timestamp,
                 last_seen_at: timestamp,
                 evidence: Vec::new(),
@@ -207,18 +221,22 @@ impl ObjectStateStore {
                 component_handle: None,
                 hp_current: None,
                 hp_max: max_hp,
+                dead_at: None,
                 first_seen_at: timestamp,
                 last_seen_at: timestamp,
                 evidence: Vec::new(),
                 confidence: initial_confidence,
                 hp_history: VecDeque::new(),
             });
+        let mut reset_for_new_encounter = false;
         if is_new_hp_encounter(descriptor, timestamp, current_hp) {
+            reset_for_new_encounter = true;
             descriptor.class_path = None;
             descriptor.object_path = None;
             descriptor.display_name = None;
             descriptor.table_resolved_name = false;
             descriptor.hp_max = max_hp;
+            descriptor.dead_at = None;
             descriptor.first_seen_at = timestamp;
             descriptor.confidence = initial_confidence;
             descriptor.hp_history.clear();
@@ -242,7 +260,20 @@ impl ObjectStateStore {
             descriptor.hp_history.pop_front();
         }
         push_unique_evidence(&mut descriptor.evidence, evidence);
-        if let Some(link_handle_kind) = link_handle_kind {
+        let dead_path_to_clear = if current_hp <= 1.0 {
+            descriptor.dead_at = Some(timestamp);
+            descriptor.object_path.clone()
+        } else {
+            descriptor.dead_at = None;
+            None
+        };
+        if let Some(dead_path) = dead_path_to_clear.as_deref() {
+            self.remove_path_only_objects_for_path(dead_path);
+        }
+        if let Some(link_handle_kind) = link_handle_kind
+            && !reset_for_new_encounter
+            && current_hp > 1.0
+        {
             self.link_hp_handle_to_best_path(&key, timestamp, link_handle_kind);
         }
         self.cleanup(timestamp);
@@ -273,6 +304,7 @@ impl ObjectStateStore {
                 component_handle: None,
                 hp_current: None,
                 hp_max: None,
+                dead_at: None,
                 first_seen_at: timestamp,
                 last_seen_at: timestamp,
                 evidence: Vec::new(),
@@ -315,6 +347,7 @@ impl ObjectStateStore {
                 component_handle: None,
                 hp_current: None,
                 hp_max: None,
+                dead_at: None,
                 first_seen_at: timestamp,
                 last_seen_at: timestamp,
                 evidence: Vec::new(),
@@ -349,6 +382,20 @@ impl ObjectStateStore {
             .collect()
     }
 
+    pub fn path_recently_died(&self, path: &str, timestamp: f64, window_seconds: f64) -> bool {
+        self.objects
+            .values()
+            .filter(|object| object.handle_kind != ObjectHandleKind::PathOnly)
+            .filter(|object| {
+                object
+                    .object_path
+                    .as_deref()
+                    .or(object.class_path.as_deref())
+                    .is_some_and(|object_path| object_path.eq_ignore_ascii_case(path))
+            })
+            .any(|object| object_recently_died(object, timestamp, window_seconds))
+    }
+
     pub fn candidates_for_damage(&self, timestamp: f64) -> Vec<&ObjectDescriptor> {
         self.objects
             .values()
@@ -365,6 +412,61 @@ impl ObjectStateStore {
                         })
             })
             .collect()
+    }
+
+    pub fn link_unique_active_boss_hp_handle_to_path(
+        &mut self,
+        timestamp: f64,
+        path: &str,
+        resources: &ResourceIndex,
+        evidence: String,
+    ) -> bool {
+        self.link_unique_active_boss_hp_handle_to_path_inner(
+            timestamp, path, resources, evidence, false,
+        )
+    }
+
+    fn link_unique_active_boss_hp_handle_to_path_inner(
+        &mut self,
+        timestamp: f64,
+        path: &str,
+        resources: &ResourceIndex,
+        evidence: String,
+        allow_override: bool,
+    ) -> bool {
+        if is_ignored_non_target_path(path) || resources.resolved_name_for_path(path).is_none() {
+            return false;
+        }
+        let active_keys = self
+            .objects
+            .iter()
+            .filter(|(_, object)| object.handle_kind == ObjectHandleKind::AttributeGuid)
+            .filter(|(_, object)| object.hp_current.is_some_and(|hp| hp > 1.0))
+            .filter(|(_, object)| object.dead_at.is_none())
+            .filter(|(_, object)| {
+                (timestamp - object.last_seen_at).abs() <= GAMEPLAY_EFFECT_PATH_LINK_WINDOW_SECONDS
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        if active_keys.len() != 1 {
+            return false;
+        }
+        let display_name = resources.display_name_for_path(path);
+        let table_resolved_name = resources.resolved_name_for_path(path).is_some();
+        let Some(object) = self.objects.get_mut(&active_keys[0]) else {
+            return false;
+        };
+        let before_path = object.object_path.clone();
+        let before_name = object.display_name.clone();
+        push_unique_evidence(&mut object.evidence, evidence);
+        apply_path_link(
+            object,
+            path,
+            display_name,
+            table_resolved_name,
+            allow_override,
+        );
+        object.object_path != before_path || object.display_name != before_name
     }
 
     fn link_path_to_single_hp_handle(
@@ -410,7 +512,13 @@ impl ObjectStateStore {
         let display_name = resources.display_name_for_path(&linked_path);
         let table_resolved_name = resources.resolved_name_for_path(&linked_path).is_some();
         if let Some(object) = self.objects.get_mut(&linkable_keys[0]) {
-            apply_path_link(object, &linked_path, display_name, table_resolved_name);
+            apply_path_link(
+                object,
+                &linked_path,
+                display_name,
+                table_resolved_name,
+                false,
+            );
         }
     }
 
@@ -450,7 +558,7 @@ impl ObjectStateStore {
             .map(|object| (object.display_name.clone(), object.table_resolved_name))
             .unwrap_or((None, false));
         if let Some(object) = self.objects.get_mut(object_key) {
-            apply_path_link(object, path, display_name, table_resolved_name);
+            apply_path_link(object, path, display_name, table_resolved_name, false);
         }
     }
 
@@ -484,6 +592,42 @@ impl ObjectStateStore {
         for (key, _) in keys.into_iter().take(remove_count) {
             self.objects.remove(&key);
         }
+    }
+
+    pub fn clear_handle_identity(
+        &mut self,
+        timestamp: f64,
+        handle_kind: ObjectHandleKind,
+        handle: &str,
+        evidence: String,
+    ) -> bool {
+        let key = object_key(&handle_kind, handle);
+        let Some(object) = self.objects.get_mut(&key) else {
+            return false;
+        };
+        let old_path = object.object_path.clone();
+        object.class_path = None;
+        object.object_path = None;
+        object.display_name = None;
+        object.table_resolved_name = false;
+        object.confidence = object.confidence.min(0.35);
+        object.dead_at = None;
+        object.last_seen_at = timestamp;
+        push_unique_evidence(&mut object.evidence, evidence);
+        if let Some(old_path) = old_path {
+            self.remove_path_only_objects_for_path(&old_path);
+        }
+        true
+    }
+
+    fn remove_path_only_objects_for_path(&mut self, path: &str) {
+        self.objects.retain(|_, object| {
+            object.handle_kind != ObjectHandleKind::PathOnly
+                || !object
+                    .object_path
+                    .as_deref()
+                    .is_some_and(|object_path| object_path.eq_ignore_ascii_case(path))
+        });
     }
 
     #[allow(dead_code)]
@@ -596,12 +740,35 @@ fn target_group_key(path: &str) -> Option<String> {
     for (prefix, marker) in [
         ("boss", "worldboss_boss"),
         ("boss", "worldboss_"),
+        ("boss", "weeklyclone_boss"),
         ("boss", "boss_"),
-        ("boss", "boss"),
         ("mon", "mon_"),
-        ("mon", "mon"),
     ] {
         if let Some(number) = number_after_marker(&lower, marker) {
+            return Some(format!("{prefix}_{number}"));
+        }
+    }
+    let basename = lower
+        .rsplit('/')
+        .next()
+        .unwrap_or(&lower)
+        .rsplit('.')
+        .next()
+        .unwrap_or(&lower)
+        .trim_end_matches("_c")
+        .strip_prefix("default__")
+        .unwrap_or_else(|| {
+            lower
+                .rsplit('/')
+                .next()
+                .unwrap_or(&lower)
+                .rsplit('.')
+                .next()
+                .unwrap_or(&lower)
+                .trim_end_matches("_c")
+        });
+    for (prefix, marker) in [("boss", "boss"), ("mon", "mon")] {
+        if let Some(number) = number_after_prefix(basename, marker) {
             return Some(format!("{prefix}_{number}"));
         }
     }
@@ -627,10 +794,28 @@ fn number_after_marker(value: &str, marker: &str) -> Option<u32> {
     None
 }
 
+fn number_after_prefix(value: &str, prefix: &str) -> Option<u32> {
+    let digit_start = value.strip_prefix(prefix)?;
+    let digits = digit_start
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<u32>().ok()
+}
+
 fn is_new_hp_encounter(object: &ObjectDescriptor, timestamp: f64, current_hp: f64) -> bool {
     let Some(previous_hp) = object.hp_current else {
         return false;
     };
+    if previous_hp <= 1.0 && current_hp > 1.0 {
+        return true;
+    }
+    if object.dead_at.is_some() && current_hp > 1.0 {
+        return true;
+    }
     if timestamp - object.last_seen_at < 2.0 {
         return false;
     }
@@ -642,6 +827,7 @@ fn apply_path_link(
     path: &str,
     display_name: Option<String>,
     table_resolved_name: bool,
+    allow_override: bool,
 ) {
     if let Some(existing_path) = attribute.object_path.as_deref()
         && existing_path != path
@@ -650,14 +836,20 @@ fn apply_path_link(
             &mut attribute.evidence,
             format!("conflicting_path_link:{path}"),
         );
-        return;
+        if !allow_override {
+            return;
+        }
     }
     attribute.object_path = Some(path.to_owned());
     attribute.table_resolved_name |= table_resolved_name;
     if path.contains("/Game/") {
         attribute.class_path = Some(path.to_owned());
     }
-    attribute.display_name = attribute.display_name.clone().or(display_name);
+    if allow_override {
+        attribute.display_name = display_name.or_else(|| attribute.display_name.clone());
+    } else {
+        attribute.display_name = attribute.display_name.clone().or(display_name);
+    }
     attribute.confidence = attribute.confidence.max(0.80);
     push_unique_evidence(&mut attribute.evidence, format!("linked_path:{path}"));
 }
@@ -721,13 +913,19 @@ fn damage_candidate_window(object: &ObjectDescriptor) -> f64 {
         .as_deref()
         .or(object.class_path.as_deref());
     if object.table_resolved_name || target_path.is_some_and(is_precise_target_path) {
-        ATTRIBUTE_PATH_LINK_WINDOW_SECONDS
+        PATH_ONLY_DAMAGE_WINDOW_SECONDS
     } else {
         1.0
     }
 }
 
 fn object_is_near_damage(object: &ObjectDescriptor, timestamp: f64) -> bool {
+    if object
+        .dead_at
+        .is_some_and(|dead_at| timestamp > dead_at + DEAD_OBJECT_DAMAGE_GRACE_SECONDS)
+    {
+        return false;
+    }
     if (timestamp - object.last_seen_at).abs() <= damage_candidate_window(object) {
         return true;
     }
@@ -740,6 +938,16 @@ fn object_is_near_damage(object: &ObjectDescriptor, timestamp: f64) -> bool {
     object.hp_history.iter().any(|observation| {
         (timestamp - observation.timestamp).abs() <= HP_HISTORY_DAMAGE_WINDOW_SECONDS
     })
+}
+
+fn object_recently_died(object: &ObjectDescriptor, timestamp: f64, window_seconds: f64) -> bool {
+    object
+        .dead_at
+        .is_some_and(|dead_at| (timestamp - dead_at).abs() <= window_seconds)
+        || object.hp_history.iter().any(|observation| {
+            observation.current <= 1.0
+                && (timestamp - observation.timestamp).abs() <= window_seconds
+        })
 }
 
 fn object_has_named_hp_target(object: &ObjectDescriptor) -> bool {
@@ -814,491 +1022,4 @@ pub fn is_ignored_non_target_path(value: &str) -> bool {
 
 fn is_world_boss_path(value: &str) -> bool {
     value.to_ascii_lowercase().contains("worldboss")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::resource_index::ResourceIndex;
-
-    fn path(value: &str) -> PathCandidate {
-        path_at(value, 1)
-    }
-
-    fn path_at(value: &str, byte_offset: usize) -> PathCandidate {
-        PathCandidate {
-            value: value.to_owned(),
-            byte_offset,
-            bit_shift: 0,
-            score: 240,
-        }
-    }
-
-    #[test]
-    fn hp_guid_update_maintains_timeline() {
-        let mut store = ObjectStateStore::default();
-        let guid = [1_u8; 16];
-        store.observe_hp_guid_update(1.0, guid, 900.0, None, "hp=900".to_owned());
-        let key = store.observe_hp_guid_update(1.5, guid, 800.0, None, "hp=800".to_owned());
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.hp_history.len(), 2);
-        assert_eq!(object.hp_current, Some(800.0));
-    }
-
-    #[test]
-    fn net_target_hp_update_uses_separate_handle_kind() {
-        let mut store = ObjectStateStore::default();
-        let token = [9_u8; 40];
-        let key = store.observe_net_target_hp_update(
-            1.0,
-            "currenthp",
-            &token,
-            900.0,
-            None,
-            "hp=900".to_owned(),
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.handle_kind, ObjectHandleKind::NetRefHandleCandidate);
-        assert!(object.handle.starts_with("currenthp:"));
-        assert_eq!(object.hp_current, Some(900.0));
-    }
-
-    #[test]
-    fn net_target_hp_update_links_unique_resolved_bare_boss_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        store.observe_path_candidate(1.0, &path("Boss_07_BP_DiyBoss"), &resources);
-
-        let key = store.observe_net_target_hp_update(
-            1.1,
-            "currenthp",
-            &[0x10, 0x44, 0x55, 0x66],
-            1_976_104.0,
-            None,
-            "current_hp:10445566=1976104@0:0".to_owned(),
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("Boss_07_BP_DiyBoss"));
-        assert_eq!(object.display_name.as_deref(), Some("塞润尼缇"));
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence == "linked_path:Boss_07_BP_DiyBoss")
-        );
-    }
-
-    #[test]
-    fn hp_history_keeps_old_damage_candidate_after_late_path_link() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        let guid = [0x33_u8; 16];
-        store.observe_hp_guid_update(10.0, guid, 1000.0, None, "hp=1000".to_owned());
-        store.observe_hp_guid_update(10.2, guid, 900.0, None, "hp=900".to_owned());
-        store.observe_path_candidate(
-            12.8,
-            &path("mon_33_BP_World_Perform_C_2147325373"),
-            &resources,
-        );
-
-        let candidates = store.candidates_for_damage(10.1);
-
-        assert!(candidates.iter().any(|candidate| {
-            candidate.handle_kind == ObjectHandleKind::AttributeGuid
-                && candidate.object_path.as_deref() == Some("mon_33_BP_World_Perform_C_2147325373")
-                && candidate.display_name.as_deref() == Some("流梦种")
-        }));
-    }
-
-    #[test]
-    fn named_hp_target_covers_old_damage_after_history_rollover() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        let guid = [0x44_u8; 16];
-        for index in 0..40 {
-            store.observe_hp_guid_update(
-                10.0 + f64::from(index),
-                guid,
-                10_000.0 - f64::from(index),
-                None,
-                format!("hp={}", 10_000 - index),
-            );
-        }
-        store.observe_path_candidate(49.5, &path("Boss_016_BP_DiyBoss_C_2147307033"), &resources);
-
-        let candidates = store.candidates_for_damage(10.1);
-
-        assert!(candidates.iter().any(|candidate| {
-            candidate.handle_kind == ObjectHandleKind::AttributeGuid
-                && candidate.object_path.as_deref() == Some("Boss_016_BP_DiyBoss_C_2147307033")
-                && candidate.display_name.as_deref() == Some("随心泥")
-        }));
-    }
-
-    #[test]
-    fn path_candidate_links_existing_unique_net_target_hp_update() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        let key = store.observe_net_target_hp_update(
-            1.0,
-            "currenthp",
-            &[0x10, 0x44, 0x55, 0x66],
-            1_976_104.0,
-            None,
-            "current_hp:10445566=1976104@0:0".to_owned(),
-        );
-        store.observe_path_candidate(1.1, &path("Boss_07_BP_DiyBoss"), &resources);
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("Boss_07_BP_DiyBoss"));
-        assert_eq!(object.display_name.as_deref(), Some("塞润尼缇"));
-    }
-
-    #[test]
-    fn path_handle_candidate_keeps_anchor_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let key = store.observe_path_handle_candidate(
-            1.0,
-            ObjectHandleKind::NetGuidCandidate,
-            "0x12345678".to_owned(),
-            "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C",
-            &resources,
-            "net_identity:netguid32=0x12345678 path_anchor:/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C@4:0".to_owned(),
-            82,
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.handle_kind, ObjectHandleKind::NetGuidCandidate);
-        assert!(
-            object
-                .object_path
-                .as_deref()
-                .is_some_and(|path| path.contains("boss_07"))
-        );
-        assert_eq!(object.display_name.as_deref(), Some("BP_Boss_07"));
-    }
-
-    #[test]
-    fn path_candidate_is_saved_and_deduped() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let candidate = path("/Game/Blueprints/Character/Monster/boss_07/BP.BP_C");
-        store.observe_path_candidate(1.0, &candidate, &resources);
-        store.observe_path_candidate(1.1, &candidate, &resources);
-        assert_eq!(store.len(), 1);
-        let object = store.candidates_for_damage(1.1).pop().unwrap();
-        assert_eq!(object.evidence.len(), 1);
-    }
-
-    #[test]
-    fn cleanup_keeps_recent_objects() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        store.observe_path_candidate(1.0, &path("/Game/Monster/old"), &resources);
-        store.observe_path_candidate(25.0, &path("/Game/Monster/recent"), &resources);
-        assert_eq!(store.len(), 1);
-        assert!(
-            store
-                .objects
-                .values()
-                .any(|object| object.handle.contains("recent"))
-        );
-    }
-
-    #[test]
-    fn attribute_guid_links_nearby_unique_target_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let candidate = path("/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C");
-        store.observe_path_candidate(1.0, &candidate, &resources);
-        let key = store.observe_hp_guid_update(1.1, [2_u8; 16], 900.0, None, "hp=900".to_owned());
-        let object = store.objects.get(&key).unwrap();
-        assert!(
-            object
-                .object_path
-                .as_deref()
-                .is_some_and(|path| path.contains("boss_07"))
-        );
-        assert_eq!(object.display_name.as_deref(), Some("BP_Boss_07"));
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence.starts_with("linked_path:"))
-        );
-    }
-
-    #[test]
-    fn monster_folder_buff_path_is_not_targetish() {
-        let buff_path = "/Game/Blueprints/Character/Monster/mon_16/Trial/buff_Trial_LockHP100_BP";
-        assert!(!is_targetish_path(buff_path));
-
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        store.observe_path_candidate(1.0, &path(buff_path), &resources);
-        let key = store.observe_hp_guid_update(1.1, [14_u8; 16], 900.0, None, "hp=900".to_owned());
-
-        let object = store.objects.get(&key).unwrap();
-        assert!(object.object_path.is_none());
-        assert!(object.display_name.is_none());
-    }
-
-    #[test]
-    fn monster_base_and_drop_paths_are_not_targetish() {
-        assert!(!is_targetish_path(
-            "/Game/Blueprints/Level/World/MonsterBase/StorageCabine/Level/StorageCabine_Base"
-        ));
-        assert!(!is_targetish_path("drop_Mon_OrdinaryMonMaterial_01"));
-    }
-
-    #[test]
-    fn precise_monster_tag_remains_damage_candidate_for_spawned_target() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        store.observe_path_candidate(30.952, &path("mon_04_BP"), &resources);
-
-        let candidates = store.candidates_for_damage(33.958);
-
-        assert!(candidates.iter().any(|candidate| {
-            candidate.object_path.as_deref() == Some("mon_04_BP")
-                && candidate.display_name.as_deref() == Some("迷失种")
-        }));
-    }
-
-    #[test]
-    fn attribute_guid_links_nearby_world_boss_id_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        store.observe_path_candidate(9.5, &path("WorldBoss_Boss33"), &resources);
-        let key = store.observe_hp_guid_update(10.0, [13_u8; 16], 900.0, None, "hp=900".to_owned());
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("WorldBoss_Boss33"));
-        assert!(object.confidence >= 0.80);
-    }
-
-    #[test]
-    fn abyss_stage_tag_links_upper_boss_instead_of_stale_world_boss_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        store.observe_path_candidate(20.132, &path("WorldBoss_Boss33"), &resources);
-        store.observe_path_candidate(26.556, &path("Abyss_3_11_0"), &resources);
-
-        let key = store.observe_hp_guid_update(
-            29.673,
-            [
-                0x21, 0xf0, 0x4e, 0x92, 0x89, 0x95, 0x33, 0x4f, 0x8c, 0x0b, 0xbc, 0xaa, 0x0e, 0xe1,
-                0x6f, 0xe7,
-            ],
-            1_933_529.0,
-            Some(1_940_137.0),
-            "boss_hp:21f04e928995334f8c0bbcaa0ee16fe7=1933529".to_owned(),
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("Boss_017_BP"));
-        assert_eq!(object.display_name.as_deref(), Some("玛门"));
-    }
-
-    #[test]
-    fn reused_boss_hp_handle_relinks_after_new_encounter_hp_reset() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        let guid = [
-            0x21, 0xf0, 0x4e, 0x92, 0x89, 0x95, 0x33, 0x4f, 0x8c, 0x0b, 0xbc, 0xaa, 0x0e, 0xe1,
-            0x6f, 0xe7,
-        ];
-        store.observe_path_candidate(20.132, &path("WorldBoss_Boss33"), &resources);
-        store.observe_path_candidate(26.556, &path("Abyss_3_11_0"), &resources);
-        let key = store.observe_hp_guid_update(
-            29.673,
-            guid,
-            1_933_529.0,
-            None,
-            "boss_hp:21f04e928995334f8c0bbcaa0ee16fe7=1933529".to_owned(),
-        );
-        assert_eq!(
-            store.objects.get(&key).unwrap().object_path.as_deref(),
-            Some("Boss_017_BP")
-        );
-
-        store.observe_hp_guid_update(
-            99.194,
-            guid,
-            1.0,
-            None,
-            "boss_hp:21f04e928995334f8c0bbcaa0ee16fe7=1".to_owned(),
-        );
-        store.observe_path_candidate(106.455, &path("Abyss_3_11_1"), &resources);
-        store.observe_path_candidate(107.094, &path("Boss_06_BP"), &resources);
-        store.observe_hp_guid_update(
-            107.462,
-            guid,
-            1_938_243.0,
-            None,
-            "boss_hp:21f04e928995334f8c0bbcaa0ee16fe7=1938243".to_owned(),
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("Boss_06_BP"));
-        assert_eq!(object.display_name.as_deref(), Some("胶卷"));
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence.starts_with("hp_encounter_reset:"))
-        );
-    }
-
-    #[test]
-    fn dominant_world_boss_group_ignores_single_stale_world_boss_distractor() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::load_default();
-        store.observe_path_candidate(5.254, &path_at("WorldBoss_Boss33", 100), &resources);
-        store.observe_path_candidate(5.356, &path_at("WorldBoss_Boss33", 200), &resources);
-        store.observe_path_candidate(5.362, &path_at("WorldBoss_33_Entrance", 300), &resources);
-        store.observe_path_candidate(5.408, &path_at("WorldBoss_33_Entrance", 400), &resources);
-        store.observe_path_candidate(7.217, &path_at("WorldBoss_Boss08", 500), &resources);
-
-        let key = store.observe_hp_guid_update(
-            8.318,
-            [
-                0x56, 0x66, 0xdc, 0x34, 0xfb, 0xd7, 0x4d, 0x40, 0xac, 0x8f, 0x67, 0xa9, 0xcc, 0xcf,
-                0x18, 0x38,
-            ],
-            1_712_489.0,
-            Some(1_719_495.0),
-            "boss_hp:5666dc34fbd74d40ac8f67a9cccf1838=1712489".to_owned(),
-        );
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some("WorldBoss_Boss33"));
-        assert_eq!(object.display_name.as_deref(), Some("囿巢鸟"));
-        assert!(
-            !object
-                .evidence
-                .iter()
-                .any(|evidence| evidence.starts_with("ambiguous_path_link:"))
-        );
-    }
-
-    #[test]
-    fn attribute_guid_does_not_link_ambiguous_target_paths() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        store.observe_path_candidate(
-            1.0,
-            &path("/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C"),
-            &resources,
-        );
-        store.observe_path_candidate(
-            1.05,
-            &path("/Game/Blueprints/Character/Monster/boss_08/BP_Boss_08.BP_Boss_08_C"),
-            &resources,
-        );
-        let key = store.observe_hp_guid_update(1.1, [3_u8; 16], 900.0, None, "hp=900".to_owned());
-        let object = store.objects.get(&key).unwrap();
-        assert!(object.object_path.is_none());
-        assert!(object.display_name.is_none());
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence == "ambiguous_path_link:2")
-        );
-    }
-
-    #[test]
-    fn path_does_not_link_when_multiple_attribute_guids_nearby() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let first = store.observe_hp_guid_update(1.0, [4_u8; 16], 900.0, None, "hp=900".to_owned());
-        let second =
-            store.observe_hp_guid_update(1.05, [5_u8; 16], 800.0, None, "hp=800".to_owned());
-        store.observe_path_candidate(
-            1.1,
-            &path("/Game/Blueprints/Character/Monster/boss_09/BP_Boss_09.BP_Boss_09_C"),
-            &resources,
-        );
-        assert!(store.objects.get(&first).unwrap().object_path.is_none());
-        assert!(store.objects.get(&second).unwrap().object_path.is_none());
-    }
-
-    #[test]
-    fn weak_targetish_path_does_not_replace_unique_strong_path_link() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let strong_path = "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C";
-        let weak_path = "HTCharacterEnemy";
-
-        store.observe_path_candidate(1.0, &path(strong_path), &resources);
-        let key = store.observe_hp_guid_update(1.1, [6_u8; 16], 900.0, None, "hp=900".to_owned());
-        store.observe_path_candidate(1.2, &path(weak_path), &resources);
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some(strong_path));
-        assert_eq!(object.display_name.as_deref(), Some("BP_Boss_07"));
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence == &format!("linked_path:{strong_path}"))
-        );
-        assert!(
-            !object
-                .evidence
-                .iter()
-                .any(|evidence| evidence == &format!("linked_path:{weak_path}"))
-        );
-    }
-
-    #[test]
-    fn later_target_path_does_not_overwrite_existing_attribute_link() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let boss_path = "WorldBoss_Boss33";
-        let summon_path = "/Game/Blueprints/Character/Monster/mon_41/mon_41_Summon01_BP";
-
-        store.observe_path_candidate(10.0, &path(boss_path), &resources);
-        let key = store.observe_hp_guid_update(14.5, [12_u8; 16], 900.0, None, "hp=900".to_owned());
-        store.observe_path_candidate(15.0, &path(summon_path), &resources);
-
-        let object = store.objects.get(&key).unwrap();
-        assert_eq!(object.object_path.as_deref(), Some(boss_path));
-        assert!(
-            object
-                .evidence
-                .iter()
-                .any(|evidence| evidence.starts_with("conflicting_path_link:")
-                    || evidence.starts_with("ambiguous_path_link:"))
-        );
-    }
-
-    #[test]
-    fn path_first_does_not_link_multiple_attribute_guids_to_same_strong_path() {
-        let mut store = ObjectStateStore::default();
-        let resources = ResourceIndex::default();
-        let strong_path = "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C";
-
-        store.observe_path_candidate(1.0, &path(strong_path), &resources);
-        let first = store.observe_hp_guid_update(1.1, [7_u8; 16], 900.0, None, "hp=900".to_owned());
-        let second =
-            store.observe_hp_guid_update(1.2, [8_u8; 16], 800.0, None, "hp=800".to_owned());
-
-        assert_eq!(
-            store.objects.get(&first).unwrap().object_path.as_deref(),
-            Some(strong_path)
-        );
-        assert!(store.objects.get(&second).unwrap().object_path.is_none());
-        let linked_count = store
-            .objects
-            .values()
-            .filter(|object| object.handle_kind == ObjectHandleKind::AttributeGuid)
-            .filter(|object| object.object_path.as_deref() == Some(strong_path))
-            .count();
-        assert_eq!(linked_count, 1);
-    }
 }

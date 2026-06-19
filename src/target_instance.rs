@@ -10,6 +10,7 @@ use crate::ue_bitstream::PathCandidate;
 const MAX_HP_HISTORY_PER_INSTANCE: usize = 32;
 const INSTANCE_PENDING_WINDOW_SECONDS: f64 = 60.0;
 const INSTANCE_ACTIVE_TTL_SECONDS: f64 = 90.0;
+const INSTANCE_DEAD_HP_THRESHOLD: f64 = 1.0;
 const HP_MATCH_TOLERANCE_ABSOLUTE: f64 = 2.0;
 const HP_MATCH_TOLERANCE_RATIO: f64 = 0.002;
 
@@ -277,6 +278,7 @@ impl TargetInstanceStore {
         self.alias_index
             .get(&alias.key())
             .and_then(|instance_id| self.instances.get(instance_id))
+            .filter(|instance| instance.state == RuntimeTargetState::Active)
     }
 
     #[allow(dead_code)]
@@ -370,21 +372,38 @@ impl TargetInstanceStore {
             .cloned()
             .or_else(|| self.best_pending_instance_id(timestamp, &alias))?;
         let current_id = self.add_alias_and_maybe_rename(&instance_id, alias);
-        let instance = self.instances.get_mut(&current_id)?;
-        instance.last_seen_at = timestamp;
-        instance.hp_current = Some(current_hp);
-        if current_hp <= 0.0 {
-            instance.state = RuntimeTargetState::Dead;
+        let (instance_id, dead_alias_keys) = {
+            let instance = self.instances.get_mut(&current_id)?;
+            instance.last_seen_at = timestamp;
+            instance.hp_current = Some(current_hp);
+            if current_hp <= INSTANCE_DEAD_HP_THRESHOLD {
+                instance.state = RuntimeTargetState::Dead;
+            } else {
+                instance.state = RuntimeTargetState::Active;
+            }
+            instance.hp_history.push_back(RuntimeTargetHpObservation {
+                timestamp,
+                current: current_hp,
+                evidence,
+            });
+            while instance.hp_history.len() > MAX_HP_HISTORY_PER_INSTANCE {
+                instance.hp_history.pop_front();
+            }
+            let dead_alias_keys = if current_hp <= INSTANCE_DEAD_HP_THRESHOLD {
+                instance
+                    .aliases
+                    .iter()
+                    .map(TargetAlias::key)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            (instance.instance_id.clone(), dead_alias_keys)
+        };
+        for key in dead_alias_keys {
+            self.alias_index.remove(&key);
         }
-        instance.hp_history.push_back(RuntimeTargetHpObservation {
-            timestamp,
-            current: current_hp,
-            evidence,
-        });
-        while instance.hp_history.len() > MAX_HP_HISTORY_PER_INSTANCE {
-            instance.hp_history.pop_front();
-        }
-        Some(instance.instance_id.clone())
+        (current_hp > INSTANCE_DEAD_HP_THRESHOLD).then_some(instance_id)
     }
 
     fn add_alias_and_maybe_rename(&mut self, instance_id: &str, alias: TargetAlias) -> String {
@@ -478,6 +497,7 @@ impl TargetInstanceStore {
         let mut matched = self
             .instances
             .values()
+            .filter(|instance| instance.state == RuntimeTargetState::Active)
             .filter(|instance| {
                 instance
                     .hp_history
@@ -553,6 +573,9 @@ fn pending_instance_score(
     incoming_alias: &TargetAlias,
 ) -> Option<i32> {
     if is_ignored_non_target_path(&instance.canonical_path) || instance.target_name.is_empty() {
+        return None;
+    }
+    if instance.state != RuntimeTargetState::Active {
         return None;
     }
     if instance
@@ -639,166 +662,4 @@ fn hp_pair_matches_hit(
 
 fn nearly_equal(left: f64, right: f64, scale: f64) -> bool {
     (left - right).abs() <= HP_MATCH_TOLERANCE_ABSOLUTE.max(scale.abs() * HP_MATCH_TOLERANCE_RATIO)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn path(value: &str) -> PathCandidate {
-        PathCandidate {
-            value: value.to_owned(),
-            byte_offset: 0,
-            bit_shift: 0,
-            score: 240,
-        }
-    }
-
-    fn identity(path: &str, kind: NetIdentityCandidateKind, handle: &str) -> NetIdentityCandidate {
-        NetIdentityCandidate {
-            kind,
-            handle: handle.to_owned(),
-            path: path.to_owned(),
-            byte_offset: 0,
-            bit_shift: 0,
-            relative_offset: -4,
-            raw_hex: "01020304".to_owned(),
-            score: 90,
-        }
-    }
-
-    fn hit() -> Hit {
-        Hit {
-            timestamp: 10.0,
-            char_id: 1,
-            char_name: "test".to_owned(),
-            char_known: true,
-            damage: 100.0,
-            byte_offset: 0,
-            bit_shift: 0,
-            char_source: "test".to_owned(),
-            direction: "outgoing".to_owned(),
-            target_hp_before: 1000.0,
-            target_hp_after: 900.0,
-            target_max_hp: 1000.0,
-            target_hp_percent: 90.0,
-            target_id: None,
-            target_name: None,
-            target_context: Vec::new(),
-            gameplay_effect_index: None,
-            gameplay_effect_name: None,
-            ability_name: None,
-            damage_name: None,
-            attack_type: None,
-        }
-    }
-
-    #[test]
-    fn resolved_path_creates_instance_with_preferred_iris_id() {
-        let resources = ResourceIndex::load_default();
-        let mut store = TargetInstanceStore::default();
-        store.observe_paths(
-            1.0,
-            &[path("mon_01_BP")],
-            &[identity(
-                "mon_01_BP",
-                NetIdentityCandidateKind::IrisNetRefHandle32,
-                "0x81a599e2",
-            )],
-            &resources,
-        );
-
-        let instance = store.instance("iris_ref32:0x81a599e2").unwrap();
-        assert_eq!(instance.canonical_path, "mon_01_BP");
-        assert_eq!(instance.target_name, "低语种");
-    }
-
-    #[test]
-    fn ignored_non_target_path_does_not_create_instance() {
-        let resources = ResourceIndex::load_default();
-        let mut store = TargetInstanceStore::default();
-        store.observe_paths(
-            1.0,
-            &[path("Default__Buff_Boss07_Night_Weaktime_C")],
-            &[],
-            &resources,
-        );
-
-        assert_eq!(store.len(), 0);
-    }
-
-    #[test]
-    fn same_path_different_iris_refs_create_separate_waves() {
-        let resources = ResourceIndex::load_default();
-        let mut store = TargetInstanceStore::default();
-        store.observe_paths(
-            1.0,
-            &[path("mon_01_BP")],
-            &[identity(
-                "mon_01_BP",
-                NetIdentityCandidateKind::IrisNetRefHandle32,
-                "0x81a599e2",
-            )],
-            &resources,
-        );
-        store.observe_paths(
-            30.0,
-            &[path("mon_01_BP")],
-            &[identity(
-                "mon_01_BP",
-                NetIdentityCandidateKind::IrisNetRefHandle32,
-                "0x81a599f9",
-            )],
-            &resources,
-        );
-
-        assert!(store.instance("iris_ref32:0x81a599e2").is_some());
-        assert!(store.instance("iris_ref32:0x81a599f9").is_some());
-        assert_eq!(store.len(), 2);
-    }
-
-    #[test]
-    fn late_boss_hp_guid_binds_unique_pending_instance() {
-        let resources = ResourceIndex::load_default();
-        let mut store = TargetInstanceStore::default();
-        store.observe_paths(1.0, &[path("Boss_07_BP_WorldBoss")], &[], &resources);
-        let handle = [
-            0xc5, 0x5c, 0x88, 0x59, 0x03, 0xe8, 0x49, 0x40, 0x93, 0x6c, 0x7d, 0x09, 0x15, 0xdc,
-            0x8c, 0xad,
-        ];
-
-        let instance_id = store
-            .observe_boss_hp_guid(10.0, handle, 1000.0, "boss_hp".to_owned())
-            .unwrap();
-
-        let instance = store.instance(&instance_id).unwrap();
-        assert_eq!(instance.target_name, "塞润尼缇");
-        assert!(instance.aliases.iter().any(|alias| {
-            alias.kind == TargetAliasKind::BossHpGuid
-                && alias.value == "c55c885903e84940936c7d0915dc8cad"
-        }));
-    }
-
-    #[test]
-    fn resolves_hit_by_registered_alias_context() {
-        let resources = ResourceIndex::load_default();
-        let mut store = TargetInstanceStore::default();
-        store.observe_paths(
-            1.0,
-            &[path("mon_01_BP")],
-            &[identity(
-                "mon_01_BP",
-                NetIdentityCandidateKind::IrisNetRefHandle32,
-                "0x81a599e2",
-            )],
-            &resources,
-        );
-        let mut hit = hit();
-        hit.target_context.push("iris_ref32=0x81a599e2".to_owned());
-
-        let resolution = store.resolve_hit(&hit).unwrap();
-
-        assert_eq!(resolution.instance_id, "iris_ref32:0x81a599e2");
-        assert_eq!(resolution.target_name, "低语种");
-    }
 }

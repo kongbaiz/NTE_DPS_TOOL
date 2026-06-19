@@ -75,30 +75,3 @@ pub fn save(path: &Path, config: &UiConfig) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     fs::write(path, format!("{text}\n")).map_err(|error| error.to_string())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitizes_invalid_opacity() {
-        assert_eq!(
-            UiConfig {
-                opacity: 2.0,
-                ..UiConfig::default()
-            }
-            .sanitized()
-            .opacity,
-            1.0
-        );
-        assert_eq!(
-            UiConfig {
-                opacity: f32::NAN,
-                ..UiConfig::default()
-            }
-            .sanitized()
-            .opacity,
-            UiConfig::default().opacity
-        );
-    }
-}

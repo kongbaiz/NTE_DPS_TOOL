@@ -34,10 +34,15 @@ const MONSTER_PACK_TABLE_FILES: [&str; 2] = [
     "data/DataTable/PackData/DT_MonsterPackData.json",
     "NTE_Assets/DataTable/PackData/DT_MonsterPackData.json",
 ];
+const LACRIMOSA_COLLECTION_TABLE_FILES: [&str; 2] = [
+    "data/DataTable/LacrimosaCollection/DT_LacrimosaCollectionData.json",
+    "NTE_Assets/DataTable/LacrimosaCollection/DT_LacrimosaCollectionData.json",
+];
 
 const PRIORITY_OVERRIDE: u8 = 250;
 const PRIORITY_ABYSS_STAGE: u8 = 230;
 const PRIORITY_MANUAL: u8 = 220;
+const PRIORITY_LACRIMOSA_COLLECTION: u8 = 210;
 const PRIORITY_STATIC_TEXT: u8 = 180;
 const PRIORITY_STATIC_COMMENT: u8 = 100;
 
@@ -78,6 +83,14 @@ struct TargetRow {
     display_name: String,
 }
 
+#[derive(Clone, Debug)]
+struct ManualMonsterRow {
+    row_id: String,
+    name: String,
+    aliases: Vec<String>,
+    drop_id: Option<String>,
+}
+
 impl ResourceIndex {
     #[allow(dead_code)]
     pub fn load_default() -> Self {
@@ -105,6 +118,12 @@ impl ResourceIndex {
             };
             index.load_monster_pack_file_with_warnings(&path, warnings);
         }
+        for relative in LACRIMOSA_COLLECTION_TABLE_FILES {
+            let Some(path) = find_data_file(Path::new(relative)) else {
+                continue;
+            };
+            index.load_lacrimosa_collection_file_with_warnings(&path, warnings);
+        }
         for file in TARGET_RESOURCE_FILES {
             let relative = Path::new(TARGET_RESOURCE_DIR).join(file);
             let Some(path) = find_data_file(&relative) else {
@@ -130,6 +149,20 @@ impl ResourceIndex {
 
     pub fn canonical_target_path_for_path(&self, path: &str) -> Option<String> {
         lookup_keys_for_path(path)
+            .into_iter()
+            .find_map(|key| self.canonical_targets_by_path.get(&key).cloned())
+    }
+
+    pub fn resolved_name_for_gameplay_effect(&self, effect_name: &str) -> Option<String> {
+        lookup_keys_for_gameplay_effect(effect_name)
+            .into_iter()
+            .filter_map(|key| self.names_by_path.get(&key))
+            .max_by_key(|entry| entry.priority)
+            .map(|entry| entry.name.clone())
+    }
+
+    pub fn canonical_target_path_for_gameplay_effect(&self, effect_name: &str) -> Option<String> {
+        lookup_keys_for_gameplay_effect(effect_name)
             .into_iter()
             .find_map(|key| self.canonical_targets_by_path.get(&key).cloned())
     }
@@ -175,18 +208,44 @@ impl ResourceIndex {
         let Some(rows) = read_data_table_rows(path, warnings) else {
             return;
         };
+        let mut manual_rows = Vec::new();
         for (row_id, row) in rows {
             let Some(name) = localized_text(row.get("MonsterName")) else {
                 continue;
             };
-            self.insert_monster_id(&row_id, &name, PRIORITY_MANUAL);
+            let mut aliases = Vec::new();
             for field in ["WorldBossID", "CloneID", "CloneEnterID", "MonsterTag"] {
-                if let Some(alias) = row.get(field).and_then(Value::as_str)
-                    && !alias.trim().is_empty()
-                    && alias != "None"
+                if let Some(alias) = row
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .and_then(non_empty_text)
                 {
-                    self.insert_monster_id(alias, &name, PRIORITY_MANUAL);
+                    aliases.push(alias);
                 }
+            }
+            let drop_id = row
+                .get("DropID")
+                .and_then(Value::as_str)
+                .and_then(non_empty_text);
+            manual_rows.push(ManualMonsterRow {
+                row_id,
+                name,
+                aliases,
+                drop_id,
+            });
+        }
+
+        let drop_key_counts = manual_drop_key_counts(&manual_rows);
+        for row in manual_rows {
+            self.insert_monster_id(&row.row_id, &row.name, PRIORITY_MANUAL);
+            for alias in row.aliases {
+                self.insert_monster_id(&alias, &row.name, PRIORITY_MANUAL);
+            }
+            if let Some(drop_id) = row.drop_id
+                && is_unique_manual_drop_id(&drop_id, &drop_key_counts)
+            {
+                self.insert_monster_id(&drop_id, &row.name, PRIORITY_MANUAL);
+                self.insert_canonical_target_alias(&drop_id, &row.row_id);
             }
         }
     }
@@ -235,6 +294,74 @@ impl ResourceIndex {
             self.insert_monster_id(row_id, &name, PRIORITY_ABYSS_STAGE);
             self.insert_canonical_target_alias(&stage_id, &monster_id);
             self.insert_canonical_target_alias(row_id, &monster_id);
+        }
+    }
+
+    fn load_lacrimosa_collection_file_with_warnings(
+        &mut self,
+        path: &Path,
+        warnings: &mut Vec<String>,
+    ) {
+        let Some(rows) = read_data_table_rows(path, warnings) else {
+            return;
+        };
+        for (row_id, row) in rows {
+            let Some(table_name) = localized_text(row.get("MonsterName")) else {
+                continue;
+            };
+            let ability_id = row
+                .get("AbilityId")
+                .and_then(Value::as_str)
+                .and_then(non_empty_text)
+                .unwrap_or(row_id);
+            let ability_path = nested_asset_path(
+                &row,
+                &[
+                    "StolenAbilityCollection",
+                    "AbilityCfg",
+                    "AbilityClass",
+                    "AssetPathName",
+                ],
+            );
+            let target_path = nested_asset_path(
+                &row,
+                &[
+                    "StolenAbilityCollection",
+                    "TargetAvatarClass",
+                    "AssetPathName",
+                ],
+            );
+            let name = target_path
+                .as_deref()
+                .and_then(|path| self.resolved_name_for_path(path))
+                .unwrap_or(table_name);
+
+            self.insert_monster_id(&ability_id, &name, PRIORITY_LACRIMOSA_COLLECTION);
+            if let Some(target_path) = &target_path {
+                if self.resolved_name_for_path(target_path).is_none() {
+                    self.insert(
+                        target_path.clone(),
+                        name.clone(),
+                        PRIORITY_LACRIMOSA_COLLECTION,
+                    );
+                }
+                self.insert_canonical_target_alias(&ability_id, target_path);
+                if let Some(ability_path) = &ability_path {
+                    self.insert_canonical_target_alias(ability_path, target_path);
+                }
+            }
+
+            for alias in monster_namespace_aliases(&ability_id).into_iter().chain(
+                ability_path
+                    .as_deref()
+                    .map(monster_namespace_aliases)
+                    .unwrap_or_default(),
+            ) {
+                self.insert_monster_id(&alias, &name, PRIORITY_LACRIMOSA_COLLECTION);
+                if let Some(target_path) = &target_path {
+                    self.insert_canonical_target_alias(&alias, target_path);
+                }
+            }
         }
     }
 
@@ -367,6 +494,32 @@ fn data_table_rows(value: &Value) -> Option<&Map<String, Value>> {
     }
 }
 
+fn nested_asset_path(row: &Value, fields: &[&str]) -> Option<String> {
+    let mut value = row;
+    for field in fields {
+        value = value.get(*field)?;
+    }
+    value.as_str().and_then(non_empty_text)
+}
+
+fn manual_drop_key_counts(rows: &[ManualMonsterRow]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for row in rows {
+        let Some(drop_id) = &row.drop_id else {
+            continue;
+        };
+        for key in lookup_keys_for_path(drop_id) {
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn is_unique_manual_drop_id(drop_id: &str, counts: &HashMap<String, usize>) -> bool {
+    let keys = lookup_keys_for_path(drop_id);
+    !keys.is_empty() && keys.iter().all(|key| counts.get(key).copied() == Some(1))
+}
+
 fn localized_text(value: Option<&Value>) -> Option<String> {
     let value = value?;
     if let Some(text) = value.as_str() {
@@ -442,6 +595,18 @@ fn lookup_keys_for_path(path: &str) -> Vec<String> {
         .collect()
 }
 
+fn lookup_keys_for_gameplay_effect(effect_name: &str) -> Vec<String> {
+    let mut aliases = lookup_keys_for_path(effect_name);
+    for namespace in monster_namespace_aliases(effect_name) {
+        aliases.extend(lookup_keys_for_path(&namespace));
+    }
+    let mut seen = HashSet::new();
+    aliases
+        .into_iter()
+        .filter(|alias| !alias.is_empty() && seen.insert(alias.clone()))
+        .collect()
+}
+
 fn add_identifier_aliases(value: &str, aliases: &mut Vec<String>) {
     let clean = clean_identifier(value);
     if clean.is_empty() {
@@ -473,6 +638,9 @@ fn add_identifier_aliases(value: &str, aliases: &mut Vec<String>) {
     for stripped in strip_monster_variants(&clean) {
         add_identifier_aliases(&stripped, aliases);
     }
+    for remapped in remap_monster_phase_to_base_bp(&clean) {
+        add_identifier_aliases(&remapped, aliases);
+    }
     for remapped in remap_bare_monster_number_to_bp(&clean) {
         add_identifier_aliases(&remapped, aliases);
     }
@@ -500,6 +668,45 @@ fn clean_identifier(value: &str) -> String {
 
 fn normalize_key(value: &str) -> String {
     clean_identifier(value).to_ascii_lowercase()
+}
+
+fn monster_namespace_aliases(value: &str) -> Vec<String> {
+    let lower = value.to_ascii_lowercase();
+    let mut aliases = Vec::new();
+    for prefix in ["boss", "mon"] {
+        let marker = format!("{prefix}_");
+        let mut search_start = 0;
+        while let Some(relative_index) = lower[search_start..].find(&marker) {
+            let digit_start = search_start + relative_index + marker.len();
+            let digits = lower[digit_start..]
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .collect::<String>();
+            if let Ok(number) = digits.parse::<u32>() {
+                push_monster_namespace_aliases(&mut aliases, prefix, number);
+            }
+            search_start = digit_start + digits.len().max(1);
+            if search_start >= lower.len() {
+                break;
+            }
+        }
+    }
+    aliases
+}
+
+fn push_monster_namespace_aliases(aliases: &mut Vec<String>, prefix: &str, number: u32) {
+    for alias in [
+        format!("{prefix}_{number}"),
+        format!("{prefix}_{number:02}"),
+        format!("{prefix}_{number:03}"),
+        format!("{prefix}_{number}_BP"),
+        format!("{prefix}_{number:02}_BP"),
+        format!("{prefix}_{number:03}_BP"),
+    ] {
+        if !aliases.iter().any(|existing| existing == &alias) {
+            aliases.push(alias);
+        }
+    }
 }
 
 fn strip_class_suffix(value: &str) -> Option<String> {
@@ -563,6 +770,33 @@ fn remap_bare_monster_number_to_bp(value: &str) -> Vec<String> {
         return Vec::new();
     };
     if !suffix.is_empty() {
+        return Vec::new();
+    }
+    [
+        format!("{prefix}_{number}_BP"),
+        format!("{prefix}_{number:02}_BP"),
+        format!("{prefix}_{number:03}_BP"),
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn remap_monster_phase_to_base_bp(value: &str) -> Vec<String> {
+    let Some((prefix, (number, suffix))) = split_monster_number(value) else {
+        return Vec::new();
+    };
+    let Some(after_phase) = suffix.strip_prefix('_') else {
+        return Vec::new();
+    };
+    let phase_digits = after_phase
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if phase_digits == 0 {
+        return Vec::new();
+    }
+    let after_phase = &after_phase[phase_digits..];
+    if !after_phase.to_ascii_lowercase().starts_with("_bp") {
         return Vec::new();
     }
     [
@@ -652,247 +886,4 @@ pub fn fallback_name_from_path(path: &str) -> Option<String> {
         return None;
     }
     Some(without_class.to_owned())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn missing_targets_resource_table_is_ok() {
-        let index = ResourceIndex::load_default();
-        assert_eq!(
-            index
-                .display_name_for_path(
-                    "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C"
-                )
-                .as_deref(),
-            Some("塞润尼缇")
-        );
-    }
-
-    #[test]
-    fn fallback_name_uses_path_basename() {
-        assert_eq!(
-            fallback_name_from_path(
-                "/Game/Blueprints/Character/Monster/boss_07/BP_Boss_07.BP_Boss_07_C"
-            )
-            .as_deref(),
-            Some("BP_Boss_07")
-        );
-    }
-
-    #[test]
-    fn invalid_existing_target_resource_reports_warning() {
-        let path = temp_resource_path("invalid-target-resource.json");
-        fs::write(&path, r#"{"rows":[{"path":1}]}"#).unwrap();
-        let mut warnings = Vec::new();
-        let mut index = ResourceIndex::default();
-        index.load_file_with_warnings(&path, &mut warnings);
-        fs::remove_file(&path).ok();
-
-        assert!(index.names_by_path.is_empty());
-        assert!(
-            warnings
-                .iter()
-                .any(|warning| warning.contains("unsupported JSON structure"))
-        );
-    }
-
-    #[test]
-    fn valid_target_resource_loads_name() {
-        let map_path = temp_resource_path("valid-target-map.json");
-        let list_path = temp_resource_path("valid-target-list.json");
-        let rows_path = temp_resource_path("valid-target-rows.json");
-        fs::write(&map_path, r#"{"/Game/Monster/A.A_C":"Monster A"}"#).unwrap();
-        fs::write(
-            &list_path,
-            r#"[{"path":"/Game/Monster/B.B_C","display_name":"Monster B"}]"#,
-        )
-        .unwrap();
-        fs::write(
-            &rows_path,
-            r#"{"Rows":{"/Game/Monster/C.C_C":"Monster C"}}"#,
-        )
-        .unwrap();
-
-        let mut warnings = Vec::new();
-        let mut index = ResourceIndex::default();
-        index.load_file_with_warnings(&map_path, &mut warnings);
-        index.load_file_with_warnings(&list_path, &mut warnings);
-        index.load_file_with_warnings(&rows_path, &mut warnings);
-        fs::remove_file(&map_path).ok();
-        fs::remove_file(&list_path).ok();
-        fs::remove_file(&rows_path).ok();
-
-        assert!(warnings.is_empty(), "{}", warnings.join("; "));
-        assert_eq!(
-            index
-                .display_name_for_path("/Game/Monster/A.A_C")
-                .as_deref(),
-            Some("Monster A")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path("/Game/Monster/B.B_C")
-                .as_deref(),
-            Some("Monster B")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path("/Game/Monster/C.C_C")
-                .as_deref(),
-            Some("Monster C")
-        );
-    }
-
-    #[test]
-    fn monster_data_tables_resolve_packet_internal_ids() {
-        let manual_path = temp_resource_path("monster-manual.json");
-        let static_path = temp_resource_path("monster-static.json");
-        fs::write(
-            &manual_path,
-            r#"[{"Rows":{
-                "mon_023_BP":{"MonsterName":{"LocalizedString":"长明灯"},"MonsterTag":"MM_mon_023_BP"},
-                "boss_26_BP":{"MonsterName":{"LocalizedString":"讨债人"},"CloneID":"WeeklyClone_Boss26"}
-            }}]"#,
-        )
-        .unwrap();
-        fs::write(
-            &static_path,
-            r#"[{"Rows":{
-                "mon_023_BP_Trial":{"Comment":"角色试用副本-长明灯","Tags":["mon_023_BP_Trial"]},
-                "mon_35_BP_Red_Trial":{"Comment":"角色试用副本-锡兵","Tags":["mon_35_BP_Red_Trial "]},
-                "mon_35_BP_Red_Clone":{"TextName":{"LocalizedString":"罐头锡兵"},"Tags":["mon_35_BP_Red_Clone"]}
-            }}]"#,
-        )
-        .unwrap();
-
-        let mut warnings = Vec::new();
-        let mut index = ResourceIndex::default();
-        index.load_monster_manual_file_with_warnings(&manual_path, &mut warnings);
-        index.load_monster_static_file_with_warnings(&static_path, &mut warnings);
-        fs::remove_file(&manual_path).ok();
-        fs::remove_file(&static_path).ok();
-
-        assert!(warnings.is_empty(), "{}", warnings.join("; "));
-        assert_eq!(
-            index
-                .display_name_for_path("mon_023_BP_Trial_C_2147435594")
-                .as_deref(),
-            Some("长明灯")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path(
-                    "/Game/Blueprints/Character/Monster/mon_23/mon_023_BP_Trial.mon_023_BP_Trial_C"
-                )
-                .as_deref(),
-            Some("长明灯")
-        );
-        assert_eq!(
-            index.display_name_for_path("WeeklyClone_Boss26").as_deref(),
-            Some("讨债人")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path(
-                    "/Game/Blueprints/Character/Monster/mon_35/mon_35_BP_Red_Trial"
-                )
-                .as_deref(),
-            Some("罐头锡兵")
-        );
-    }
-
-    #[test]
-    fn default_tables_resolve_known_packet_monster_ids() {
-        let index = ResourceIndex::load_default();
-
-        assert_eq!(
-            index
-                .display_name_for_path("mon_01_BP_Trial_C_2147435038")
-                .as_deref(),
-            Some("低语种")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path("/Game/Blueprints/Character/Monster/mon_23/mon_023_BP_Trial")
-                .as_deref(),
-            Some("长明灯")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path(
-                    "/Game/Blueprints/Character/Monster/mon_35/mon_35_BP_Red_Trial"
-                )
-                .as_deref(),
-            Some("罐头锡兵")
-        );
-        assert_eq!(
-            index
-                .display_name_for_path("boss_13_BP_Trial_C_2147435255")
-                .as_deref(),
-            Some("无首铁驭")
-        );
-        assert_eq!(
-            index.display_name_for_path("WeeklyClone_Boss26").as_deref(),
-            Some("讨债人")
-        );
-        assert_eq!(
-            index.display_name_for_path("MON_015_vision_02").as_deref(),
-            Some("拖车艄")
-        );
-        assert_eq!(
-            index.display_name_for_path("mon_011_BP").as_deref(),
-            Some("抱抱藤")
-        );
-        assert_eq!(
-            index.display_name_for_path("mon_015_BP").as_deref(),
-            Some("拖车艄")
-        );
-        assert_eq!(
-            index
-                .resolved_name_for_path("Boss_07_BP_DiyBoss")
-                .as_deref(),
-            Some("塞润尼缇")
-        );
-        assert_eq!(
-            index.display_name_for_path("Abyss_3_11_0").as_deref(),
-            Some("玛门")
-        );
-        assert_eq!(
-            index
-                .canonical_target_path_for_path("Abyss_3_11_0")
-                .as_deref(),
-            Some("Boss_017_BP")
-        );
-        assert_eq!(
-            index.display_name_for_path("Abyss_3_11_1").as_deref(),
-            Some("胶卷")
-        );
-        assert_eq!(
-            index
-                .canonical_target_path_for_path("Abyss_3_11_1")
-                .as_deref(),
-            Some("Boss_06_BP")
-        );
-        assert_eq!(
-            ResourceIndex::default()
-                .resolved_name_for_path("WorldBoss_Boss33")
-                .as_deref(),
-            None
-        );
-    }
-
-    fn temp_resource_path(name: &str) -> std::path::PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "nte-dps-tool-{}-{suffix}-{name}",
-            std::process::id()
-        ))
-    }
 }

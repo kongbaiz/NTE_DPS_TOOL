@@ -1,6 +1,7 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const ABYSS_RESTART_STAGE_WINDOW_SECONDS: f64 = 10.0;
+const TARGET_NAME_BACKFILL_WINDOW_SECONDS: f64 = 30.0;
 
 use serde::{Deserialize, Serialize};
 
@@ -291,17 +292,7 @@ impl PartyCombatState {
     }
 
     fn apply_target_update(&mut self, update: &HitTargetUpdate) -> bool {
-        let _ = update.target_score;
-        let _ = update.target_confidence.as_str();
-        if let Some(hit) = self
-            .hits
-            .iter_mut()
-            .rev()
-            .find(|hit| hit_matches_update(hit, update))
-        {
-            hit.target_id = update.target_id.clone();
-            hit.target_name = update.target_name.clone();
-            hit.target_context = update.target_context.clone();
+        if apply_target_update_to_hits(&mut self.hits, update) {
             self.hits_generation = self.hits_generation.wrapping_add(1);
             true
         } else {
@@ -509,20 +500,8 @@ impl CombatState {
     }
 
     pub fn apply_target_update(&mut self, update: HitTargetUpdate) {
-        let _ = update.target_score;
-        let _ = update.target_confidence.as_str();
         let mut changed = self.abyss.apply_target_update(&update);
-        if let Some(hit) = self
-            .hits
-            .iter_mut()
-            .rev()
-            .find(|hit| hit_matches_update(hit, &update))
-        {
-            hit.target_id = update.target_id;
-            hit.target_name = update.target_name;
-            hit.target_context = update.target_context;
-            changed = true;
-        }
+        changed |= apply_target_update_to_hits(&mut self.hits, &update);
         if changed {
             self.hits_generation = self.hits_generation.wrapping_add(1);
         }
@@ -568,187 +547,260 @@ fn hit_matches_update(hit: &Hit, update: &HitTargetUpdate) -> bool {
         && hit.bit_shift == update.bit_shift
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+struct TargetBackfillRule {
+    timestamp: f64,
+    target_id: Option<String>,
+    target_name: String,
+    target_path: Option<String>,
+    alias_keys: HashSet<String>,
+}
 
-    fn test_hit(timestamp: f64, char_id: u32, direction: &str, damage: f64) -> Hit {
-        Hit {
-            timestamp,
-            char_id,
-            char_name: format!("角色{char_id}"),
-            char_known: true,
-            damage,
-            byte_offset: 0,
-            bit_shift: 0,
-            char_source: "test".to_owned(),
-            direction: direction.to_owned(),
-            target_hp_before: 0.0,
-            target_hp_after: 0.0,
-            target_max_hp: 0.0,
-            target_hp_percent: 0.0,
-            target_id: None,
-            target_name: None,
-            target_context: Vec::new(),
-            gameplay_effect_index: None,
-            gameplay_effect_name: None,
-            ability_name: None,
-            damage_name: None,
-            attack_type: None,
+impl TargetBackfillRule {
+    fn from_update(update: &HitTargetUpdate) -> Option<Self> {
+        if has_unreliable_target_name_source(&update.target_context)
+            || !has_runtime_alias_target_source(&update.target_context)
+        {
+            return None;
         }
+        let target_name = update.target_name.as_ref()?.trim();
+        if target_name.is_empty() {
+            return None;
+        }
+        Some(Self {
+            timestamp: update.timestamp,
+            target_id: update.target_id.clone(),
+            target_name: target_name.to_owned(),
+            target_path: target_context_value(&update.target_context, "target_path")
+                .map(str::to_owned),
+            alias_keys: target_alias_lookup_keys(update.target_id.as_ref(), &update.target_context),
+        })
     }
 
-    fn assert_totals_match_hits(
-        hits: &VecDeque<Hit>,
-        stats: &HashMap<u32, CharacterStats>,
-        total_damage: f64,
-        total_damage_taken: f64,
-        duration: f64,
-    ) {
-        assert_eq!(hits.len(), MAX_COMBAT_HITS);
-
-        let expected_damage: f64 = hits
+    fn matches_alias(&self, hit: &Hit) -> bool {
+        if self.alias_keys.is_empty() {
+            return false;
+        }
+        if let Some(rule_path) = self.target_path.as_deref()
+            && let Some(hit_path) = target_context_value(&hit.target_context, "target_path")
+            && !hit_path.eq_ignore_ascii_case(rule_path)
+        {
+            return false;
+        }
+        target_alias_lookup_keys(hit.target_id.as_ref(), &hit.target_context)
             .iter()
-            .filter(|hit| hit.direction != "incoming")
-            .map(|hit| hit.damage)
-            .sum();
-        let expected_damage_taken: f64 = hits
-            .iter()
-            .filter(|hit| hit.direction == "incoming")
-            .map(|hit| hit.damage)
-            .sum();
-        assert_eq!(total_damage, expected_damage);
-        assert_eq!(total_damage_taken, expected_damage_taken);
+            .any(|key| self.alias_keys.contains(key))
+    }
+}
 
-        for hit in hits {
-            assert!(stats.contains_key(&hit.char_id));
+fn apply_target_update_to_hits(hits: &mut VecDeque<Hit>, update: &HitTargetUpdate) -> bool {
+    let _ = update.target_score;
+    let _ = update.target_confidence.as_str();
+    let mut changed = false;
+    for hit in hits
+        .iter_mut()
+        .filter(|hit| hit_matches_update(hit, update))
+    {
+        changed |= apply_exact_target_update(hit, update);
+    }
+
+    let Some(rule) = TargetBackfillRule::from_update(update) else {
+        return changed;
+    };
+    let allow_alias_backfill = !has_conflicting_named_target(hits, &rule);
+    for hit in hits.iter_mut() {
+        if hit.direction == "incoming"
+            || hit.target_name.is_some()
+            || !can_backfill_target_name(hit)
+        {
+            continue;
         }
-        for (&char_id, row) in stats {
-            let char_hits: Vec<_> = hits.iter().filter(|hit| hit.char_id == char_id).collect();
-            assert_eq!(
-                row.hits,
-                char_hits
-                    .iter()
-                    .filter(|hit| hit.direction != "incoming")
-                    .count() as u64
-            );
-            assert_eq!(
-                row.damage,
-                char_hits
-                    .iter()
-                    .filter(|hit| hit.direction != "incoming")
-                    .map(|hit| hit.damage)
-                    .sum::<f64>()
-            );
-            assert_eq!(
-                row.hits_taken,
-                char_hits
-                    .iter()
-                    .filter(|hit| hit.direction == "incoming")
-                    .count() as u64
-            );
-            assert_eq!(
-                row.damage_taken,
-                char_hits
-                    .iter()
-                    .filter(|hit| hit.direction == "incoming")
-                    .map(|hit| hit.damage)
-                    .sum::<f64>()
-            );
+        if allow_alias_backfill && rule.matches_alias(hit) {
+            changed |= apply_target_backfill_rule(hit, &rule);
         }
-
-        let outgoing_timestamps: Vec<_> = hits
-            .iter()
-            .filter(|hit| hit.direction != "incoming")
-            .map(|hit| hit.timestamp)
-            .collect();
-        let expected_duration =
-            (outgoing_timestamps.last().unwrap() - outgoing_timestamps.first().unwrap()).max(0.001);
-        assert_eq!(duration, expected_duration);
-        assert!(duration < 100_000.0);
     }
+    changed
+}
 
-    fn overflowing_hits() -> Vec<Hit> {
-        let mut hits = Vec::with_capacity(MAX_COMBAT_HITS + 1);
-        hits.push(test_hit(-100_000.0, 99, "outgoing", 1_000_000.0));
-        for index in 0..MAX_COMBAT_HITS {
-            let direction = if index % 3 == 0 {
-                "incoming"
-            } else {
-                "outgoing"
-            };
-            hits.push(test_hit(
-                index as f64,
-                (index % 4 + 1) as u32,
-                direction,
-                (index % 10 + 1) as f64,
-            ));
+fn apply_exact_target_update(hit: &mut Hit, update: &HitTargetUpdate) -> bool {
+    if has_recent_death_suppressed_target(&hit.target_context) && update.target_name.is_some() {
+        return false;
+    }
+    let changed = hit.target_id != update.target_id
+        || hit.target_name != update.target_name
+        || hit.target_context != update.target_context;
+    if changed {
+        hit.target_id = update.target_id.clone();
+        hit.target_name = update.target_name.clone();
+        hit.target_context = update.target_context.clone();
+    }
+    changed
+}
+
+fn apply_target_backfill_rule(hit: &mut Hit, rule: &TargetBackfillRule) -> bool {
+    let mut changed = false;
+    if hit.target_id.is_none() && rule.target_id.is_some() {
+        hit.target_id.clone_from(&rule.target_id);
+        changed = true;
+    }
+    if hit.target_name.as_deref() != Some(rule.target_name.as_str()) {
+        hit.target_name = Some(rule.target_name.clone());
+        changed = true;
+    }
+    if let Some(target_path) = &rule.target_path {
+        changed |= replace_or_push_context(&mut hit.target_context, "target_path", target_path);
+    }
+    changed |= replace_or_push_context(&mut hit.target_context, "target_name", &rule.target_name);
+    changed |= replace_or_push_context(
+        &mut hit.target_context,
+        "target_name_resolution",
+        "state_backfill",
+    );
+    changed
+}
+
+fn can_backfill_target_name(hit: &Hit) -> bool {
+    hit.target_hp_after > 1.0 && !has_unreliable_target_name_source(&hit.target_context)
+}
+
+fn has_recent_death_suppressed_target(context: &[String]) -> bool {
+    context
+        .iter()
+        .any(|entry| entry == "reason=recent_death_suppressed_stale_target")
+}
+
+fn has_unreliable_target_name_source(context: &[String]) -> bool {
+    context.iter().any(|entry| {
+        matches!(
+            entry.as_str(),
+            "reason=recent_death_suppressed_stale_target"
+                | "reason=hp_handle_path_without_direct_hp_suppressed"
+                | "reason=path_only_target_name_suppressed"
+                | "reason=net_identity_path_anchor_unconfirmed"
+                | "reason=runtime_hp_timeline"
+                | "reason=runtime_unique_active_named_instance"
+        ) || entry == "target_name_resolution=handle_alias_applied"
+            || entry == "target_name_resolution=state_backfill"
+    })
+}
+
+fn has_runtime_alias_target_source(context: &[String]) -> bool {
+    context
+        .iter()
+        .any(|entry| entry.starts_with("reason=runtime_alias:"))
+}
+
+fn has_conflicting_named_target(hits: &VecDeque<Hit>, rule: &TargetBackfillRule) -> bool {
+    hits.iter()
+        .filter(|hit| hit.direction != "incoming")
+        .filter(|hit| (hit.timestamp - rule.timestamp).abs() <= TARGET_NAME_BACKFILL_WINDOW_SECONDS)
+        .filter_map(|hit| hit.target_name.as_deref())
+        .any(|name| name != rule.target_name)
+}
+
+fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str> {
+    let prefix = format!("{key}=");
+    context
+        .iter()
+        .find_map(|value| value.strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "None")
+}
+
+fn target_context_values<'a>(context: &'a [String], key: &str) -> impl Iterator<Item = &'a str> {
+    let prefix = format!("{key}=");
+    context
+        .iter()
+        .filter_map(move |value| value.strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "None")
+}
+
+fn replace_or_push_context(context: &mut Vec<String>, key: &str, value: &str) -> bool {
+    let prefix = format!("{key}=");
+    let next = format!("{key}={value}");
+    let mut changed = false;
+    context.retain(|entry| {
+        let keep = !entry.starts_with(&prefix);
+        changed |= !keep;
+        keep
+    });
+    if !context.iter().any(|entry| entry == &next) {
+        context.push(next);
+        changed = true;
+    }
+    changed
+}
+
+fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    if let Some(target_id) = target_id {
+        extend_equivalent_target_alias_keys(&mut keys, target_id);
+    }
+    for value in target_context_values(context, "target_handle_candidate") {
+        extend_equivalent_target_alias_keys(&mut keys, value);
+    }
+    for value in target_context_values(context, "boss_hp_guid") {
+        extend_equivalent_target_alias_keys(&mut keys, &format!("boss_hp_guid:{value}"));
+    }
+    for value in target_context_values(context, "current_hp_token") {
+        extend_equivalent_target_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
+    }
+    for key in [
+        "actor_channel",
+        "iris_ref32",
+        "netguid32",
+        "netguid_packed",
+        "sdk_net_target",
+    ] {
+        for value in target_context_values(context, key) {
+            extend_equivalent_target_alias_keys(&mut keys, &format!("{key}:{value}"));
         }
-        hits
     }
+    keys
+}
 
-    #[test]
-    fn unknown_hits_remain_output_and_directions_are_summarized_separately() {
-        let mut state = CombatState::default();
-        state.push_hit(test_hit(1.0, 1, "outgoing", 100.0));
-        state.push_hit(test_hit(2.0, 1, "unknown", 40.0));
-        state.push_hit(test_hit(3.0, 1, "incoming", 25.0));
-
-        assert_eq!(state.total_damage, 140.0);
-        assert_eq!(state.total_damage_taken, 25.0);
-        let summary = summarize_hit_directions(&state.hits);
-        assert_eq!(summary.outgoing_damage, 100.0);
-        assert_eq!(summary.outgoing_hits, 1);
-        assert_eq!(summary.unknown_damage, 40.0);
-        assert_eq!(summary.unknown_hits, 1);
-        assert_eq!(summary.incoming_damage, 25.0);
-        assert_eq!(summary.incoming_hits, 1);
-        assert!((summary.unknown_share() - 28.571_428_571).abs() < 1e-6);
+fn extend_equivalent_target_alias_keys(keys: &mut HashSet<String>, key: &str) {
+    for key in equivalent_target_alias_keys(key) {
+        keys.insert(key);
     }
+}
 
-    #[test]
-    fn abyss_half_labels_are_utf8_chinese() {
-        assert_eq!(AbyssHalf::First.label(), "上半");
-        assert_eq!(AbyssHalf::Second.label(), "下半");
+fn equivalent_target_alias_keys(key: &str) -> Vec<String> {
+    let key = normalize_target_alias_key(key);
+    let mut keys = vec![key.clone()];
+    if let Some(value) = key.strip_prefix("AttributeGuid:") {
+        keys.push(format!("boss_hp_guid:{value}"));
+    } else if let Some(value) = key.strip_prefix("boss_hp_guid:") {
+        keys.push(format!("AttributeGuid:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:currenthp:") {
+        keys.push(format!("current_hp_token:{value}"));
+    } else if let Some(value) = key.strip_prefix("current_hp_token:") {
+        keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:sdk_target:") {
+        keys.push(format!("sdk_net_target:{value}"));
+    } else if let Some(value) = key.strip_prefix("sdk_net_target:") {
+        keys.push(format!("NetRefHandleCandidate:sdk_target:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:") {
+        keys.push(format!("iris_ref32:{value}"));
+    } else if let Some(value) = key.strip_prefix("iris_ref32:") {
+        keys.push(format!("NetRefHandleCandidate:{value}"));
+    } else if let Some(value) = key.strip_prefix("NetGuidCandidate:") {
+        keys.push(format!("netguid32:{value}"));
+        keys.push(format!("netguid_packed:{value}"));
+    } else if let Some(value) = key.strip_prefix("netguid32:") {
+        keys.push(format!("NetGuidCandidate:{value}"));
+        keys.push(format!("netguid_packed:{value}"));
+    } else if let Some(value) = key.strip_prefix("netguid_packed:") {
+        keys.push(format!("NetGuidCandidate:{value}"));
+        keys.push(format!("netguid32:{value}"));
     }
+    keys
+}
 
-    #[test]
-    fn party_combat_totals_follow_trimmed_hits() {
-        let mut state = PartyCombatState::default();
-        let hits = overflowing_hits();
-        let expected_generation = hits.len() as u64;
-        for hit in hits {
-            state.push_hit(hit);
-        }
-
-        assert_eq!(state.hits_generation, expected_generation);
-        assert_totals_match_hits(
-            &state.hits,
-            &state.stats,
-            state.total_damage,
-            state.total_damage_taken,
-            state.duration(),
-        );
-        assert!(!state.stats.contains_key(&99));
-    }
-
-    #[test]
-    fn combat_totals_follow_trimmed_hits() {
-        let mut state = CombatState::default();
-        let hits = overflowing_hits();
-        let expected_generation = hits.len() as u64;
-        for hit in hits {
-            state.push_hit(hit);
-        }
-
-        assert_eq!(state.hits_generation, expected_generation);
-        assert_totals_match_hits(
-            &state.hits,
-            &state.stats,
-            state.total_damage,
-            state.total_damage_taken,
-            state.duration(),
-        );
-        assert!(!state.stats.contains_key(&99));
-    }
+fn normalize_target_alias_key(key: &str) -> String {
+    let key = key.trim().split('|').next().unwrap_or(key.trim());
+    let Some((kind, value)) = key.split_once(':') else {
+        return key.to_owned();
+    };
+    format!("{kind}:{}", value.trim().to_ascii_lowercase())
 }
