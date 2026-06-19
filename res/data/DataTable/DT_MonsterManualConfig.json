@@ -1,0 +1,3381 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_MonsterManualConfig",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/DT_MonsterManualConfig",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'MonsterManualConfig'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "boss_05_BP": {
+        "Sort": 20020,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "Anomaly_013_Name",
+          "SourceString": "墨菲克斯",
+          "LocalizedString": "墨菲克斯"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Boss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_05.Boss_05",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/Boss_05.Boss_05",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_SubArea00101",
+          "SourceString": "绿墙坡",
+          "LocalizedString": "绿墙坡"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_05_BP_Found",
+          "SourceString": "在不同人眼中呈现出不同生物形态的歧骸，掌控着一个异象空间，并且可以随心地构建与变换空间的形态。传闻每月十五晚上，如果心怀强烈至一定程度的愿望与决心，说不定有机会得到墨菲克斯的回应。\r\n「而聪明人总是乐于等价交换。」",
+          "LocalizedString": "在不同人眼中呈现出不同生物形态的歧骸，掌控着一个异象空间，并且可以随心地构建与变换空间的形态。传闻每月十五晚上，如果心怀强烈至一定程度的愿望与决心，说不定有机会得到墨菲克斯的回应。\r\n「而聪明人总是乐于等价交换。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_05_BP_Unfound",
+          "SourceString": "是难以名状的凶残之物，还是温顺亲人的毛茸茸，皆取决于你的眼睛。",
+          "LocalizedString": "是难以名状的凶残之物，还是温顺亲人的毛茸茸，皆取决于你的眼睛。"
+        },
+        "DropID": "drop_weeklyclone_a01_lv1",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::QuestEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "q110135",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "WeeklyClone_Boss05",
+        "CloneEnterID": "WeeklyClone_Boss05"
+      },
+      "boss_08_BP": {
+        "Sort": 20110,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_08_Name",
+          "SourceString": "斑蝶",
+          "LocalizedString": "斑蝶"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_08.Boss_08",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/Boss_08.Boss_08",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_08_BP_Found",
+          "SourceString": "笨重而庞大的蝴蝶拖着身上的电影票根，一直试图向高空飞行，却只能终日在此徘徊。\r\n「逃走吧，能逃走吗？」",
+          "LocalizedString": "笨重而庞大的蝴蝶拖着身上的电影票根，一直试图向高空飞行，却只能终日在此徘徊。\r\n「逃走吧，能逃走吗？」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_08_BP_Unfound",
+          "SourceString": "少女潮湿而美好的心事太过沉重，几乎要淹没蝴蝶飞翔的本能。",
+          "LocalizedString": "少女潮湿而美好的心事太过沉重，几乎要淹没蝴蝶飞翔的本能。"
+        },
+        "DropID": "drop_worldboss_a06",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "None",
+        "VisionID": "Vision_Boss08",
+        "WorldBossID": "Boss_08_BP_WorldBoss",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "boss_09_BP": {
+        "Sort": 20050,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_09_Name",
+          "SourceString": "黑之书",
+          "LocalizedString": "黑之书"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_09.Boss_09",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/Boss_09.Boss_09",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_09_BP_Found",
+          "SourceString": "掩藏黑渊中的罪孽终将得到彼岸的审判，成为吾主吧，只需要写下……你的名字。你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？\r\n「你的名字是？」",
+          "LocalizedString": "掩藏黑渊中的罪孽终将得到彼岸的审判，成为吾主吧，只需要写下……你的名字。你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？你的名字是？\r\n「你的名字是？」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_09_BP_Unfound",
+          "SourceString": "在漆黑的书页上烙下名字，将精神的重量尽数交付与吾。",
+          "LocalizedString": "在漆黑的书页上烙下名字，将精神的重量尽数交付与吾。"
+        },
+        "DropID": "drop_worldboss_a03",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "q110040",
+        "VisionID": "Vision_BlackBook",
+        "WorldBossID": "Boss_09_BP_WorldBoss",
+        "CloneID": "WorldBoss_009",
+        "CloneEnterID": "WorldBoss_009"
+      },
+      "boss_10_BP": {
+        "Sort": 20060,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_10_Name",
+          "SourceString": "永不谢幕的阿拉克涅",
+          "LocalizedString": "永不谢幕的阿拉克涅"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Boss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_10.Boss_10",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/Boss_10.Boss_10",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_Area00502",
+          "SourceString": "塔林大道",
+          "LocalizedString": "塔林大道"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_10_BP_Found",
+          "SourceString": "拥有最华丽的舞裙与摄人心魄的优美舞姿，舞池的灵魂与主宰，名副其实的「舞会皇后」，当万众瞩目的明星邀你一同翩翩，请同她一起完成这场盛大的演出。毕竟对于最优秀的舞者来说，生命可以终止，舞会永不谢幕。\r\n「舞！舞！！舞！！！」",
+          "LocalizedString": "拥有最华丽的舞裙与摄人心魄的优美舞姿，舞池的灵魂与主宰，名副其实的「舞会皇后」，当万众瞩目的明星邀你一同翩翩，请同她一起完成这场盛大的演出。毕竟对于最优秀的舞者来说，生命可以终止，舞会永不谢幕。\r\n「舞！舞！！舞！！！」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_10_BP_Unfound",
+          "SourceString": "舞台的正中央，聚光灯下，裙摆舞动，裙裾沙沙，你此生所见最盛大的舞会即将开幕。",
+          "LocalizedString": "舞台的正中央，聚光灯下，裙摆舞动，裙裾沙沙，你此生所见最盛大的舞会即将开幕。"
+        },
+        "DropID": "drop_weeklyclone_a02_lv2",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::QuestEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "q110394",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "WeeklyClone_Boss10",
+        "CloneEnterID": "WeeklyClone_Boss10"
+      },
+      "boss_13_BP": {
+        "Sort": 20130,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_13_Name",
+          "SourceString": "无首铁驭",
+          "LocalizedString": "无首铁驭"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_13.Boss_13",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/boss_13.Boss_13",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_13_BP_Found",
+          "SourceString": "只有深夜才会出现，骑着一台黑色摩托机车游荡于都市街头的无头骑士。据说会盯上时速超高的飙车族，与其进行竞速比赛并在胜利后用可怖的镰刀收割他们的暴走之魂。\r\n「刺骨的蓝火会燃尽一切热血。」",
+          "LocalizedString": "只有深夜才会出现，骑着一台黑色摩托机车游荡于都市街头的无头骑士。据说会盯上时速超高的飙车族，与其进行竞速比赛并在胜利后用可怖的镰刀收割他们的暴走之魂。\r\n「刺骨的蓝火会燃尽一切热血。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_13_BP_Unfound",
+          "SourceString": "传说在午夜城市街头，用力踩下油门，在轰鸣中便能看见身骑蓝火机车的无首骑士，加入一场只有输者的追逐战。",
+          "LocalizedString": "传说在午夜城市街头，用力踩下油门，在轰鸣中便能看见身骑蓝火机车的无首骑士，加入一场只有输者的追逐战。"
+        },
+        "DropID": "drop_worldboss_a02",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "None",
+        "VisionID": "Vision_MotoBoss_01",
+        "WorldBossID": "Boss_13_BP_WorldBoss",
+        "CloneID": "WorldBoss_013",
+        "CloneEnterID": "None"
+      },
+      "Boss_07_BP": {
+        "Sort": 20070,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_07_Name",
+          "SourceString": "塞润尼缇",
+          "LocalizedString": "塞润尼缇"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_07.Boss_07",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/Boss_07.Boss_07",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_07_BP_Found",
+          "SourceString": "封闭内心的失声少年误入了被言语的恶意侵染的花房，花藤扎根与少年的血肉，汲取着养料，结成花茧。由此从未说出口的言语，尽数化为万物之形。\r\n「叱骂反调，为寂然无声，一言之庭。」",
+          "LocalizedString": "封闭内心的失声少年误入了被言语的恶意侵染的花房，花藤扎根与少年的血肉，汲取着养料，结成花茧。由此从未说出口的言语，尽数化为万物之形。\r\n「叱骂反调，为寂然无声，一言之庭。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_07_BP_Unfound",
+          "SourceString": "囿于言语的庭院主，也因言语将获得解脱。",
+          "LocalizedString": "囿于言语的庭院主，也因言语将获得解脱。"
+        },
+        "DropID": "drop_worldboss_a01",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::QuestWorldBoss",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "L110047",
+        "VisionID": "None",
+        "WorldBossID": "Boss_07_BP_WorldBoss",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "boss_15_BP": {
+        "Sort": 20080,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_15_Name",
+          "SourceString": "音霸魔王",
+          "LocalizedString": "音霸魔王"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/Boss_15.Boss_15",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/boss_15.Boss_15",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_15_BP_Found",
+          "SourceString": "跟随着音乐的节奏，只需要在恰当的时机，轻轻按下，恭喜您，您已经学会如何玩音游了。\r\n「恭喜，你在本次挑战中获得了99个完美以及1个很好。」",
+          "LocalizedString": "跟随着音乐的节奏，只需要在恰当的时机，轻轻按下，恭喜您，您已经学会如何玩音游了。\r\n「恭喜，你在本次挑战中获得了99个完美以及1个很好。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_15_BP_Unfound",
+          "SourceString": "据说在克莱门学院东侧公共演出广场上，存在着一个会「打碟」的奇妙异象……",
+          "LocalizedString": "据说在克莱门学院东侧公共演出广场上，存在着一个会「打碟」的奇妙异象……"
+        },
+        "DropID": "drop_worldboss_a04",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "None",
+        "VisionID": "Vision_BoomBox",
+        "WorldBossID": "Boss_15_BP_WorldBoss",
+        "CloneID": "WorldBoss_015",
+        "CloneEnterID": "None"
+      },
+      "boss_19_BP": {
+        "Sort": 20100,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_19_Name",
+          "SourceString": "海囚",
+          "LocalizedString": "海囚"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/boss_19.boss_19",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/boss_19.boss_19",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_Area00506",
+          "SourceString": "鹦鹉螺隧道",
+          "LocalizedString": "鹦鹉螺隧道"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_19_BP_Found",
+          "SourceString": "在此异象空间中，巨大的鲸鱼被捕鲸船的锁链困住，不断遭到折磨，鲸鱼在寻找能帮助它毁掉锁链的强大之人。\r\n「歌声是它的呼救。」",
+          "LocalizedString": "在此异象空间中，巨大的鲸鱼被捕鲸船的锁链困住，不断遭到折磨，鲸鱼在寻找能帮助它毁掉锁链的强大之人。\r\n「歌声是它的呼救。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_19_BP_Unfound",
+          "SourceString": "驾车通行海底隧道时，如果听到奇异的歌声并回应的话，说不定会有什么奇遇……",
+          "LocalizedString": "驾车通行海底隧道时，如果听到奇异的歌声并回应的话，说不定会有什么奇遇……"
+        },
+        "DropID": "drop_worldboss_a07",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "None",
+        "VisionID": "Vision_OceanChase",
+        "WorldBossID": "Boss_19_BP_WorldBoss",
+        "CloneID": "WorldBoss_019",
+        "CloneEnterID": "None"
+      },
+      "boss_33_BP": {
+        "Sort": 20120,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "boss_33_name",
+          "SourceString": "囿巢鸟",
+          "LocalizedString": "囿巢鸟"
+        },
+        "EnemyType": "EMonsterManualEnemyType::WeeklyBoss",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/boss_33.boss_33",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/boss_33.boss_33",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_33_BP_Found",
+          "SourceString": "暗中结巢的鸟母，会以温柔慈爱的女性声音呼唤迷路的儿童，询问他们是否想成为自己的孩子，倘若答应，那孩子就会永远留在鸟母的巢中。\r\n「不要夺走我的孩子……」",
+          "LocalizedString": "暗中结巢的鸟母，会以温柔慈爱的女性声音呼唤迷路的儿童，询问他们是否想成为自己的孩子，倘若答应，那孩子就会永远留在鸟母的巢中。\r\n「不要夺走我的孩子……」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "boss_33_BP_Unfound",
+          "SourceString": "在热闹的地方寻找隐秘的角落结巢，等待成为母亲的机会。",
+          "LocalizedString": "在热闹的地方寻找隐秘的角落结巢，等待成为母亲的机会。"
+        },
+        "DropID": "drop_worldboss_a05",
+        "StaminaNum": 60,
+        "TraceType": "EMonsterManualTraceType::VisionDelegateEnemy",
+        "MapIconID": "None",
+        "ArrayWorldLocation": [],
+        "ArraySpawnerID": [],
+        "MonsterTag": "None",
+        "QuestId": "None",
+        "VisionID": "Vision_Boss33",
+        "WorldBossID": "Boss_33_BP_WorldBoss",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_01_BP": {
+        "Sort": 10010,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_01_Name",
+          "SourceString": "低语种",
+          "LocalizedString": "低语种"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_01.mon_01",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_01.mon_01",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_01_BP_Found",
+          "SourceString": "没有找到自己稳定形态的生物异象。\r\n原核体中最基础的生物，虽无自主意识，但战斗的本能已经深深刻入它们的血肉中。",
+          "LocalizedString": "没有找到自己稳定形态的生物异象。\r\n原核体中最基础的生物，虽无自主意识，但战斗的本能已经深深刻入它们的血肉中。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_01_BP_Unfound",
+          "SourceString": "无意识游荡的怪物，能够唤醒它们的只有侵袭的本能。",
+          "LocalizedString": "无意识游荡的怪物，能够唤醒它们的只有侵袭的本能。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -133488.16,
+            "Y": 87698.75,
+            "Z": 7686.0
+          },
+          {
+            "X": -100923.0,
+            "Y": 149597.0,
+            "Z": 7489.0
+          },
+          {
+            "X": -177175.0,
+            "Y": 139895.0,
+            "Z": 6965.0
+          },
+          {
+            "X": -61196.047,
+            "Y": 31574.012,
+            "Z": 8160.781
+          },
+          {
+            "X": 13096.338,
+            "Y": 61150.555,
+            "Z": 7251.221
+          },
+          {
+            "X": -190854.8,
+            "Y": 106540.06,
+            "Z": 7569.229
+          },
+          {
+            "X": -88395.11,
+            "Y": 79649.19,
+            "Z": 4606.0
+          },
+          {
+            "X": -94502.81,
+            "Y": 152377.42,
+            "Z": 4640.0
+          },
+          {
+            "X": -6052.8125,
+            "Y": 134729.23,
+            "Z": 6327.8857
+          },
+          {
+            "X": -133458.03,
+            "Y": 211422.56,
+            "Z": 10113.247
+          },
+          {
+            "X": -107234.0,
+            "Y": 178261.0,
+            "Z": 6219.0
+          },
+          {
+            "X": -87275.58,
+            "Y": 54735.023,
+            "Z": 8019.195
+          },
+          {
+            "X": -135441.64,
+            "Y": 142533.4,
+            "Z": 6941.448
+          },
+          {
+            "X": -168666.0,
+            "Y": 114021.0,
+            "Z": 7409.0
+          },
+          {
+            "X": -85200.0,
+            "Y": 164610.0,
+            "Z": 4280.0
+          },
+          {
+            "X": -35904.266,
+            "Y": 70967.984,
+            "Z": 6463.9272
+          },
+          {
+            "X": -31683.238,
+            "Y": 23861.863,
+            "Z": 8126.302
+          },
+          {
+            "X": 25438.094,
+            "Y": 29783.412,
+            "Z": 8126.9316
+          },
+          {
+            "X": -70717.41,
+            "Y": 38815.184,
+            "Z": 8144.498
+          },
+          {
+            "X": -136081.0,
+            "Y": 181402.0,
+            "Z": 7381.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "5A383C6D-4308A67B-9353D2B5-C4AE7075",
+          "545B786B-4E8EF099-0A547C99-454ABD23",
+          "3AFAB379-4149091D-8F92A7A4-30A989DF",
+          "F159B3ED-4587FE12-46B4ADAD-5137B2CA",
+          "3ED07964-4991E9E6-7236D580-4A353130",
+          "AE104BA0-46A09960-FD0351A9-6A8CCAE5",
+          "592CF33B-4C55165B-62BD2896-F3CC63CA",
+          "37C4415B-4EB548D2-4B425989-E4EA0175",
+          "78A7620D-4AD033B8-E801E19D-780F841D",
+          "54ACC952-4479EBE3-E7B6FC98-BB13D6FC",
+          "F4E690DE-42B53BEA-E621C5A4-EE15448B",
+          "E9DDC14B-4DFD5C7A-DDC08991-97EFBA99",
+          "7DF3EBE4-4E87DB40-A892C8B4-FF247A60",
+          "EC76FAB1-4BD0168F-4063F88F-615343E6",
+          "C89EC3EC-4B40265F-40844C83-D62DC2F5",
+          "14E76826-449E44E5-7AF346BF-1ED71636",
+          "E4D04216-4FB815C6-43D43590-8B43FF69",
+          "7466665A-441AC7BA-E687FE91-0ACDB211",
+          "E322A49A-419CED3F-9987EEAC-9B6A9A8B",
+          "5DF4BC4E-4FFEF1AB-A0E84E83-B4372689"
+        ],
+        "MonsterTag": "MM_mon_01_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_02_BP": {
+        "Sort": 10020,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_02_Name",
+          "SourceString": "风洞种",
+          "LocalizedString": "风洞种"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_02.mon_02",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_02.mon_02",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_02_BP_Found",
+          "SourceString": "没有找到自己稳定形态的生物异象。\r\n少数拥有远程攻击能力的原核体。靠近至一定范围内便会进入攻击状态，不顾一切地要将敌人驱除。",
+          "LocalizedString": "没有找到自己稳定形态的生物异象。\r\n少数拥有远程攻击能力的原核体。靠近至一定范围内便会进入攻击状态，不顾一切地要将敌人驱除。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_02_BP_Unfound",
+          "SourceString": "无意识游荡的怪物，任何轻微的动作都可能将其激怒。",
+          "LocalizedString": "无意识游荡的怪物，任何轻微的动作都可能将其激怒。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -133488.16,
+            "Y": 87698.75,
+            "Z": 7686.0
+          },
+          {
+            "X": -177175.0,
+            "Y": 139895.0,
+            "Z": 6965.0
+          },
+          {
+            "X": -190854.8,
+            "Y": 106540.06,
+            "Z": 7569.229
+          },
+          {
+            "X": -87275.58,
+            "Y": 54735.023,
+            "Z": 8019.195
+          },
+          {
+            "X": -135441.64,
+            "Y": 142533.4,
+            "Z": 6941.448
+          },
+          {
+            "X": -168666.0,
+            "Y": 114021.0,
+            "Z": 7409.0
+          },
+          {
+            "X": -85200.0,
+            "Y": 164610.0,
+            "Z": 4280.0
+          },
+          {
+            "X": -31683.238,
+            "Y": 23861.863,
+            "Z": 8126.302
+          },
+          {
+            "X": 25438.094,
+            "Y": 29783.412,
+            "Z": 8126.9316
+          },
+          {
+            "X": -70717.41,
+            "Y": 38815.184,
+            "Z": 8144.498
+          },
+          {
+            "X": -136081.0,
+            "Y": 181402.0,
+            "Z": 7381.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "5A383C6D-4308A67B-9353D2B5-C4AE7075",
+          "3AFAB379-4149091D-8F92A7A4-30A989DF",
+          "AE104BA0-46A09960-FD0351A9-6A8CCAE5",
+          "E9DDC14B-4DFD5C7A-DDC08991-97EFBA99",
+          "7DF3EBE4-4E87DB40-A892C8B4-FF247A60",
+          "EC76FAB1-4BD0168F-4063F88F-615343E6",
+          "C89EC3EC-4B40265F-40844C83-D62DC2F5",
+          "E4D04216-4FB815C6-43D43590-8B43FF69",
+          "7466665A-441AC7BA-E687FE91-0ACDB211",
+          "E322A49A-419CED3F-9987EEAC-9B6A9A8B",
+          "5DF4BC4E-4FFEF1AB-A0E84E83-B4372689"
+        ],
+        "MonsterTag": "MM_mon_02_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_04_BP": {
+        "Sort": 10040,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_04_Name",
+          "SourceString": "迷失种",
+          "LocalizedString": "迷失种"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_04.mon_04",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_04.mon_04",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_04_BP_Found",
+          "SourceString": "没有找到自己稳定形态的生物异象。\r\n身形佝偻的原核体。行动缓慢，手持短刀，完全凭本能行动，会无差别攻击眼前的目标。",
+          "LocalizedString": "没有找到自己稳定形态的生物异象。\r\n身形佝偻的原核体。行动缓慢，手持短刀，完全凭本能行动，会无差别攻击眼前的目标。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_04_BP_Unfound",
+          "SourceString": "无意识游荡的怪物，对靠近它的任何生物都怀有强烈的敌意。",
+          "LocalizedString": "无意识游荡的怪物，对靠近它的任何生物都怀有强烈的敌意。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -100923.0,
+            "Y": 149597.0,
+            "Z": 7489.0
+          },
+          {
+            "X": -177175.0,
+            "Y": 139895.0,
+            "Z": 6965.0
+          },
+          {
+            "X": 13096.338,
+            "Y": 61150.555,
+            "Z": 7251.221
+          },
+          {
+            "X": -88395.11,
+            "Y": 79649.19,
+            "Z": 4606.0
+          },
+          {
+            "X": -94502.81,
+            "Y": 152377.42,
+            "Z": 4640.0
+          },
+          {
+            "X": -6052.8125,
+            "Y": 134729.23,
+            "Z": 6327.8857
+          },
+          {
+            "X": -133458.03,
+            "Y": 211422.56,
+            "Z": 10113.247
+          },
+          {
+            "X": -107234.0,
+            "Y": 178261.0,
+            "Z": 6219.0
+          },
+          {
+            "X": -135441.64,
+            "Y": 142533.4,
+            "Z": 6941.448
+          },
+          {
+            "X": -168666.0,
+            "Y": 114021.0,
+            "Z": 7409.0
+          },
+          {
+            "X": -35904.266,
+            "Y": 70967.984,
+            "Z": 6463.9272
+          }
+        ],
+        "ArraySpawnerID": [
+          "545B786B-4E8EF099-0A547C99-454ABD23",
+          "3AFAB379-4149091D-8F92A7A4-30A989DF",
+          "3ED07964-4991E9E6-7236D580-4A353130",
+          "592CF33B-4C55165B-62BD2896-F3CC63CA",
+          "37C4415B-4EB548D2-4B425989-E4EA0175",
+          "78A7620D-4AD033B8-E801E19D-780F841D",
+          "54ACC952-4479EBE3-E7B6FC98-BB13D6FC",
+          "F4E690DE-42B53BEA-E621C5A4-EE15448B",
+          "7DF3EBE4-4E87DB40-A892C8B4-FF247A60",
+          "EC76FAB1-4BD0168F-4063F88F-615343E6",
+          "14E76826-449E44E5-7AF346BF-1ED71636"
+        ],
+        "MonsterTag": "MM_mon_04_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_05_BP": {
+        "Sort": 10050,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_05_Name",
+          "SourceString": "凭依种",
+          "LocalizedString": "凭依种"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_05.mon_05",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_05.mon_05",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_05_BP_Found",
+          "SourceString": "没有找到自己稳定形态的生物异象。\r\n野兽形态的原核体。发现目标后将其视为敌人，并不顾一切发起攻击，直至击退敌人或自身被泯除。\r\n只会在夜间出现。",
+          "LocalizedString": "没有找到自己稳定形态的生物异象。\r\n野兽形态的原核体。发现目标后将其视为敌人，并不顾一切发起攻击，直至击退敌人或自身被泯除。\r\n只会在夜间出现。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_05_BP_Unfound",
+          "SourceString": "无意识游荡的怪物，面对侵扰会不顾一切地发起最狠厉的攻击。\r\n只会在夜间出现。",
+          "LocalizedString": "无意识游荡的怪物，面对侵扰会不顾一切地发起最狠厉的攻击。\r\n只会在夜间出现。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -138224.45,
+            "Y": 171022.44,
+            "Z": 7193.0
+          },
+          {
+            "X": -51149.0,
+            "Y": 81011.0,
+            "Z": 3069.0
+          },
+          {
+            "X": 48595.215,
+            "Y": 114878.445,
+            "Z": 11118.121
+          },
+          {
+            "X": -166200.0,
+            "Y": 195070.0,
+            "Z": 8160.0
+          },
+          {
+            "X": -164263.0,
+            "Y": 112452.0,
+            "Z": 7444.2935
+          }
+        ],
+        "ArraySpawnerID": [
+          "9B764D14-4708E7B7-D452F191-B73B3055",
+          "5DD9D85A-49E82F2F-B158E2B6-338E034C",
+          "CBA7FD9F-44F4B172-9166FF86-E0D7DA6F",
+          "F981D132-417F452A-4E233F83-ABC092E7",
+          "719A6B07-4C417062-8E35A5B5-7B13AA36"
+        ],
+        "MonsterTag": "MM_mon_05_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_011_BP": {
+        "Sort": 10110,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_11_Name",
+          "SourceString": "抱抱藤",
+          "LocalizedString": "抱抱藤"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_11.mon_11",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_11.mon_11",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_011_BP_Found",
+          "SourceString": "拥有蛇状须藤的藤蔓植物形生物异象。\r\n据现有记录，最高可长达12米。擅长伪装，喜阴暗潮湿。有吞噬同类的习性，动植物以及一些低级异象都在它的「菜谱」上。",
+          "LocalizedString": "拥有蛇状须藤的藤蔓植物形生物异象。\r\n据现有记录，最高可长达12米。擅长伪装，喜阴暗潮湿。有吞噬同类的习性，动植物以及一些低级异象都在它的「菜谱」上。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_011_BP_Unfound",
+          "SourceString": "嘶嘶响，嘶嘶响\r\n玛丽的花园有什么？\r\n不见啦，不见啦\r\n玛丽的小狗去哪啦？",
+          "LocalizedString": "嘶嘶响，嘶嘶响\r\n玛丽的花园有什么？\r\n不见啦，不见啦\r\n玛丽的小狗去哪啦？"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_04",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -159481.03,
+            "Y": 188884.95,
+            "Z": 8761.053
+          },
+          {
+            "X": -164586.0,
+            "Y": 191620.0,
+            "Z": 9422.0
+          },
+          {
+            "X": -169254.0,
+            "Y": 177081.0,
+            "Z": 8768.0
+          },
+          {
+            "X": -163448.22,
+            "Y": 176551.27,
+            "Z": 8901.921
+          },
+          {
+            "X": -168347.94,
+            "Y": 179487.27,
+            "Z": 8679.627
+          },
+          {
+            "X": -167533.0,
+            "Y": 176789.0,
+            "Z": 10375.0
+          },
+          {
+            "X": -170036.98,
+            "Y": 176024.38,
+            "Z": 8784.617
+          },
+          {
+            "X": -161177.0,
+            "Y": 170786.0,
+            "Z": 9302.0
+          },
+          {
+            "X": -156840.0,
+            "Y": 183425.0,
+            "Z": 8675.0
+          },
+          {
+            "X": -175048.0,
+            "Y": 179039.0,
+            "Z": 8724.0
+          },
+          {
+            "X": -165353.0,
+            "Y": 177667.0,
+            "Z": 8673.0
+          },
+          {
+            "X": -172300.0,
+            "Y": 178149.0,
+            "Z": 8644.0
+          },
+          {
+            "X": -156763.61,
+            "Y": 192973.66,
+            "Z": 9326.584
+          },
+          {
+            "X": -165530.0,
+            "Y": 172370.0,
+            "Z": 8800.0
+          },
+          {
+            "X": -168646.0,
+            "Y": 178257.0,
+            "Z": 9538.0
+          },
+          {
+            "X": -168556.25,
+            "Y": 183961.75,
+            "Z": 8821.526
+          }
+        ],
+        "ArraySpawnerID": [
+          "C331CE5C-408948E3-64EBCAA5-FCEAE0C1",
+          "FD938906-4F8BEE1F-ABC338B8-0869B011",
+          "195C57FC-48582DB3-B32359B3-D42A2F8F",
+          "E85441C2-48D92BD0-D600DF87-BB818B7C",
+          "C41B6523-4CF453CF-75B953A3-99788E90",
+          "FE2B7DFC-474CCABE-3EF7FBBD-D668E3F7",
+          "AAE770E9-49F5B8F8-8CD566A3-4EA05086",
+          "F3016A96-493804A3-F48336A2-665F8BF7",
+          "E8A01D77-438179F4-F7DFE08E-24385B6B",
+          "6A3ED1F0-4E3B9119-BCE918B9-C6EEBCC8",
+          "AC652169-42A4472F-C7EEB9A2-8174E1C6",
+          "BAF3EF24-4C0BCBBA-AFBDC784-49B6BD57",
+          "1108F64E-4135DA15-B06705BF-B191E24F",
+          "F6E3E9C7-463A1DDD-D3526A85-0905EEA0",
+          "2D314528-4CA83B8F-D59D34B8-5BD35BA9",
+          "3CB9730B-44C73E03-1F9A99B4-1E3BB36E"
+        ],
+        "MonsterTag": "MM_mon_011_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_012_BP": {
+        "Sort": 10120,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_12_Name",
+          "SourceString": "波普",
+          "LocalizedString": "波普"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_12.mon_12",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_12.mon_12",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_012_BP_Found",
+          "SourceString": "藏匿在街头涂鸦中的物体异象。\r\n身体由鲜艳的色块组成，爱好是吓唬市民，热衷以喷漆的艺术在大街小巷中留下自己的印记。\r\n「三分钟内，我要知道创造这幅涂鸦的艺术家的全部信息。」\r\n「等，等等，墙壁里探出来的是……两只手臂？」",
+          "LocalizedString": "藏匿在街头涂鸦中的物体异象。\r\n身体由鲜艳的色块组成，爱好是吓唬市民，热衷以喷漆的艺术在大街小巷中留下自己的印记。\r\n「三分钟内，我要知道创造这幅涂鸦的艺术家的全部信息。」\r\n「等，等等，墙壁里探出来的是……两只手臂？」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_012_1_BP_Unfound",
+          "SourceString": "花里胡哨的异象游走在花里胡哨的街头涂鸦中，俨然将自己当作了艺术的一部分。",
+          "LocalizedString": "花里胡哨的异象游走在花里胡哨的街头涂鸦中，俨然将自己当作了艺术的一部分。"
+        },
+        "DropID": "drop_mon_012_2_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -182317.0,
+            "Y": 124780.0,
+            "Z": 7495.0
+          },
+          {
+            "X": -123157.0,
+            "Y": 156724.0,
+            "Z": 10210.0
+          },
+          {
+            "X": -113638.58,
+            "Y": 64461.188,
+            "Z": 8864.294
+          },
+          {
+            "X": -128959.414,
+            "Y": 127042.7,
+            "Z": 6893.2847
+          },
+          {
+            "X": -92031.0,
+            "Y": 97467.0,
+            "Z": 6708.0
+          },
+          {
+            "X": -119666.0,
+            "Y": 185499.0,
+            "Z": 6243.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "E6E2D017-44513358-2904158E-B99ABB07",
+          "B18FEA70-4A95D0C4-B45FC384-B1F7D8F7",
+          "C564EA8D-48DF8077-D6CC39A9-5C4A4098",
+          "2DE652E2-4FBD3EA8-0136D581-1D3DF316",
+          "FA8A16A4-4D1D53BF-F8C4DD8A-FBF61627",
+          "F0C5A487-4346A24D-08266B93-CA16BEAE"
+        ],
+        "MonsterTag": "MM_mon_012_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_013_BP": {
+        "Sort": 10130,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_13_Name",
+          "SourceString": "妖刀",
+          "LocalizedString": "妖刀"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_13_2.mon_13_2",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_13_2.mon_13_2",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_13_BP_Found",
+          "SourceString": "不知何时出现的妖刀形物体异象。\r\n靠近时会出现淡色云雾，若持续徘徊于此，就会看到不祥的雾中有一只手握住了那把刀——",
+          "LocalizedString": "不知何时出现的妖刀形物体异象。\r\n靠近时会出现淡色云雾，若持续徘徊于此，就会看到不祥的雾中有一只手握住了那把刀——"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_013_BP_Unfound",
+          "SourceString": "本体是被一位普通的刀匠锻造出的普通的长刀，沾染了可怖的诅咒，一次次将主人斩于刃下。",
+          "LocalizedString": "本体是被一位普通的刀匠锻造出的普通的长刀，沾染了可怖的诅咒，一次次将主人斩于刃下。"
+        },
+        "DropID": "drop_mon_13_1_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -172797.86,
+            "Y": 121555.164,
+            "Z": 7529.913
+          },
+          {
+            "X": -150946.03,
+            "Y": 82297.45,
+            "Z": 7547.16
+          },
+          {
+            "X": -86633.08,
+            "Y": 130567.5,
+            "Z": 8221.352
+          },
+          {
+            "X": -128932.805,
+            "Y": 132891.92,
+            "Z": 6819.6523
+          },
+          {
+            "X": -201581.89,
+            "Y": 106933.89,
+            "Z": 7664.3296
+          },
+          {
+            "X": -143280.0,
+            "Y": 213290.0,
+            "Z": 9010.0
+          },
+          {
+            "X": -36646.426,
+            "Y": 88424.25,
+            "Z": 5511.6943
+          }
+        ],
+        "ArraySpawnerID": [
+          "91207FD0-476EF469-CD9DA0AE-565ACACD",
+          "DB67EE5E-41314DCD-9903CB9C-985CCE52",
+          "F9969CF8-4CA88665-4E8967BA-7AF2E3D9",
+          "8832D665-4544A24E-B3E7A5BA-F193BE9C",
+          "8BFC1BB5-40321B63-7A89A788-C038AA5C",
+          "00EBAA32-46EA5CAC-994A49BB-30F50B75",
+          "110B642D-47489065-F4DC1EB3-F3DEC12E"
+        ],
+        "MonsterTag": "MM_mon_013_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_014_BP": {
+        "Sort": 10140,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_14_Name",
+          "SourceString": "分解者",
+          "LocalizedString": "分解者"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_14.mon_14",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_14.mon_14",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_14_BP_Found",
+          "SourceString": "形似普通垃圾桶的物体异象。\r\n不同外观的分解者对垃圾有不同的偏好，扔垃圾时最好对它们的「口味」有所了解。",
+          "LocalizedString": "形似普通垃圾桶的物体异象。\r\n不同外观的分解者对垃圾有不同的偏好，扔垃圾时最好对它们的「口味」有所了解。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_14_BP_Unfound",
+          "SourceString": "垃圾分类是每位市民的责任，有时也包括一些异象在内。",
+          "LocalizedString": "垃圾分类是每位市民的责任，有时也包括一些异象在内。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_03",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": 19491.705,
+            "Y": 105658.66,
+            "Z": 6955.0107
+          },
+          {
+            "X": -50373.082,
+            "Y": 86102.37,
+            "Z": 3119.6323
+          },
+          {
+            "X": -36544.137,
+            "Y": 49581.223,
+            "Z": 8028.0264
+          },
+          {
+            "X": -46555.04,
+            "Y": 104935.164,
+            "Z": 3176.1199
+          },
+          {
+            "X": 7596.993,
+            "Y": 31432.307,
+            "Z": 7988.3696
+          },
+          {
+            "X": 29352.705,
+            "Y": 138610.05,
+            "Z": 3356.0
+          },
+          {
+            "X": 42109.14,
+            "Y": 116241.16,
+            "Z": 7268.5703
+          },
+          {
+            "X": -164978.88,
+            "Y": 139372.81,
+            "Z": 6994.5063
+          },
+          {
+            "X": 41653.49,
+            "Y": 51866.062,
+            "Z": 5114.1914
+          },
+          {
+            "X": -34522.184,
+            "Y": 30938.592,
+            "Z": 8028.0264
+          },
+          {
+            "X": -58243.53,
+            "Y": 72959.914,
+            "Z": 3943.964
+          },
+          {
+            "X": -22259.078,
+            "Y": 47538.793,
+            "Z": 7710.0645
+          },
+          {
+            "X": -104796.41,
+            "Y": 66263.57,
+            "Z": 7223.724
+          },
+          {
+            "X": -119667.81,
+            "Y": 196531.2,
+            "Z": 6158.0
+          },
+          {
+            "X": -24617.285,
+            "Y": 66364.22,
+            "Z": 7153.149
+          },
+          {
+            "X": -137710.6,
+            "Y": 160887.95,
+            "Z": 7002.3994
+          },
+          {
+            "X": 25165.83,
+            "Y": 113132.18,
+            "Z": 6931.18
+          },
+          {
+            "X": -185505.95,
+            "Y": 207063.58,
+            "Z": 16395.05
+          },
+          {
+            "X": -164713.03,
+            "Y": 89972.8,
+            "Z": 7567.0
+          },
+          {
+            "X": -131240.72,
+            "Y": 134966.73,
+            "Z": 6717.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "FA85B09D-476709ED-1ADE10BB-0CE43BEF",
+          "8CF48332-4A156CEA-8AEBB4B8-350012B0",
+          "FF0970EB-44FACEFC-EB4700BC-0520A6CC",
+          "A02FA2AA-48CB6597-49BC22A6-67C0E701",
+          "D29BEEB3-4CACCD19-BA6EDE8D-D28A0160",
+          "F43A15E1-44FBB2D3-D8160782-D85F85FB",
+          "63C6AEEA-4A9CA91C-BB950F97-39A75592",
+          "BC3274D5-4E858BC3-636F45AF-A60F975C",
+          "C58C78FF-4AC535FF-815E8E92-34082F80",
+          "819A085D-4A2295FB-A7E355BF-DCE2441B",
+          "C4CE90BD-42E0C11B-0D55A185-45CF1AD8",
+          "96574167-4DF34E61-2B62D09D-5116F758",
+          "A17E0F9F-4516269C-A302BEBA-9D5D4A3A",
+          "3E41A3D4-4ABAF377-9331D394-26E0849A",
+          "6230E339-42D63EC2-604DA8B2-4C6619F6",
+          "A923A8F6-463F2FED-C0D709A3-F12FB087",
+          "145D5382-4F84E8D3-EBBF12AB-F595425A",
+          "7D68D8A0-41F406DE-8E587583-C67361F0",
+          "5E01B091-48A08FA5-E3D49186-3F8F963A",
+          "02317A5F-4C65F467-13EC5E89-84A8D2BE"
+        ],
+        "MonsterTag": "MM_mon_014_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_015_BP": {
+        "Sort": 10150,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_15_name",
+          "SourceString": "拖车艄",
+          "LocalizedString": "拖车艄"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Elite",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_15.mon_15",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_15.mon_15",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_015_BP_Found",
+          "SourceString": "寄居在老旧拖车里的生物异象。\r\n偶尔会出现在海特洛市各处的公路上。鉴于其不知何种情况下会发起攻击，建议各位市民发现有着章鱼触手的拖车后与其保持距离。",
+          "LocalizedString": "寄居在老旧拖车里的生物异象。\r\n偶尔会出现在海特洛市各处的公路上。鉴于其不知何种情况下会发起攻击，建议各位市民发现有着章鱼触手的拖车后与其保持距离。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_015_BP_Unfound",
+          "SourceString": "行车时请与其他车辆保持安全距离，哪怕对方只是一辆不起眼的旧卡车。",
+          "LocalizedString": "行车时请与其他车辆保持安全距离，哪怕对方只是一辆不起眼的旧卡车。"
+        },
+        "DropID": "drop_Mon_EliteMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -71912.445,
+            "Y": 146407.12,
+            "Z": 4003.8113
+          },
+          {
+            "X": -17011.273,
+            "Y": 57081.45,
+            "Z": 7209.5703
+          },
+          {
+            "X": -56283.695,
+            "Y": 51629.016,
+            "Z": 7922.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "28FC67D1-4F8AF336-308B998F-517AA6F6",
+          "F420C6F5-449AE5BD-429F8696-DC185A4C",
+          "E4E1A248-47B51516-E38F4292-A9046F9A"
+        ],
+        "MonsterTag": "MM_mon_015_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_016_BP": {
+        "Sort": 10160,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_016_Name",
+          "SourceString": "贩售机附电灵",
+          "LocalizedString": "贩售机附电灵"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_16.mon_16",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_16.mon_16",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_016_BP_Found",
+          "SourceString": "生物异象附电灵附身在一台自动售货机时的样子。\r\n寄居在售货机里，通过身上的屏幕来观察周围敌人。但如果敌人消失在视线内，它也会失去对目标的锁定。",
+          "LocalizedString": "生物异象附电灵附身在一台自动售货机时的样子。\r\n寄居在售货机里，通过身上的屏幕来观察周围敌人。但如果敌人消失在视线内，它也会失去对目标的锁定。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_016_BP_Unfound",
+          "SourceString": "当你打量一台自动售货机时，自动售货机也在打量你。",
+          "LocalizedString": "当你打量一台自动售货机时，自动售货机也在打量你。"
+        },
+        "DropID": "drop_mon_016_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -8184.23,
+            "Y": 141455.14,
+            "Z": 4802.5806
+          },
+          {
+            "X": -14265.614,
+            "Y": 135242.6,
+            "Z": 6337.9297
+          },
+          {
+            "X": 19491.705,
+            "Y": 105658.66,
+            "Z": 6955.0107
+          },
+          {
+            "X": 40057.61,
+            "Y": 109888.52,
+            "Z": 9243.32
+          },
+          {
+            "X": 7596.993,
+            "Y": 31432.307,
+            "Z": 7988.3696
+          },
+          {
+            "X": -87.49708,
+            "Y": 63489.297,
+            "Z": 7193.209
+          },
+          {
+            "X": -188581.05,
+            "Y": 224277.1,
+            "Z": 16343.805
+          },
+          {
+            "X": 5294.682,
+            "Y": 48093.75,
+            "Z": 7673.641
+          },
+          {
+            "X": -156488.48,
+            "Y": 141969.5,
+            "Z": 6723.829
+          },
+          {
+            "X": -113947.734,
+            "Y": 50882.953,
+            "Z": 7664.6
+          },
+          {
+            "X": 41653.49,
+            "Y": 51866.062,
+            "Z": 5114.1914
+          },
+          {
+            "X": -34522.184,
+            "Y": 30938.592,
+            "Z": 8028.0264
+          },
+          {
+            "X": -185115.0,
+            "Y": 136177.42,
+            "Z": 7237.8623
+          },
+          {
+            "X": 18277.719,
+            "Y": 18597.025,
+            "Z": 8598.164
+          },
+          {
+            "X": -22259.078,
+            "Y": 47538.793,
+            "Z": 7710.0645
+          },
+          {
+            "X": -119667.81,
+            "Y": 196531.2,
+            "Z": 6158.0
+          },
+          {
+            "X": -128669.21,
+            "Y": 158695.6,
+            "Z": 6997.3726
+          },
+          {
+            "X": -43156.38,
+            "Y": -6302.0825,
+            "Z": 8289.995
+          },
+          {
+            "X": -111558.1,
+            "Y": 173615.53,
+            "Z": 6506.2134
+          }
+        ],
+        "ArraySpawnerID": [
+          "CAE41798-4AB25C95-68905A9B-12C5D1CA",
+          "A8329C72-4FEDA55A-FACE87B6-D6EDA83C",
+          "FA85B09D-476709ED-1ADE10BB-0CE43BEF",
+          "C5721F0A-43A4C0D4-9CEC5282-FFC5680C",
+          "D29BEEB3-4CACCD19-BA6EDE8D-D28A0160",
+          "69BF1624-48F1713D-13C2FF8F-9792C293",
+          "7DC86078-479E148F-37C4F2B6-A4F7625B",
+          "FBEADDEB-4CF15B23-B6F006BA-150A8EB6",
+          "A9BD0A06-40FDCDE4-45EF859F-6D04EEB0",
+          "FC097214-45FF21AA-BBF738A1-CDB9B6B2",
+          "C58C78FF-4AC535FF-815E8E92-34082F80",
+          "819A085D-4A2295FB-A7E355BF-DCE2441B",
+          "89F67B33-46190AC5-F7184E8D-D5D0A1EC",
+          "C19FA9F0-46F337E7-7730DCBD-8A7CEA8B",
+          "96574167-4DF34E61-2B62D09D-5116F758",
+          "3E41A3D4-4ABAF377-9331D394-26E0849A",
+          "B1C8B5C2-4A7255D0-D4F74791-EFCC81ED",
+          "79FC95AA-4D9DCA7E-64A01F95-244C2FD6",
+          "591F880E-4ED79935-C91861A3-ABB4FFE1"
+        ],
+        "MonsterTag": "MM_mon_016_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_017_BP": {
+        "Sort": 10170,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_17_Name",
+          "SourceString": "雨人",
+          "LocalizedString": "雨人"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_17.mon_17",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_17.mon_17",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_017_BP_Found",
+          "SourceString": "通常情况下呈伞形的物体异象。\r\n会将任何试图捡起「雨伞」的人拉入「雨巷」并攻击。\r\n雨夜时则会以身着黑衣手持黑伞的「雨人」形象现身。\r\n大部分情况下，「雨人」以单体或小规模活动。特殊气象发生时也有成群出现的可能。\r\n「如果在外见到无主的雨伞，请不要贸然靠近。」",
+          "LocalizedString": "通常情况下呈伞形的物体异象。\r\n会将任何试图捡起「雨伞」的人拉入「雨巷」并攻击。\r\n雨夜时则会以身着黑衣手持黑伞的「雨人」形象现身。\r\n大部分情况下，「雨人」以单体或小规模活动。特殊气象发生时也有成群出现的可能。\r\n「如果在外见到无主的雨伞，请不要贸然靠近。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_17_BP_Unfound",
+          "SourceString": "「海特洛城市生存指南」第26条：如您在雨夜不幸忘记带伞，请迅速寻找最近的避雨处并等待雨停，不要靠近街上撑着黑伞的黑衣「人士」；如果它们发现了您并向您移动，立刻远离并呼救。",
+          "LocalizedString": "「海特洛城市生存指南」第26条：如您在雨夜不幸忘记带伞，请迅速寻找最近的避雨处并等待雨停，不要靠近街上撑着黑伞的黑衣「人士」；如果它们发现了您并向您移动，立刻远离并呼救。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_03",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -137014.0,
+            "Y": 132596.0,
+            "Z": 6859.0
+          },
+          {
+            "X": -140276.92,
+            "Y": 157705.22,
+            "Z": 6896.0
+          },
+          {
+            "X": -17589.0,
+            "Y": 76143.0,
+            "Z": 8866.0
+          },
+          {
+            "X": -141521.0,
+            "Y": 172734.0,
+            "Z": 7462.0
+          },
+          {
+            "X": -156625.56,
+            "Y": 86928.49,
+            "Z": 8511.0
+          },
+          {
+            "X": -155906.0,
+            "Y": 108876.0,
+            "Z": 7347.0
+          },
+          {
+            "X": -92674.0,
+            "Y": 90181.0,
+            "Z": 6287.0
+          },
+          {
+            "X": -85550.0,
+            "Y": 149640.0,
+            "Z": 4525.0
+          },
+          {
+            "X": 26295.418,
+            "Y": 18251.299,
+            "Z": 7973.0557
+          }
+        ],
+        "ArraySpawnerID": [
+          "513FFDDC-4AFE7D10-215CD189-B8BFC93D",
+          "0143480D-4EBCFBC4-D77ECF90-9306B022",
+          "005C946A-4C4CCADF-A26DDFB3-84CBF191",
+          "F90F022E-43E9D5F9-FBA12DA7-43971E40",
+          "2891AB8B-408FE9B9-FC16F094-3F1FCDEA",
+          "97EDE567-41AC0716-5ECD2FAA-FF07FAE7",
+          "36E1ABB8-4BA3DC5F-856A0B97-952C35B7",
+          "FD94EDC3-459AFB85-370A4883-9B13B8A7",
+          "BAAD4648-480BAA7A-A140CCAC-5A64C73C"
+        ],
+        "MonsterTag": "MM_mon_017_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_018_BP": {
+        "Sort": 10180,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_18_Name",
+          "SourceString": "棉绒绒",
+          "LocalizedString": "棉绒绒"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_18.mon_18",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_18.mon_18",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "MM_mon_018_BP_Found",
+          "SourceString": "通常情况下形似兔子的生物异象。\r\n通体柔软，手感很好，热爱晒太阳。但如果有人在它们旁边放火，或许也会讶异于这样的小东西还有两副面孔。\r\n「棉棉~棉棉~」",
+          "LocalizedString": "通常情况下形似兔子的生物异象。\r\n通体柔软，手感很好，热爱晒太阳。但如果有人在它们旁边放火，或许也会讶异于这样的小东西还有两副面孔。\r\n「棉棉~棉棉~」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_18_BP_Unfound",
+          "SourceString": "看上去温顺可爱，实际上也温顺可爱的毛茸茸异象……大概是吧。",
+          "LocalizedString": "看上去温顺可爱，实际上也温顺可爱的毛茸茸异象……大概是吧。"
+        },
+        "DropID": "drop_mon_18_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -156347.67,
+            "Y": 90301.16,
+            "Z": 8490.0
+          },
+          {
+            "X": -24841.805,
+            "Y": 121816.375,
+            "Z": 6528.0
+          },
+          {
+            "X": -133515.62,
+            "Y": 73517.28,
+            "Z": 8490.0
+          },
+          {
+            "X": -16056.593,
+            "Y": -3400.7249,
+            "Z": 9203.437
+          },
+          {
+            "X": -141895.47,
+            "Y": 193480.75,
+            "Z": 8310.0
+          },
+          {
+            "X": -101038.84,
+            "Y": 25360.213,
+            "Z": 9120.022
+          },
+          {
+            "X": -113806.48,
+            "Y": 194048.3,
+            "Z": 4190.8184
+          },
+          {
+            "X": -103518.36,
+            "Y": 42851.87,
+            "Z": 9922.996
+          },
+          {
+            "X": -91226.88,
+            "Y": 18198.332,
+            "Z": 8893.019
+          },
+          {
+            "X": -48641.035,
+            "Y": 68613.79,
+            "Z": 5133.209
+          },
+          {
+            "X": -26726.324,
+            "Y": -3507.7,
+            "Z": 9068.17
+          },
+          {
+            "X": 39629.734,
+            "Y": 64770.92,
+            "Z": 5084.3203
+          },
+          {
+            "X": -103534.17,
+            "Y": 1236.4185,
+            "Z": 10677.038
+          },
+          {
+            "X": -106588.1,
+            "Y": 54736.53,
+            "Z": 8459.766
+          },
+          {
+            "X": -151730.0,
+            "Y": 175890.0,
+            "Z": 7980.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "CF88579E-4C46EBFB-C1BDE8BD-F76DE841",
+          "A3E1A19F-434425FF-6F2C7D90-2DE90DDF",
+          "3C8580E7-45933DD0-1D1CB9B2-B8AE0EC1",
+          "B581FF57-4E9EC985-74ACD8AA-4641759F",
+          "E7A32A1F-4B51406D-474DAF95-D5FBB25A",
+          "5635FBE1-4A3380A6-8D211DA7-2A223AC2",
+          "CA56FB14-4CD6C431-F20D1DB5-5686CE35",
+          "6C2867DF-469FD011-917C8692-8D639EF0",
+          "6A7C13C2-4B7E5464-554FA2AE-293F89B1",
+          "EA9362A8-4D5E18AE-C00D2D85-D4E2D4FE",
+          "C49872FD-417BCCE3-DFE9F087-ED147E6A",
+          "B75ABA5B-4828566C-521146A2-A7D7B804",
+          "3DECA7C3-4CBF13A8-7CAE0785-45886581",
+          "77E44051-4F9FF89D-EA62A5AD-8A58D323",
+          "0F8FBDF5-4BF29A67-3D07F4BE-750EE192"
+        ],
+        "MonsterTag": "MM_mon_018_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_019_SadBear_BP": {
+        "Sort": 10190,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_19_name",
+          "SourceString": "伤心英熊",
+          "LocalizedString": "伤心英熊"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Elite",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_19.mon_19",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_19.mon_19",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_19_SadBear_BP",
+          "SourceString": "形似破破烂烂的大型毛绒玩具的物体异象。\r\n过去曾与主人亲密无间，现在却被遗弃和冷落的玩偶若长时间未得到关爱，便可能会变成一个穿着披风，拿着武器「伤心英熊」。它的心脏部位有缝合的痕迹，被遗弃的玩偶即位于此处。\r\n「睡吧，睡吧，留在无忧无虑的梦里吧。」",
+          "LocalizedString": "形似破破烂烂的大型毛绒玩具的物体异象。\r\n过去曾与主人亲密无间，现在却被遗弃和冷落的玩偶若长时间未得到关爱，便可能会变成一个穿着披风，拿着武器「伤心英熊」。它的心脏部位有缝合的痕迹，被遗弃的玩偶即位于此处。\r\n「睡吧，睡吧，留在无忧无虑的梦里吧。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_019_BP_Unfound",
+          "SourceString": "孩提时代形影不离的伙伴一点点淡出了自己的生活，直至最后在梦中都不再出现；于是被遗弃的玩偶自己做起了梦，梦中它与主人再度亲密无间。",
+          "LocalizedString": "孩提时代形影不离的伙伴一点点淡出了自己的生活，直至最后在梦中都不再出现；于是被遗弃的玩偶自己做起了梦，梦中它与主人再度亲密无间。"
+        },
+        "DropID": "drop_mon_019_SadBear_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": 34793.934,
+            "Y": 73747.61,
+            "Z": 6485.4824
+          },
+          {
+            "X": -28639.797,
+            "Y": 84167.5,
+            "Z": 6370.7573
+          },
+          {
+            "X": 36161.742,
+            "Y": 138706.56,
+            "Z": 3571.3757
+          },
+          {
+            "X": -34838.76,
+            "Y": 131905.38,
+            "Z": 3157.8516
+          },
+          {
+            "X": 27410.342,
+            "Y": 115083.74,
+            "Z": 7135.765
+          }
+        ],
+        "ArraySpawnerID": [
+          "AC1E273C-4690E7D0-08A5789F-0E37A8DA",
+          "B2BED034-4F3AF50B-3E90C593-41A3542A",
+          "C2487FE7-477F4069-1A268BB8-D7604311",
+          "4BAA10E8-4626DC01-04365786-128EEC07",
+          "A5D07A70-408CDF5D-E728D696-FAC73EEA"
+        ],
+        "MonsterTag": "MM_mon_019_SadBear_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_020_BP": {
+        "Sort": 10200,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_20_Name",
+          "SourceString": "空铠甲",
+          "LocalizedString": "空铠甲"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Elite",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_20.mon_20",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_20.mon_20",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_020_BP_Found",
+          "SourceString": "形似年代久远的铠甲的物体异象。\r\n在主人战死后觉醒了自我意识，行动有些迟缓，记忆模糊不清，好用敬语。对于每一个博物馆访客的拍照请求都不会拒绝。现为海特洛市博物馆警卫一员。",
+          "LocalizedString": "形似年代久远的铠甲的物体异象。\r\n在主人战死后觉醒了自我意识，行动有些迟缓，记忆模糊不清，好用敬语。对于每一个博物馆访客的拍照请求都不会拒绝。现为海特洛市博物馆警卫一员。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_020_BP_Unfound",
+          "SourceString": "空心的铠甲竭力模仿记忆中将它披于身上之人的言行，仿佛自己仍然身处荣光的年代。",
+          "LocalizedString": "空心的铠甲竭力模仿记忆中将它披于身上之人的言行，仿佛自己仍然身处荣光的年代。"
+        },
+        "DropID": "drop_Mon_EliteMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -11480.919,
+            "Y": 125277.59,
+            "Z": 31376.324
+          }
+        ],
+        "ArraySpawnerID": [
+          "6CD1411D-4EE6A363-B653E0AC-92EF8905"
+        ],
+        "MonsterTag": "MM_mon_020_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_023_BP": {
+        "Sort": 10220,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_23_Name",
+          "SourceString": "长明灯",
+          "LocalizedString": "长明灯"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Elite",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_23.mon_23",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_23.mon_23",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_023_BP_Found",
+          "SourceString": "状似人形，躯干类似传统电灯泡的物体异象。\r\n出现时会窃取电力并导致其周围区域完全停电。\r\n只会在夜间出现。",
+          "LocalizedString": "状似人形，躯干类似传统电灯泡的物体异象。\r\n出现时会窃取电力并导致其周围区域完全停电。\r\n只会在夜间出现。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_023_BP_Unfound",
+          "SourceString": "电灯的使命是为人们带来光明，但偶尔也有例外。\r\n只会在夜间出现。",
+          "LocalizedString": "电灯的使命是为人们带来光明，但偶尔也有例外。\r\n只会在夜间出现。"
+        },
+        "DropID": "drop_Mon_EliteMonMaterial_04",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -21373.652,
+            "Y": 31467.951,
+            "Z": 8318.958
+          },
+          {
+            "X": -35010.645,
+            "Y": 1397.1416,
+            "Z": 9069.372
+          },
+          {
+            "X": -22510.361,
+            "Y": 139093.28,
+            "Z": 5857.0005
+          },
+          {
+            "X": 31870.0,
+            "Y": 100780.0,
+            "Z": 8780.0
+          },
+          {
+            "X": 9581.839,
+            "Y": 22003.848,
+            "Z": 8207.305
+          },
+          {
+            "X": 674.5761,
+            "Y": 90425.07,
+            "Z": 13625.542
+          },
+          {
+            "X": 44748.75,
+            "Y": 43858.348,
+            "Z": 5853.2764
+          }
+        ],
+        "ArraySpawnerID": [
+          "42D869FE-400A14B8-425281BE-1A6CAB8D",
+          "CA5FB264-4FA7B7BB-EBF4F19D-7EFC85B9",
+          "320B755F-4297007F-7C3105B5-0EDEB38D",
+          "7A9D186B-4EF64BD4-E54BD690-CE5A648A",
+          "38800B2F-45E4327F-DC93DCA5-423217CD",
+          "4EB29EEB-4B591F32-4AD27598-06588463",
+          "12F138DA-41E0A257-889E23B9-ADA54724"
+        ],
+        "MonsterTag": "MM_mon_023_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_024_BP": {
+        "Sort": 10240,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_24_Name",
+          "SourceString": "诡面筝",
+          "LocalizedString": "诡面筝"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_24.mon_24",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_24.mon_24",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_24_BP_Found",
+          "SourceString": "状似三角风筝的物体异象。\r\n朝上的一面有类似人脸的花纹，仔细观察的话能够发现它们会表现出不同的怪诞表情，不知为何有种令人不寒而栗的感觉……",
+          "LocalizedString": "状似三角风筝的物体异象。\r\n朝上的一面有类似人脸的花纹，仔细观察的话能够发现它们会表现出不同的怪诞表情，不知为何有种令人不寒而栗的感觉……"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_24_BP_Unfound",
+          "SourceString": "风筝飞在天上，却似乎无时无刻不在注意地上的动静……",
+          "LocalizedString": "风筝飞在天上，却似乎无时无刻不在注意地上的动静……"
+        },
+        "DropID": "drop_mon_24_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": 2095.3455,
+            "Y": -6209.3047,
+            "Z": 10860.572
+          },
+          {
+            "X": -52873.9,
+            "Y": -15133.693,
+            "Z": 8757.908
+          },
+          {
+            "X": -211060.58,
+            "Y": 201606.81,
+            "Z": 7720.0
+          },
+          {
+            "X": -112667.31,
+            "Y": 32672.992,
+            "Z": 9309.07
+          },
+          {
+            "X": -164490.0,
+            "Y": 150530.0,
+            "Z": 6450.0
+          },
+          {
+            "X": -175160.0,
+            "Y": 211290.0,
+            "Z": 11955.239
+          },
+          {
+            "X": 25314.7,
+            "Y": 24151.37,
+            "Z": 9664.945
+          },
+          {
+            "X": -171860.0,
+            "Y": 173800.0,
+            "Z": 9640.0
+          },
+          {
+            "X": -24566.426,
+            "Y": 40916.51,
+            "Z": 12495.209
+          }
+        ],
+        "ArraySpawnerID": [
+          "8DFA2CB6-4BB695A8-CDD70280-DF3E7A01",
+          "DA5F70BA-4DFA7444-C7D28A91-908D227A",
+          "008D4B67-453189CC-CCC285A7-071DA8A2",
+          "FE90258F-4D3D4EF1-3CA199B9-7B60FCE4",
+          "238C8C8B-4F9C888D-8EA8389A-1CE32159",
+          "24B5CA27-439D66CE-A6F9FCA5-B9C4BE81",
+          "4F235779-4F380034-B566FB99-709DF03B",
+          "84E0606C-4610298E-4778B4A4-E4693C67",
+          "5A28D567-4DB9148C-2A2D6682-E4729DFF"
+        ],
+        "MonsterTag": "MM_mon_024_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_025_BP": {
+        "Sort": 10250,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_25_Name",
+          "SourceString": "洄天鱼幡",
+          "LocalizedString": "洄天鱼幡"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_25.mon_25",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_25.mon_25",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_025_BP_Found",
+          "SourceString": "状似鲤鱼在空中游曳的现象异象。\r\n执着于寻找并跨越「龙门」，鲤鱼们不断地从天上到此地，在失败后又返回天上。无论失败多少次，它们对「龙门」的追求始终未变，仍然会积极地对一切可能是「龙门」的事物发起挑战……",
+          "LocalizedString": "状似鲤鱼在空中游曳的现象异象。\r\n执着于寻找并跨越「龙门」，鲤鱼们不断地从天上到此地，在失败后又返回天上。无论失败多少次，它们对「龙门」的追求始终未变，仍然会积极地对一切可能是「龙门」的事物发起挑战……"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_025_BP_Unfound",
+          "SourceString": "执着于跨越「龙门」的彩鲤，在古老的传说中就已出现在世间。",
+          "LocalizedString": "执着于跨越「龙门」的彩鲤，在古老的传说中就已出现在世间。"
+        },
+        "DropID": "drop_mon_025_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -179774.2,
+            "Y": 146678.53,
+            "Z": 10800.592
+          },
+          {
+            "X": 38567.918,
+            "Y": 55560.51,
+            "Z": 9217.498
+          },
+          {
+            "X": -76602.914,
+            "Y": 69510.08,
+            "Z": 10624.549
+          },
+          {
+            "X": -206981.73,
+            "Y": 193483.81,
+            "Z": 8709.351
+          },
+          {
+            "X": -181489.9,
+            "Y": 239834.4,
+            "Z": 3517.0115
+          },
+          {
+            "X": -35867.746,
+            "Y": 119015.22,
+            "Z": 15166.269
+          },
+          {
+            "X": -141865.0,
+            "Y": 127841.0,
+            "Z": 13553.0
+          },
+          {
+            "X": -123606.0,
+            "Y": 190131.0,
+            "Z": 9435.0
+          },
+          {
+            "X": -45670.527,
+            "Y": 87777.68,
+            "Z": 9388.04
+          },
+          {
+            "X": -110313.39,
+            "Y": 79412.67,
+            "Z": 16030.484
+          },
+          {
+            "X": -139479.0,
+            "Y": 156255.0,
+            "Z": 12177.0
+          },
+          {
+            "X": -153417.75,
+            "Y": 204916.0,
+            "Z": 7151.0
+          },
+          {
+            "X": -184348.16,
+            "Y": 99059.99,
+            "Z": 12660.656
+          },
+          {
+            "X": -124610.0,
+            "Y": 96869.0,
+            "Z": 13442.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "9B09D249-4A34812C-89939FB8-A7A864B1",
+          "698802A0-41EB053D-AD780EB6-809828AA",
+          "2B6767FF-4309FCFE-522B04A4-4FE3462C",
+          "BEB93FB6-4051B76B-CFCD1AB5-48DE3BC9",
+          "8AD220E7-4DAFDC84-707E19AD-63F4B29A",
+          "201F73E5-44D0AB8F-AB9C869E-A3C28A1A",
+          "7E70BE26-4256487E-B0C66187-5A8F60DE",
+          "6318B32D-42EC0D71-CCCBAB8B-AF0DDE0F",
+          "5572B4E9-488470F7-AF543BB7-7F8AF4DF",
+          "74FA956F-4DCCB56C-CF04759E-1E6BCCDA",
+          "6CBC3845-4AA0AF16-3A20F4B6-EE650955",
+          "57FC8DD9-43B37A9F-CB2196AF-0A5C71EB",
+          "28386856-4F6732C2-4400C18B-9DCB1DC9",
+          "1472576C-4DD16882-9DDDDB8E-D8BE4E51"
+        ],
+        "MonsterTag": "MM_mon_025_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_026_BP": {
+        "Sort": 10260,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_26_Name",
+          "SourceString": "纸翼战队",
+          "LocalizedString": "纸翼战队"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_26.mon_26",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_26.mon_26",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_26_BP_Found",
+          "SourceString": "状似纸飞机的物体异象。\r\n由红，白，红白花色三种纸飞机组成，成群出现，通常状态下会首尾相衔缓慢转动，进入战斗状态时旋转速度加快，环绕成龙卷风形态。\r\n「纸飞机怎样才能飞得更远？」",
+          "LocalizedString": "状似纸飞机的物体异象。\r\n由红，白，红白花色三种纸飞机组成，成群出现，通常状态下会首尾相衔缓慢转动，进入战斗状态时旋转速度加快，环绕成龙卷风形态。\r\n「纸飞机怎样才能飞得更远？」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_26_BP_Unfound",
+          "SourceString": "纸飞机诞生的那一刻，它的使命就是无止尽地飞翔。",
+          "LocalizedString": "纸飞机诞生的那一刻，它的使命就是无止尽地飞翔。"
+        },
+        "DropID": "drop_mon_26_BP_World",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -119968.73,
+            "Y": 147570.52,
+            "Z": 8454.82
+          },
+          {
+            "X": -103981.82,
+            "Y": 50914.4,
+            "Z": 8428.301
+          },
+          {
+            "X": -195145.4,
+            "Y": 187803.28,
+            "Z": 8680.805
+          },
+          {
+            "X": -43646.43,
+            "Y": 6405.25,
+            "Z": 7702.3364
+          },
+          {
+            "X": -124405.54,
+            "Y": 59004.68,
+            "Z": 8899.5
+          },
+          {
+            "X": -6601.5366,
+            "Y": 13179.67,
+            "Z": 8852.967
+          },
+          {
+            "X": 23675.654,
+            "Y": 77176.7,
+            "Z": 6922.247
+          },
+          {
+            "X": -80570.88,
+            "Y": 285.3547,
+            "Z": 8298.73
+          },
+          {
+            "X": -16965.0,
+            "Y": 95143.0,
+            "Z": 6520.0
+          },
+          {
+            "X": -135261.06,
+            "Y": 233789.77,
+            "Z": 2933.8147
+          },
+          {
+            "X": 48018.01,
+            "Y": 124580.12,
+            "Z": 6600.4727
+          },
+          {
+            "X": -30915.3,
+            "Y": 16439.498,
+            "Z": 8797.619
+          }
+        ],
+        "ArraySpawnerID": [
+          "3652214B-44B9AD29-03B6F39A-9EE6CB19",
+          "9BA621D2-4B2E41B3-1A1C73B6-FA78EC50",
+          "91289E5C-4CA99B5E-BA69D5B3-ABF7175C",
+          "A3713B91-4FEDBCBB-4FECA3A2-B8E54315",
+          "FA281445-42BE5BEB-EE68B291-F2E61452",
+          "8E82E237-4A894737-69211DA3-5CC8C8F7",
+          "276A3191-4EFF0C29-9BC4D38D-1AEF7CDD",
+          "D9F4C30F-4B897F32-BE657DAF-9B158EBD",
+          "36617B3D-4C018A65-2B46BDAF-5BBE2656",
+          "565B7393-43C030E9-35A527B7-1A74B15C",
+          "2EEF0C58-43DB817E-1D061CB4-2ACA27E0",
+          "890E764F-4F54AE28-CD773D85-9F998EC9"
+        ],
+        "MonsterTag": "MM_mon_026_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_027_BP": {
+        "Sort": 10270,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_27_Name",
+          "SourceString": "诺诺斯",
+          "LocalizedString": "诺诺斯"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_27.mon_27",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_27.mon_27",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_27_BP_Found",
+          "SourceString": "需使用方斯喂养，状似鹿的生物异象。\r\n由于独特的喂养方式与优雅的外形而颇受富人们的青睐。实际上生性相当凶猛，攻击时会外现体内尖利的骨刺。每年需要喂养巨额方斯才能让其保持听从指令的状态。",
+          "LocalizedString": "需使用方斯喂养，状似鹿的生物异象。\r\n由于独特的喂养方式与优雅的外形而颇受富人们的青睐。实际上生性相当凶猛，攻击时会外现体内尖利的骨刺。每年需要喂养巨额方斯才能让其保持听从指令的状态。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_27_BP_Unfound",
+          "SourceString": "需要用金钱滋养的美丽怪物，远远没有看上去那么温顺无害。",
+          "LocalizedString": "需要用金钱滋养的美丽怪物，远远没有看上去那么温顺无害。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_04",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -160420.0,
+            "Y": 185630.0,
+            "Z": 8620.0
+          },
+          {
+            "X": -170036.98,
+            "Y": 176024.38,
+            "Z": 8784.617
+          },
+          {
+            "X": -165296.0,
+            "Y": 180745.0,
+            "Z": 8801.0
+          },
+          {
+            "X": -165530.0,
+            "Y": 172370.0,
+            "Z": 8800.0
+          },
+          {
+            "X": 24901.246,
+            "Y": 138560.0,
+            "Z": 6493.0
+          },
+          {
+            "X": -168556.25,
+            "Y": 183961.75,
+            "Z": 8821.526
+          }
+        ],
+        "ArraySpawnerID": [
+          "B8EF92A0-4F5E1D19-E588FA90-BA7941D5",
+          "AAE770E9-49F5B8F8-8CD566A3-4EA05086",
+          "8F9BDCF2-42754C9D-10A9D29F-4FECE4F3",
+          "F6E3E9C7-463A1DDD-D3526A85-0905EEA0",
+          "11C9067C-4FF57214-F9B45B9B-81D32081",
+          "3CB9730B-44C73E03-1F9A99B4-1E3BB36E"
+        ],
+        "MonsterTag": "MM_mon_027_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_029_BP": {
+        "Sort": 10290,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_29_Name",
+          "SourceString": "唱片机附电灵",
+          "LocalizedString": "唱片机附电灵"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_29.mon_29",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_29.mon_29",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_029_BP_Found",
+          "SourceString": "生物异象附电灵附身在一台唱片机时的样子。\r\n寄居在唱片机里，在人类试图靠近或者触碰时会愤怒地发起攻击。因此如果看到某个电器上贴有「触碰禁止」的黄条，请勿靠近。",
+          "LocalizedString": "生物异象附电灵附身在一台唱片机时的样子。\r\n寄居在唱片机里，在人类试图靠近或者触碰时会愤怒地发起攻击。因此如果看到某个电器上贴有「触碰禁止」的黄条，请勿靠近。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_029_BP_Unfound",
+          "SourceString": "如果听到某首并没有发行的电音版歌曲，就要留心家里的唱片机里是否住进了一位奇妙的访客了……",
+          "LocalizedString": "如果听到某首并没有发行的电音版歌曲，就要留心家里的唱片机里是否住进了一位奇妙的访客了……"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_04",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -113385.81,
+            "Y": 148952.31,
+            "Z": 7382.9067
+          },
+          {
+            "X": -92405.234,
+            "Y": 94704.03,
+            "Z": 6560.0
+          },
+          {
+            "X": 19491.705,
+            "Y": 105658.66,
+            "Z": 6955.0107
+          },
+          {
+            "X": -50373.082,
+            "Y": 86102.37,
+            "Z": 3119.6323
+          },
+          {
+            "X": -141895.47,
+            "Y": 193480.75,
+            "Z": 8310.0
+          },
+          {
+            "X": -27192.545,
+            "Y": 23262.895,
+            "Z": 8267.244
+          },
+          {
+            "X": -50425.145,
+            "Y": 23758.223,
+            "Z": 7820.978
+          },
+          {
+            "X": 18277.719,
+            "Y": 18597.025,
+            "Z": 8598.164
+          },
+          {
+            "X": -43156.38,
+            "Y": -6302.0825,
+            "Z": 8289.995
+          }
+        ],
+        "ArraySpawnerID": [
+          "1F52A3CE-47D94D79-BB0225A4-8E446626",
+          "A33445DB-45C5F3E1-5DAB35AE-842113A9",
+          "FA85B09D-476709ED-1ADE10BB-0CE43BEF",
+          "8CF48332-4A156CEA-8AEBB4B8-350012B0",
+          "E7A32A1F-4B51406D-474DAF95-D5FBB25A",
+          "893C2E30-459AE7F3-D71EC78B-C40BE2E8",
+          "F1CA0AC7-413E5725-C1C499A4-5D832ECE",
+          "C19FA9F0-46F337E7-7730DCBD-8A7CEA8B",
+          "79FC95AA-4D9DCA7E-64A01F95-244C2FD6"
+        ],
+        "MonsterTag": "MM_mon_029_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_030_BP": {
+        "Sort": 10300,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_30_Name",
+          "SourceString": "扫晴娘",
+          "LocalizedString": "扫晴娘"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_30.mon_30",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_30_2.mon_30_2",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_030_BP_Found",
+          "SourceString": "形似清扫工具的温和的生物异象。\r\n扫晴娘会在雨天将雨水吸收暂存并在晴天排放，在过去很适合用来处理城镇内涝。但现在受到污染的雨却让扫晴娘变得迷茫混乱，甚至对人出现了攻击性，只有将污水清理干净才能让她们重新恢复。\r\n「在雨中哀怨，哀怨又彷徨。」\r\n只会在雪天/雨天才会出现。",
+          "LocalizedString": "形似清扫工具的温和的生物异象。\r\n扫晴娘会在雨天将雨水吸收暂存并在晴天排放，在过去很适合用来处理城镇内涝。但现在受到污染的雨却让扫晴娘变得迷茫混乱，甚至对人出现了攻击性，只有将污水清理干净才能让她们重新恢复。\r\n「在雨中哀怨，哀怨又彷徨。」\r\n只会在雪天/雨天才会出现。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_030_BP_Unfound",
+          "SourceString": "扫走乌云，扫出天晴。\r\n只会在雪天/雨天才会出现。",
+          "LocalizedString": "扫走乌云，扫出天晴。\r\n只会在雪天/雨天才会出现。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -8521.788,
+            "Y": -3813.8088,
+            "Z": 9278.217
+          },
+          {
+            "X": -112524.695,
+            "Y": 20245.328,
+            "Z": 9391.531
+          },
+          {
+            "X": -104105.125,
+            "Y": 31672.514,
+            "Z": 9102.77
+          },
+          {
+            "X": -16656.877,
+            "Y": 17467.514,
+            "Z": 9293.25
+          },
+          {
+            "X": -24563.441,
+            "Y": 19846.773,
+            "Z": 8963.328
+          },
+          {
+            "X": -36465.434,
+            "Y": -1455.3036,
+            "Z": 8361.592
+          },
+          {
+            "X": -92687.71,
+            "Y": 25617.113,
+            "Z": 8844.421
+          },
+          {
+            "X": -118268.914,
+            "Y": 131289.36,
+            "Z": 9976.346
+          },
+          {
+            "X": -85181.93,
+            "Y": -11281.752,
+            "Z": 9161.641
+          },
+          {
+            "X": 33725.895,
+            "Y": 94296.414,
+            "Z": 8896.832
+          },
+          {
+            "X": -113720.79,
+            "Y": 16500.57,
+            "Z": 9278.68
+          },
+          {
+            "X": 40791.4,
+            "Y": 23746.895,
+            "Z": 6954.4595
+          },
+          {
+            "X": -120030.81,
+            "Y": 110384.84,
+            "Z": 8735.327
+          },
+          {
+            "X": -115473.125,
+            "Y": 19219.178,
+            "Z": 9515.453
+          },
+          {
+            "X": -44879.0,
+            "Y": -18058.0,
+            "Z": 9238.359
+          },
+          {
+            "X": -50093.87,
+            "Y": -5866.424,
+            "Z": 7786.0586
+          },
+          {
+            "X": 36111.1,
+            "Y": 22150.92,
+            "Z": 7829.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "88D8E668-494FF03C-4C84E787-67D1405E",
+          "5F37380D-4566FC3A-BBF6E386-23A12418",
+          "089102B0-4D847D12-48946186-9997E387",
+          "68DEC1EF-4043594F-2BB531A1-EC41EEED",
+          "4412DDC0-4BEABC58-0C263492-A51F4097",
+          "B6D975C6-4D5C2A04-C8C52A99-03E966B6",
+          "C664168D-4220643D-73AF8097-9488FC51",
+          "8F4F06AF-42ABFCAD-A6EF6F97-631AEA2F",
+          "FFADE6B0-467EF74D-56D82FA9-E05B8135",
+          "C2D11367-49A00583-EBD58B95-9A1C02D7",
+          "30D36640-46580D6A-8B6F388C-CADE7EEC",
+          "611CFAD4-403B1E19-0E18B788-F4B31BB4",
+          "DB8DC4D5-4087DFB1-867A929B-9321A3AC",
+          "79549918-4423E2F8-B566D5B3-ECF9FB91",
+          "EB1DDD53-4553E9CA-208B68B3-C05F324C",
+          "12371C5D-41DCD644-3F5F5EA9-3EC11E8B",
+          "E7886C8B-460ACD4C-1F664A88-912FE0B5"
+        ],
+        "MonsterTag": "MM_mon_030_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_033_BP": {
+        "Sort": 10330,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_33_Name",
+          "SourceString": "流梦种",
+          "LocalizedString": "流梦种"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_33.mon_33",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_33.mon_33",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_33_BP_Found",
+          "SourceString": "没有找到自己稳定形态的生物异象。\r\n受到「知识、无意识」等方面影响的原核体，会流淌出带有「意识流」元素的墨汁。常出现在一些知识密集处或者与知识有关的异象附近。",
+          "LocalizedString": "没有找到自己稳定形态的生物异象。\r\n受到「知识、无意识」等方面影响的原核体，会流淌出带有「意识流」元素的墨汁。常出现在一些知识密集处或者与知识有关的异象附近。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_33_BP_Unfound",
+          "SourceString": "无意识游荡的怪物，一旦感受到外界的躁动便会暴露残忍的天性。",
+          "LocalizedString": "无意识游荡的怪物，一旦感受到外界的躁动便会暴露残忍的天性。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -45528.785,
+            "Y": 150897.55,
+            "Z": 2744.0
+          },
+          {
+            "X": -180195.62,
+            "Y": 155371.45,
+            "Z": 2284.4756
+          },
+          {
+            "X": -79246.086,
+            "Y": 13379.643,
+            "Z": 7663.0
+          },
+          {
+            "X": -170090.0,
+            "Y": 233960.0,
+            "Z": 2772.1326
+          },
+          {
+            "X": -127815.5,
+            "Y": 115462.37,
+            "Z": 7225.0
+          },
+          {
+            "X": -61295.76,
+            "Y": -7686.1084,
+            "Z": 7827.32
+          },
+          {
+            "X": -130050.0,
+            "Y": 229360.0,
+            "Z": 2530.0
+          },
+          {
+            "X": -74891.445,
+            "Y": 16725.297,
+            "Z": 7757.0654
+          },
+          {
+            "X": -192640.0,
+            "Y": 170430.0,
+            "Z": 2860.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "4342189C-4CF04DCD-7E9B88A0-6EF1A3EE",
+          "DA17D469-4C97AAE0-3C460282-1901125F",
+          "BF5C1580-4395DF48-CB2DA6BB-4C7A25F3",
+          "C01CBE8C-4CCE5329-20C4F292-356CFB4F",
+          "27DB882E-4F09D9EB-D9B2C28E-CD28E894",
+          "5C4A5277-46ECA5FA-C0C8A589-FB3C1ED3",
+          "3241FD42-4CE3EEA8-04A226A8-EB26F904",
+          "1F232222-49DE8373-21B4F5A5-D8381A2F",
+          "68DE0FE7-48852196-1A0E85A1-DA4EA8F4"
+        ],
+        "MonsterTag": "MM_mon_033_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_037_BP": {
+        "Sort": 10370,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_37_Name",
+          "SourceString": "ReroRero电话亭",
+          "LocalizedString": "ReroRero电话亭"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_37.mon_37",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_37.mon_37",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_037_BP_Found",
+          "SourceString": "状似电话亭的物体异象。\r\n隶属于尤克阿什庭，具有传送功能，异能者可以借助其快速穿梭于世界各地。\r\n吞食未知食物的电话亭会出现攻击性。",
+          "LocalizedString": "状似电话亭的物体异象。\r\n隶属于尤克阿什庭，具有传送功能，异能者可以借助其快速穿梭于世界各地。\r\n吞食未知食物的电话亭会出现攻击性。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_037_BP_Unfound",
+          "SourceString": "电话亭不能打电话听起来像是一个整蛊笑话，但讲笑话的人却一脸严肃。",
+          "LocalizedString": "电话亭不能打电话听起来像是一个整蛊笑话，但讲笑话的人却一脸严肃。"
+        },
+        "DropID": "drop_Mon_EliteMonMaterial_03",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": 34463.24,
+            "Y": 66678.58,
+            "Z": 5483.209
+          },
+          {
+            "X": -41306.676,
+            "Y": 122490.92,
+            "Z": 4423.254
+          },
+          {
+            "X": -88778.68,
+            "Y": 92869.24,
+            "Z": 4500.0
+          },
+          {
+            "X": -122818.12,
+            "Y": 176978.12,
+            "Z": 7058.9575
+          },
+          {
+            "X": 46661.008,
+            "Y": 115828.42,
+            "Z": 11118.121
+          },
+          {
+            "X": -147823.92,
+            "Y": 165261.73,
+            "Z": 8195.573
+          }
+        ],
+        "ArraySpawnerID": [
+          "665E1BAB-486925EE-749F5F9D-273F1CBC",
+          "56B37604-4DB304F5-13DC6DB0-9300A1F9",
+          "A380E823-40D84D6E-A9D4ECAF-A79BECBA",
+          "1CB47046-426B1561-3B4D64BA-AE47F632",
+          "74E4D370-4ED8688A-C09FE4BA-F9DF72CD",
+          "2030A8E9-498B3343-E8DFE5A2-11BE9462"
+        ],
+        "MonsterTag": "MM_mon_037_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_038_BP": {
+        "Sort": 10380,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_38_Name",
+          "SourceString": "无明众",
+          "LocalizedString": "无明众"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_38.mon_38",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_38.mon_38",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_38_BP_Found",
+          "SourceString": "海特洛市常见的小混混团体，挑衅车辆，违章超速，破坏公物，相当一部分成员狂热崇拜「无首铁驭」。虽然一般不会做出非常出格的事，但放任不管的话也会给城市治安带来不小的麻烦。",
+          "LocalizedString": "海特洛市常见的小混混团体，挑衅车辆，违章超速，破坏公物，相当一部分成员狂热崇拜「无首铁驭」。虽然一般不会做出非常出格的事，但放任不管的话也会给城市治安带来不小的麻烦。"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_38_BP_Unfound",
+          "SourceString": "海特洛市的混混团体，常出现在街头巷尾，大多数时候是令治安所头疼的存在。",
+          "LocalizedString": "海特洛市的混混团体，常出现在街头巷尾，大多数时候是令治安所头疼的存在。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_02",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": 44703.95,
+            "Y": 31154.18,
+            "Z": 8074.097
+          },
+          {
+            "X": 42718.242,
+            "Y": 35913.14,
+            "Z": 7014.283
+          },
+          {
+            "X": -21940.0,
+            "Y": 29138.0,
+            "Z": 7937.8306
+          },
+          {
+            "X": 44372.695,
+            "Y": 32366.969,
+            "Z": 7447.008
+          },
+          {
+            "X": -106801.29,
+            "Y": 159351.34,
+            "Z": 5576.0
+          },
+          {
+            "X": 40887.773,
+            "Y": 33041.285,
+            "Z": 7031.4595
+          },
+          {
+            "X": -179605.81,
+            "Y": 112161.07,
+            "Z": 7713.122
+          },
+          {
+            "X": 41245.324,
+            "Y": 31697.898,
+            "Z": 6975.6616
+          },
+          {
+            "X": -93600.0,
+            "Y": 64848.0,
+            "Z": 6528.0
+          },
+          {
+            "X": -43209.0,
+            "Y": 122008.0,
+            "Z": 4396.0
+          },
+          {
+            "X": -122160.0,
+            "Y": 7620.0,
+            "Z": 10955.0
+          },
+          {
+            "X": -154788.33,
+            "Y": 235158.97,
+            "Z": 5071.0
+          },
+          {
+            "X": 53900.766,
+            "Y": 12061.982,
+            "Z": 7573.704
+          },
+          {
+            "X": -112912.45,
+            "Y": 181678.5,
+            "Z": 6351.0
+          },
+          {
+            "X": -23405.0,
+            "Y": 53427.0,
+            "Z": 7373.9443
+          },
+          {
+            "X": -167350.0,
+            "Y": 95020.0,
+            "Z": 7935.0
+          },
+          {
+            "X": 42759.19,
+            "Y": 34592.09,
+            "Z": 7564.929
+          },
+          {
+            "X": 44245.86,
+            "Y": 34694.617,
+            "Z": 7542.898
+          },
+          {
+            "X": 42734.766,
+            "Y": 30722.902,
+            "Z": 7094.8193
+          },
+          {
+            "X": -36076.0,
+            "Y": 73221.0,
+            "Z": 6866.0
+          },
+          {
+            "X": 42840.543,
+            "Y": 33662.746,
+            "Z": 8189.493
+          },
+          {
+            "X": -41719.59,
+            "Y": -26988.033,
+            "Z": 11581.09
+          },
+          {
+            "X": -179737.0,
+            "Y": 127191.0,
+            "Z": 7477.0
+          },
+          {
+            "X": 5929.0,
+            "Y": 14312.0,
+            "Z": 8715.0
+          },
+          {
+            "X": 46242.0,
+            "Y": 111078.0,
+            "Z": 11154.0
+          },
+          {
+            "X": -34824.0,
+            "Y": 13608.0,
+            "Z": 8025.024
+          },
+          {
+            "X": -12246.0,
+            "Y": 146891.0,
+            "Z": 4274.0
+          }
+        ],
+        "ArraySpawnerID": [
+          "C93CAA86-4434A394-59D0C483-55EE9192",
+          "8AA33AA6-43919F40-FE1EB281-964245A1",
+          "7739CC58-4B01F2B8-78BD3BBA-86A3805F",
+          "7C1C4EDD-4F96DCCB-D84E2EB5-EB2A3C92",
+          "1EB6C3FD-4FB9C05C-3861E897-22CA25ED",
+          "E830BE35-4A83D710-12AB4292-9A61583F",
+          "73591A37-42E859CD-1CE2F083-4687B294",
+          "C366F6F3-441DFE43-82F2F9A5-484F4AD6",
+          "FA4CFDA7-4AD30F7E-F314B586-369110BA",
+          "7D57A024-4427DA22-BCE53C88-13307D70",
+          "1D2222BE-49D6D5A7-00D006B2-B17BF578",
+          "E79C3D76-4D46F457-42F817AD-1D94A182",
+          "6F058601-4163A4E2-CB3DE999-68D9A9E1",
+          "103A564E-4C679605-C2F1CC8A-E3F9741D",
+          "5D6A7927-4786F428-B8D5E980-7CBE5CA0",
+          "9DD717E3-4E581B41-787E16B0-0C13F679",
+          "A71287D4-4FC9FC10-B89E9E98-E7D17E76",
+          "CF17771C-456298CD-5EE374BF-10E3CA8A",
+          "56F843D8-44DE6A0C-D27FBFB3-70D52B7B",
+          "55895901-44B42480-51E9C5AE-507C2C65",
+          "283B68F6-479F2DA5-DCD6058B-09874382",
+          "222D0162-4F6DC805-17826194-726497A4",
+          "691BA10F-4510AE19-9054658D-2845108D",
+          "51BDC6F1-400BF9CD-C5A55A97-5281DFC0",
+          "A9451EEB-446701EE-16B03CA6-29894470",
+          "A580500B-44950B34-8D7B3B8C-F58691BC",
+          "E9971FC5-499BDCB4-798E71A4-7E9CFE01"
+        ],
+        "MonsterTag": "MM_mon_038_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_041_BP": {
+        "Sort": 10410,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_41_Name",
+          "SourceString": "羽偶",
+          "LocalizedString": "羽偶"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Normal",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_41.mon_41",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_41.mon_41",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_041_BP_Found",
+          "SourceString": "囿巢鸟的衍生异象，像是粗制滥造的儿童玩具。\r\n鸟母的羽毛，小孩遗失的玩具，破烂的毛线球，撕碎的旧报纸构成一个个空心的「羽偶」。\r\n「妈妈为我做了骨，兄弟姐妹成了我的肉，『爱』在我血管里流淌。」",
+          "LocalizedString": "囿巢鸟的衍生异象，像是粗制滥造的儿童玩具。\r\n鸟母的羽毛，小孩遗失的玩具，破烂的毛线球，撕碎的旧报纸构成一个个空心的「羽偶」。\r\n「妈妈为我做了骨，兄弟姐妹成了我的肉，『爱』在我血管里流淌。」"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_041_BP_Unfound",
+          "SourceString": "嗷嗷待哺的幼鸟，每一声啼泣都是对鸟母的诘问。",
+          "LocalizedString": "嗷嗷待哺的幼鸟，每一声啼泣都是对鸟母的诘问。"
+        },
+        "DropID": "drop_Mon_OrdinaryMonMaterial_01",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -142330.0,
+            "Y": 224980.0,
+            "Z": 9230.0
+          },
+          {
+            "X": -154780.0,
+            "Y": 226210.0,
+            "Z": 11120.0
+          },
+          {
+            "X": -194906.6,
+            "Y": 198830.86,
+            "Z": 12922.711
+          },
+          {
+            "X": -57492.875,
+            "Y": 87522.06,
+            "Z": 2592.393
+          },
+          {
+            "X": -207611.56,
+            "Y": 210262.11,
+            "Z": 12362.606
+          }
+        ],
+        "ArraySpawnerID": [
+          "E64342CD-42E1F9E5-E2138DA7-F4237106",
+          "A036888C-4883A4F2-5FEDF6BF-59447E81",
+          "34FB43A5-4C4EE776-BEC39491-18CDABB9",
+          "C4E66537-4BCEE76A-F4B7DCAC-F76EBC86",
+          "6E857A69-4DB30F19-D715209D-2567CC04"
+        ],
+        "MonsterTag": "MM_mon_41_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      },
+      "mon_048_BP": {
+        "Sort": 10480,
+        "MonsterName": {
+          "TableId": "/Game/Text/ST_ActorName.ST_ActorName",
+          "Key": "mon_48_Name",
+          "SourceString": "瓦楞城堡",
+          "LocalizedString": "瓦楞城堡"
+        },
+        "EnemyType": "EMonsterManualEnemyType::Elite",
+        "EnemyImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/200x200/mon_48.mon_48",
+          "SubPathString": ""
+        },
+        "EnemyWorldImage": {
+          "AssetPathName": "/Game/UI/UI/MonsterManual/MonsterHeadIcon/Mapicon_128x128/mon_48.mon_48",
+          "SubPathString": ""
+        },
+        "EnemyPlace": {
+          "TableId": "/Game/Text/Minimap/ST_MapAreaDetails.ST_MapAreaDetails",
+          "Key": "Map_City01",
+          "SourceString": "海特洛市",
+          "LocalizedString": "海特洛市"
+        },
+        "DiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_48_BP_Found",
+          "SourceString": "状似立体书的物体异象。\r\n如果看到地上奇怪的蜡封并走过去的话，会发现脚下的大地逐渐展开……一本打开的立体书？是来到了童话中的世界吗？话说回来，这座城堡真的可以进去吗？",
+          "LocalizedString": "状似立体书的物体异象。\r\n如果看到地上奇怪的蜡封并走过去的话，会发现脚下的大地逐渐展开……一本打开的立体书？是来到了童话中的世界吗？话说回来，这座城堡真的可以进去吗？"
+        },
+        "UndiscoveredDesc": {
+          "TableId": "/Game/Text/ST_MonsterManual.ST_MonsterManual",
+          "Key": "mon_48_BP_Unfound",
+          "SourceString": "打开立体书的时候发现自己跌进了一座城堡？身处奇幻的世界，一切皆有可能发生。",
+          "LocalizedString": "打开立体书的时候发现自己跌进了一座城堡？身处奇幻的世界，一切皆有可能发生。"
+        },
+        "DropID": "drop_Mon_EliteMonMaterial_03",
+        "StaminaNum": 0,
+        "TraceType": "EMonsterManualTraceType::BigWorldEnemy",
+        "MapIconID": "MonsterTrace",
+        "ArrayWorldLocation": [
+          {
+            "X": -51448.816,
+            "Y": 47714.04,
+            "Z": 13358.186
+          },
+          {
+            "X": -126782.0,
+            "Y": 76776.0,
+            "Z": 9102.0
+          },
+          {
+            "X": -13531.608,
+            "Y": 110083.164,
+            "Z": 12189.247
+          }
+        ],
+        "ArraySpawnerID": [
+          "6B24AA4D-43700A60-92602181-02621C9F",
+          "2A8EA4B9-47EFE46C-BF37E5B3-7B4F331F",
+          "D47786C0-43A4531D-FE55B593-BFABD51B"
+        ],
+        "MonsterTag": "MM_mon_048_BP",
+        "QuestId": "None",
+        "VisionID": "None",
+        "WorldBossID": "None",
+        "CloneID": "None",
+        "CloneEnterID": "None"
+      }
+    }
+  }
+]

@@ -23,15 +23,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::capture::{
-    CaptureDevice, CaptureHandle, RawCaptureBuffer, import_capture_json, import_pcapng,
-    list_devices, start_capture,
+    CaptureDevice, CaptureHandle, CaptureOptions, RawCaptureBuffer, import_capture_json,
+    import_pcapng, list_devices, start_capture,
 };
 use crate::config::{self, UiConfig};
 use crate::file_drop::NativeFileDrop;
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, CharacterStats, CombatState, EngineEvent,
-    HitDirectionSummary, PartyCombatState, summarize_hit_directions,
+    HitDirectionSummary, PacketDebugMode, PartyCombatState, summarize_hit_directions,
 };
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, load_characters};
@@ -374,7 +374,10 @@ pub struct DpsApp {
     debug_corner_applied: bool,
     debug_tab: DebugTab,
     debug_only_hits: bool,
+    debug_full_payload: bool,
     debug_search: String,
+    export_debug_packets: bool,
+    save_raw_capture: bool,
     character_editor: CharacterEditorState,
     paused: bool,
     dark_mode: bool,
@@ -502,7 +505,10 @@ impl DpsApp {
             debug_corner_applied: false,
             debug_tab: DebugTab::Packets,
             debug_only_hits: false,
+            debug_full_payload: false,
             debug_search: String::new(),
+            export_debug_packets: false,
+            save_raw_capture: false,
             character_editor,
             paused: false,
             dark_mode: ui_config.dark_mode,
@@ -770,17 +776,30 @@ impl DpsApp {
         };
         let local_ip = self.game_network.as_ref().map(|network| network.local_ip);
         let capture_filter = self.filter.clone();
+        let packet_debug_mode = if self.debug_open {
+            if self.debug_full_payload {
+                PacketDebugMode::FullPayload
+            } else {
+                PacketDebugMode::Summary
+            }
+        } else {
+            PacketDebugMode::Off
+        };
         self.reset_combat_session();
         let capture = start_capture(
             device,
             local_ip,
             capture_filter.clone(),
-            self.include_incoming,
+            CaptureOptions {
+                include_incoming: self.include_incoming,
+                packet_debug_mode,
+                save_raw_capture: self.save_raw_capture,
+            },
             self.characters.clone(),
             self.sender.clone(),
         );
         self.active_capture_filter = Some(capture_filter);
-        self.raw_capture = Some(capture.raw_capture());
+        self.raw_capture = capture.raw_capture();
         self.capture = Some(capture);
         self.status = "正在启动实时抓包...".to_owned();
     }
@@ -797,6 +816,9 @@ impl DpsApp {
         self.status = "已检测到游戏，准备就绪".to_owned();
         self.diagnostic = None;
         self.game_network = Some(network);
+        if self.filter.trim().is_empty() {
+            self.filter = "udp".to_owned();
+        }
         Ok(())
     }
 
@@ -816,6 +838,7 @@ impl DpsApp {
             self.characters.clone(),
             local_ip_hint,
             self.include_incoming,
+            PacketDebugMode::Off,
             self.sender.clone(),
             stop.clone(),
         ));
@@ -832,7 +855,12 @@ impl DpsApp {
         self.active_capture_filter = None;
         self.reset_combat_session();
         let stop = Arc::new(AtomicBool::new(false));
-        self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
+        self.replay_thread = Some(import_capture_json(
+            path,
+            PacketDebugMode::Off,
+            self.sender.clone(),
+            stop.clone(),
+        ));
         self.replay_stop = Some(stop);
         self.status = "正在导入抓包 JSON...".to_owned();
     }
@@ -1193,7 +1221,11 @@ impl DpsApp {
 
     fn capture_export_json(&self) -> String {
         let duration = self.state.duration().max(0.001);
-        let packet_count = self.state.packets.len();
+        let packet_count = if self.export_debug_packets {
+            self.state.packets.len()
+        } else {
+            0
+        };
         let hit_count = self.state.hits.len();
         let started_at = self.state.started_at;
         let ended_at = self
@@ -1201,7 +1233,12 @@ impl DpsApp {
             .hits
             .iter()
             .map(|hit| hit.timestamp)
-            .chain(self.state.packets.iter().map(|packet| packet.timestamp))
+            .chain(
+                self.export_debug_packets
+                    .then_some(())
+                    .into_iter()
+                    .flat_map(|_| self.state.packets.iter().map(|packet| packet.timestamp)),
+            )
             .max_by(|left, right| left.total_cmp(right));
 
         let mut rows: Vec<_> = self.state.stats.values().collect();
@@ -1511,7 +1548,17 @@ impl DpsApp {
         writeln!(&mut out, "  ],").ok();
 
         writeln!(&mut out, "  \"packets\": [").ok();
-        for (index, packet) in self.state.packets.iter().enumerate() {
+        for (index, packet) in self
+            .state
+            .packets
+            .iter()
+            .take(if self.export_debug_packets {
+                self.state.packets.len()
+            } else {
+                0
+            })
+            .enumerate()
+        {
             writeln!(&mut out, "    {{").ok();
             writeln!(
                 &mut out,
@@ -1558,12 +1605,14 @@ impl DpsApp {
                 json_string(&packet.payload_preview)
             )
             .ok();
-            writeln!(
-                &mut out,
-                "      \"payload_hex\": {},",
-                json_string(&packet.payload_hex)
-            )
-            .ok();
+            if !packet.payload_hex.is_empty() {
+                writeln!(
+                    &mut out,
+                    "      \"payload_hex\": {},",
+                    json_string(&packet.payload_hex)
+                )
+                .ok();
+            }
             writeln!(
                 &mut out,
                 "      \"decoded_text\": {}",
@@ -2892,6 +2941,15 @@ impl DpsApp {
                         ui.label("BPF");
                         ui.add(egui::TextEdit::singleline(&mut self.filter).desired_width(220.0));
                         ui.end_row();
+                        ui.label("调试封包");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.debug_full_payload, "保存 payload_hex");
+                            ui.checkbox(&mut self.export_debug_packets, "导出调试封包");
+                        });
+                        ui.end_row();
+                        ui.label("原始抓包");
+                        ui.checkbox(&mut self.save_raw_capture, "保存完整原始抓包");
+                        ui.end_row();
                         ui.label("实际 BPF");
                         ui.monospace(self.active_capture_filter.as_deref().unwrap_or_else(|| {
                             if self.capture.is_some() {
@@ -2901,12 +2959,12 @@ impl DpsApp {
                             }
                         }));
                         ui.end_row();
-                        ui.label("原始抓包");
+                        ui.label("原始抓包状态");
                         let raw_capture_label = self.raw_capture.as_ref().map_or_else(
-                            || "无原始抓包".to_owned(),
+                            || "未启用".to_owned(),
                             |capture| {
                                 let path = capture.path().map_or_else(
-                                    || "写入不可用".to_owned(),
+                                    || "未启用".to_owned(),
                                     |path| path.display().to_string(),
                                 );
                                 format!("{} 包 · {path}", capture.packet_count())
@@ -2924,7 +2982,8 @@ impl DpsApp {
                     ui.label("受击记录已启用");
                     let can_export_json = self.capture.is_none()
                         && self.replay_thread.is_none()
-                        && (!self.state.hits.is_empty() || !self.state.packets.is_empty());
+                        && (!self.state.hits.is_empty()
+                            || (self.export_debug_packets && !self.state.packets.is_empty()));
                     if ui
                         .add_enabled(can_export_json, egui::Button::new("导出解析 JSON"))
                         .clicked()

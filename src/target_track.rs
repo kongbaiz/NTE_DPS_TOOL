@@ -4,14 +4,19 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::model::Hit;
 use crate::object_state::is_ignored_non_target_path;
+use crate::target_alias::{
+    hp_alias_keys as hp_handle_keys, non_hp_alias_keys, target_context_value,
+};
 use crate::target_fact::DamageHitFact;
 use crate::target_identity::{
-    canonical_target_key_for_path, canonical_target_key_from_name_and_path,
+    canonical_target_key_for_path, canonical_target_key_from_name_and_path, is_boss_target_key,
+    is_small_monster_target_key,
 };
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary};
 
 const ACTIVE_TRACK_WINDOW_SECONDS: f64 = 3.5;
 const HP_CONTINUITY_WINDOW_SECONDS: f64 = 3.5;
+const EXACT_ALIAS_TTL_SECONDS: f64 = 30.0;
 const HANDLE_QUARANTINE_SECONDS: f64 = 8.0;
 const HP_MATCH_TOLERANCE_ABSOLUTE: f64 = 2.0;
 const HP_MATCH_TOLERANCE_RATIO: f64 = 0.002;
@@ -45,6 +50,7 @@ pub enum TrackIdentitySource {
     NonHpAlias,
     DirectHpTimeline,
     DirectHpDelta,
+    HitLocalPathHpStream,
 }
 
 #[derive(Clone, Debug)]
@@ -82,6 +88,8 @@ pub struct TargetTrack {
 pub struct TrackPacketContext {
     pub canonical_target_paths: HashSet<String>,
     pub canonical_target_names: HashSet<String>,
+    pub local_canonical_target_paths: HashSet<String>,
+    pub local_canonical_target_names: HashSet<String>,
     pub hp_handle_keys: HashSet<String>,
     pub has_multiple_canonical_targets: bool,
 }
@@ -191,7 +199,9 @@ impl TargetTrackStore {
             .track_for_non_hp_aliases(&non_hp_aliases)
             .or_else(|| self.single_active_same_canonical_key_track(&canonical_key, fact.timestamp))
             .or_else(|| self.track_for_hp_handle_same_canonical_key(&hp_handles, &canonical_key))
-            .unwrap_or_else(|| self.create_track(&canonical_key, &path, fact.timestamp));
+            .unwrap_or_else(|| {
+                self.create_authoritative_track(&canonical_key, &path, fact.timestamp)
+            });
 
         let Some(track) = self.tracks.get_mut(&track_key) else {
             return AttributionResult::default();
@@ -306,6 +316,23 @@ impl TargetTrackStore {
             );
         }
 
+        if let Some(track_key) = self.learn_single_canonical_alias_track(
+            hit,
+            summary,
+            fact,
+            context,
+            &non_hp_aliases,
+            &hp_handles,
+        ) {
+            return self.project_track_key_to_hit(
+                &track_key,
+                hit,
+                summary,
+                fact,
+                "single_canonical_alias_track",
+            );
+        }
+
         let matches = self.matching_track_keys_for_hit(fact);
         append_track_diagnostics(hit, self.active_track_count(fact.timestamp), matches.len());
         if matches.len() == 1 {
@@ -315,6 +342,17 @@ impl TargetTrackStore {
                 "single_active_track_projection"
             };
             return self.project_track_key_to_hit(&matches[0], hit, summary, fact, reason);
+        }
+        if let Some(track_key) =
+            self.learn_hit_local_path_hp_stream_track(hit, summary, fact, context)
+        {
+            return self.project_track_key_to_hit(
+                &track_key,
+                hit,
+                summary,
+                fact,
+                "hit_local_path_hp_stream",
+            );
         }
         if matches.len() > 1 {
             push_ambiguous_context(hit);
@@ -331,43 +369,20 @@ impl TargetTrackStore {
                 ..Default::default()
             };
         }
-        if matches.is_empty()
-            && self.active_track_count(fact.timestamp) == 0
-            && is_dot_or_followup_damage(hit)
-            && !context.has_multiple_canonical_targets
-            && context.canonical_target_paths.len() == 1
-            && context.canonical_target_names.len() == 1
-        {
-            let path = context
-                .canonical_target_paths
-                .iter()
-                .next()
-                .expect("checked one path")
-                .clone();
-            let name = context
-                .canonical_target_names
-                .iter()
-                .next()
-                .expect("checked one name")
-                .clone();
-            let canonical_key = canonical_target_key_from_name_and_path(&name, &path)
-                .unwrap_or_else(|| fallback_canonical_key(&path));
-            let track_key = self.create_track(&canonical_key, &path, fact.timestamp);
-            if let Some(track) = self.tracks.get_mut(&track_key) {
-                track.target_name = Some(name);
-                track.display_target_path = Some(path.clone());
-                track.observed_paths.insert(path);
-                track.label_state = TargetLabelState::Locked;
-                track.lifecycle = TargetLifecycle::Active;
-                track.source = Some(TrackIdentitySource::DirectHpTimeline);
-            }
-            return self.project_track_key_to_hit(
-                &track_key,
-                hit,
-                summary,
-                fact,
-                "single_active_track_dot",
+        if has_multi_target_context(hit) {
+            push_ambiguous_context(hit);
+            replace_or_push_context(&mut hit.target_context, "track_decision", "not_projected");
+            replace_or_push_context(
+                &mut hit.target_context,
+                "track_reject_reason",
+                "ambiguous_multi_target_context",
             );
+            summary.target_context = hit.target_context.clone();
+            return AttributionResult {
+                ambiguous: true,
+                reason: Some("ambiguous_multi_target_context".to_owned()),
+                ..Default::default()
+            };
         }
         push_track_reject(
             hit,
@@ -381,6 +396,158 @@ impl TargetTrackStore {
         );
         summary.target_context = hit.target_context.clone();
         AttributionResult::default()
+    }
+
+    fn learn_single_canonical_alias_track(
+        &mut self,
+        hit: &mut Hit,
+        summary: &mut TargetResolutionSummary,
+        fact: &DamageHitFact,
+        context: &TrackPacketContext,
+        non_hp_aliases: &HashSet<String>,
+        hp_handles: &HashSet<String>,
+    ) -> Option<String> {
+        let (path, name) = unique_context_target(context, false)?;
+        if is_dot_or_followup_damage(hit)
+            || context.has_multiple_canonical_targets
+            || (non_hp_aliases.is_empty() && hp_handles.is_empty())
+            || has_multi_target_context(hit)
+        {
+            return None;
+        }
+        let canonical_key = canonical_target_key_from_name_and_path(&name, &path)
+            .unwrap_or_else(|| fallback_canonical_key(&path));
+
+        if self.alias_conflict(hit, non_hp_aliases, &canonical_key, &name, false)
+            || self.alias_conflict(hit, hp_handles, &canonical_key, &name, true)
+        {
+            summary.target_context = hit.target_context.clone();
+            return None;
+        }
+
+        let track_key = self
+            .track_for_non_hp_aliases(non_hp_aliases)
+            .or_else(|| self.track_for_hp_handle_same_canonical_key(hp_handles, &canonical_key))
+            .or_else(|| self.single_active_same_canonical_key_track(&canonical_key, fact.timestamp))
+            .unwrap_or_else(|| {
+                self.create_authoritative_track(&canonical_key, &path, fact.timestamp)
+            });
+        let track = self.tracks.get_mut(&track_key)?;
+        if track.canonical_target_key != canonical_key {
+            push_unique_context(
+                &mut hit.target_context,
+                "target_conflict=locked_path_mismatch".to_owned(),
+            );
+            summary.target_context = hit.target_context.clone();
+            return None;
+        }
+        track.target_name = Some(name.clone());
+        track.display_target_path = Some(path.clone());
+        track.observed_paths.insert(path);
+        track.label_state = TargetLabelState::Locked;
+        track.lifecycle = TargetLifecycle::Active;
+        track.source = Some(stronger_source(
+            track.source,
+            if non_hp_aliases.is_empty() {
+                TrackIdentitySource::DirectHpTimeline
+            } else {
+                TrackIdentitySource::NonHpAlias
+            },
+        ));
+        update_track_damage(track, fact);
+        for key in non_hp_aliases {
+            track.non_hp_aliases.insert(key.clone());
+            self.non_hp_alias_index
+                .insert(key.clone(), track_key.clone());
+        }
+        for key in hp_handles {
+            track.hp_handles.insert(key.clone());
+            self.hp_handle_index.insert(key.clone(), track_key.clone());
+        }
+        Some(track_key)
+    }
+
+    fn learn_hit_local_path_hp_stream_track(
+        &mut self,
+        hit: &mut Hit,
+        summary: &mut TargetResolutionSummary,
+        fact: &DamageHitFact,
+        context: &TrackPacketContext,
+    ) -> Option<String> {
+        if is_dot_or_followup_damage(hit)
+            || has_multi_target_context(hit)
+            || !hit_has_target_vector_token(hit)
+        {
+            return None;
+        }
+        let (path, name) = unique_context_target(context, true)?;
+        let canonical_key = canonical_target_key_from_name_and_path(&name, &path)
+            .unwrap_or_else(|| fallback_canonical_key(&path));
+        if is_boss_target_key(&canonical_key) {
+            push_unique_context(
+                &mut hit.target_context,
+                "target_track_kind=boss_strong_evidence_required".to_owned(),
+            );
+            summary.target_context = hit.target_context.clone();
+            return None;
+        }
+        if !is_small_monster_target_key(&canonical_key) {
+            return None;
+        }
+        let mut matches = self
+            .active_tracks(fact.timestamp)
+            .filter(|track| track.canonical_target_key == canonical_key)
+            .filter(|track| track_can_explain_hit(track, fact))
+            .map(|track| track.track_id.0.clone())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        let track_key = if matches.len() == 1 {
+            matches.remove(0)
+        } else {
+            if matches.len() > 1 {
+                push_unique_context(
+                    &mut hit.target_context,
+                    "target_instance_split=same_name_multi_instance".to_owned(),
+                );
+            }
+            self.create_authoritative_track(&canonical_key, &path, fact.timestamp)
+        };
+        let track = self.tracks.get_mut(&track_key)?;
+        if track.canonical_target_key != canonical_key {
+            push_unique_context(
+                &mut hit.target_context,
+                "target_conflict=locked_path_mismatch".to_owned(),
+            );
+            summary.target_context = hit.target_context.clone();
+            return None;
+        }
+        if track
+            .target_name
+            .as_deref()
+            .is_some_and(|existing| existing != name)
+        {
+            push_unique_context(
+                &mut hit.target_context,
+                "target_conflict=locked_name_mismatch".to_owned(),
+            );
+            summary.target_context = hit.target_context.clone();
+            return None;
+        }
+        track.target_name = Some(name.clone());
+        track.display_target_path = Some(path.clone());
+        track.observed_paths.insert(path);
+        track.label_state = TargetLabelState::Locked;
+        track.lifecycle = if hit.target_hp_after <= 1.0 {
+            TargetLifecycle::Dying
+        } else {
+            TargetLifecycle::Active
+        };
+        track.source = Some(stronger_source(
+            track.source,
+            TrackIdentitySource::HitLocalPathHpStream,
+        ));
+        Some(track_key)
     }
 
     fn attribute_terminal_hit(
@@ -457,7 +624,12 @@ impl TargetTrackStore {
         track.quarantined_at = Some(timestamp);
     }
 
-    fn create_track(&mut self, canonical_key: &str, display_path: &str, timestamp: f64) -> String {
+    fn create_authoritative_track(
+        &mut self,
+        canonical_key: &str,
+        display_path: &str,
+        timestamp: f64,
+    ) -> String {
         let generation = self
             .generation_by_canonical_key
             .entry(canonical_key.to_owned())
@@ -469,6 +641,39 @@ impl TargetTrackStore {
             TargetTrack {
                 track_id: TargetTrackId(track_key.clone()),
                 generation: *generation,
+                canonical_target_key: canonical_key.to_owned(),
+                target_name: None,
+                display_target_path: Some(display_path.to_owned()),
+                observed_paths: HashSet::from([display_path.to_owned()]),
+                label_state: TargetLabelState::Provisional,
+                lifecycle: TargetLifecycle::Provisional,
+                first_seen_at: timestamp,
+                last_seen_at: timestamp,
+                last_damage_at: None,
+                hp_timeline: VecDeque::new(),
+                non_hp_aliases: HashSet::new(),
+                hp_handles: HashSet::new(),
+                assigned_hit_uids: HashSet::new(),
+                conflict_flags: HashSet::new(),
+                source: None,
+                quarantined_at: None,
+            },
+        );
+        track_key
+    }
+
+    fn create_provisional_track(
+        &mut self,
+        canonical_key: &str,
+        display_path: &str,
+        timestamp: f64,
+    ) -> String {
+        let track_key = format!("{canonical_key}#provisional@{}", timestamp.to_bits());
+        self.tracks.insert(
+            track_key.clone(),
+            TargetTrack {
+                track_id: TargetTrackId(track_key.clone()),
+                generation: 0,
                 canonical_target_key: canonical_key.to_owned(),
                 target_name: None,
                 display_target_path: Some(display_path.to_owned()),
@@ -848,6 +1053,9 @@ fn track_usable_for_exact_alias(track: &TargetTrack, timestamp: f64, hp_handle: 
     if timestamp < track.last_seen_at {
         return false;
     }
+    if timestamp - track.last_seen_at > EXACT_ALIAS_TTL_SECONDS {
+        return false;
+    }
     match track.lifecycle {
         TargetLifecycle::Dead | TargetLifecycle::Expired => false,
         TargetLifecycle::Quarantined if hp_handle => false,
@@ -877,128 +1085,38 @@ fn identity_source_rank(source: TrackIdentitySource) -> u8 {
         TrackIdentitySource::RuntimeAlias => 4,
         TrackIdentitySource::NonHpAlias => 3,
         TrackIdentitySource::DirectHpTimeline => 2,
+        TrackIdentitySource::HitLocalPathHpStream => 2,
         TrackIdentitySource::DirectHpDelta => 1,
     }
+}
+
+fn unique_context_target(
+    context: &TrackPacketContext,
+    local_only: bool,
+) -> Option<(String, String)> {
+    let (paths, names) = if local_only || !context.local_canonical_target_paths.is_empty() {
+        (
+            &context.local_canonical_target_paths,
+            &context.local_canonical_target_names,
+        )
+    } else {
+        (
+            &context.canonical_target_paths,
+            &context.canonical_target_names,
+        )
+    };
+    if paths.len() != 1 || names.len() != 1 {
+        return None;
+    }
+    Some((paths.iter().next()?.clone(), names.iter().next()?.clone()))
 }
 
 fn has_non_hp_alias(hit: &Hit) -> bool {
     !non_hp_alias_keys(hit.target_id.as_ref(), &hit.target_context).is_empty()
 }
 
-fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .find_map(|value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
-fn target_context_values<'a>(context: &'a [String], key: &str) -> impl Iterator<Item = &'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .filter_map(move |value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
-fn non_hp_alias_keys(target_id: Option<&String>, context: &[String]) -> HashSet<String> {
-    let mut keys = HashSet::new();
-    if let Some(target_id) = target_id.filter(|id| !is_hp_alias_key(id)) {
-        extend_alias_keys(&mut keys, target_id);
-    }
-    for key in [
-        "actor_channel",
-        "iris_ref32",
-        "netguid32",
-        "netguid_packed",
-        "sdk_net_target",
-    ] {
-        for value in target_context_values(context, key) {
-            extend_alias_keys(&mut keys, &format!("{key}:{value}"));
-        }
-    }
-    for value in target_context_values(context, "target_handle_candidate") {
-        if !is_hp_alias_key(value) {
-            extend_alias_keys(&mut keys, value);
-        }
-    }
-    keys.retain(|key| !is_hp_alias_key(key));
-    keys
-}
-
-fn hp_handle_keys(target_id: Option<&String>, context: &[String]) -> HashSet<String> {
-    let mut keys = HashSet::new();
-    if let Some(target_id) = target_id.filter(|id| is_hp_alias_key(id)) {
-        extend_alias_keys(&mut keys, target_id);
-    }
-    for value in target_context_values(context, "target_handle_candidate") {
-        if is_hp_alias_key(value) {
-            extend_alias_keys(&mut keys, value);
-        }
-    }
-    for value in target_context_values(context, "boss_hp_guid") {
-        extend_alias_keys(&mut keys, &format!("boss_hp_guid:{value}"));
-    }
-    for value in target_context_values(context, "current_hp_token") {
-        extend_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
-    }
-    keys.retain(|key| is_hp_alias_key(key));
-    keys
-}
-
-fn extend_alias_keys(keys: &mut HashSet<String>, key: &str) {
-    for key in equivalent_alias_keys(key) {
-        keys.insert(key);
-    }
-}
-
-fn equivalent_alias_keys(key: &str) -> Vec<String> {
-    let key = normalize_alias_key(key);
-    let mut keys = vec![key.clone()];
-    if let Some(value) = key.strip_prefix("AttributeGuid:") {
-        keys.push(format!("boss_hp_guid:{value}"));
-    } else if let Some(value) = key.strip_prefix("boss_hp_guid:") {
-        keys.push(format!("AttributeGuid:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:currenthp:") {
-        keys.push(format!("current_hp_token:{value}"));
-    } else if let Some(value) = key.strip_prefix("current_hp_token:") {
-        keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:sdk_target:") {
-        keys.push(format!("sdk_net_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("sdk_net_target:") {
-        keys.push(format!("NetRefHandleCandidate:sdk_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:") {
-        keys.push(format!("iris_ref32:{value}"));
-    } else if let Some(value) = key.strip_prefix("iris_ref32:") {
-        keys.push(format!("NetRefHandleCandidate:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetGuidCandidate:") {
-        keys.push(format!("netguid32:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid32:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid_packed:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid32:{value}"));
-    }
-    keys
-}
-
-fn is_hp_alias_key(key: &str) -> bool {
-    key.starts_with("AttributeGuid:")
-        || key.starts_with("boss_hp_guid:")
-        || key.starts_with("current_hp_token:")
-        || key.starts_with("NetRefHandleCandidate:currenthp:")
-}
-
-fn normalize_alias_key(key: &str) -> String {
-    let key = key.trim().split('|').next().unwrap_or(key.trim());
-    let Some((kind, value)) = key.split_once(':') else {
-        return key.to_owned();
-    };
-    format!("{kind}:{}", value.trim().to_ascii_lowercase())
+fn hit_has_target_vector_token(hit: &Hit) -> bool {
+    target_context_value(&hit.target_context, "hit_target_vector_token").is_some()
 }
 
 fn replace_or_push_context(context: &mut Vec<String>, key: &str, value: &str) {
@@ -1074,6 +1192,15 @@ fn has_target_track_id(hit: &Hit) -> bool {
     target_context_value(&hit.target_context, "target_track_id").is_some()
 }
 
+fn has_multi_target_context(hit: &Hit) -> bool {
+    hit.target_context.iter().any(|entry| {
+        entry.starts_with("reason=active_named_instances:")
+            || entry == "reason=conflict:multiple_candidates"
+            || entry == "target_suppressed=ambiguous_multi_target"
+            || entry == "target_unresolved=ambiguous_multi_target"
+    })
+}
+
 fn remove_stale_unresolved_context(context: &mut Vec<String>) {
     context.retain(|entry| {
         !matches!(
@@ -1087,9 +1214,22 @@ fn remove_stale_unresolved_context(context: &mut Vec<String>) {
 }
 
 fn remove_same_canonical_path_mismatch(hit: &mut Hit, track: &TargetTrack) {
-    let same_canonical = target_context_value(&hit.target_context, "target_path")
-        .and_then(canonical_target_key_for_path)
-        .is_some_and(|key| key == track.canonical_target_key);
+    let same_canonical = [
+        "canonical_target_key",
+        "target_path",
+        "observed_target_path",
+    ]
+    .into_iter()
+    .any(|key| {
+        target_context_value(&hit.target_context, key).is_some_and(|value| {
+            if key == "canonical_target_key" {
+                value == track.canonical_target_key
+            } else {
+                canonical_target_key_for_path(value)
+                    .is_some_and(|canonical| canonical == track.canonical_target_key)
+            }
+        })
+    });
     if same_canonical {
         hit.target_context
             .retain(|entry| entry != "target_conflict=locked_path_mismatch");
@@ -1171,6 +1311,17 @@ mod tests {
             direct_hp_evidence: true,
         };
         (hit, summary)
+    }
+
+    fn local_target_context(path: &str, name: &str) -> TrackPacketContext {
+        TrackPacketContext {
+            canonical_target_paths: HashSet::from([path.to_owned()]),
+            canonical_target_names: HashSet::from([name.to_owned()]),
+            local_canonical_target_paths: HashSet::from([path.to_owned()]),
+            local_canonical_target_names: HashSet::from([name.to_owned()]),
+            hp_handle_keys: HashSet::new(),
+            has_multiple_canonical_targets: false,
+        }
     }
 
     #[test]
@@ -1294,6 +1445,177 @@ mod tests {
     }
 
     #[test]
+    fn dot_without_active_track_does_not_create_locked_track() {
+        let mut store = TargetTrackStore::default();
+        let mut dot = hit(10.0, 1000.0, 990.0, 1000.0);
+        dot.damage_name = Some("安魂曲流血伤害".to_owned());
+        let mut summary = TargetResolutionSummary::default();
+        let mut context = TrackPacketContext::default();
+        context
+            .canonical_target_paths
+            .insert("WorldBoss_Boss13".to_owned());
+        context.canonical_target_names.insert("无首铁驭".to_owned());
+
+        let result = store.attribute_damage_hit(&mut dot, &mut summary, context);
+        assert_eq!(result.target_track_id, None);
+        assert_eq!(dot.target_name, None);
+        assert_eq!(store.active_track_count(10.0), 0);
+    }
+
+    #[test]
+    fn unique_alias_and_table_path_creates_track_for_small_monster() {
+        let mut store = TargetTrackStore::default();
+        let mut first = hit(1.0, 34_240.0, 30_254.0, 34_240.0);
+        first.target_context = vec![
+            "reason=near_object_path:mon_029_BP".to_owned(),
+            "reason=net_identity_path_anchor_unconfirmed".to_owned(),
+            "reason=resolved_target_name_table".to_owned(),
+            "target_handle_candidate=NetGuidCandidate:0x0000cc09".to_owned(),
+        ];
+        let mut summary = TargetResolutionSummary {
+            target_context: first.target_context.clone(),
+            confidence: TargetConfidence::Possible,
+            score: 55,
+            direct_hp_evidence: false,
+            ..Default::default()
+        };
+        let mut context = TrackPacketContext::default();
+        context
+            .canonical_target_paths
+            .insert("mon_029_BP".to_owned());
+        context
+            .canonical_target_names
+            .insert("唱片机附电灵".to_owned());
+
+        let result = store.attribute_damage_hit(&mut first, &mut summary, context);
+        assert!(result.projected);
+        assert_eq!(first.target_name.as_deref(), Some("唱片机附电灵"));
+        assert!(
+            first
+                .target_context
+                .iter()
+                .any(|entry| entry == "reason=single_canonical_alias_track")
+        );
+
+        let mut dot = hit(1.2, 30_254.0, 29_799.0, 34_240.0);
+        dot.damage_name = Some("安魂曲流血伤害L".to_owned());
+        dot.target_context = vec![
+            "reason=near_object_path:mon_029_BP".to_owned(),
+            "target_handle_candidate=NetGuidCandidate:0x0000cc09".to_owned(),
+        ];
+        let mut dot_summary = TargetResolutionSummary::default();
+        let dot_result =
+            store.attribute_damage_hit(&mut dot, &mut dot_summary, TrackPacketContext::default());
+        assert!(dot_result.projected);
+        assert_eq!(dot.target_name.as_deref(), Some("唱片机附电灵"));
+    }
+
+    #[test]
+    fn hit_local_path_and_token_names_small_monster_without_merging_same_kind_instances() {
+        let mut store = TargetTrackStore::default();
+        let path = "mon_01_BP";
+        let name = "塞涧尼缇";
+
+        let mut first = hit(1.0, 34_240.0, 0.0, 34_240.0);
+        first.target_context = vec![
+            "reason=near_object_path:mon_01_BP".to_owned(),
+            "reason=path_only_target_name_suppressed".to_owned(),
+            "reason=resolved_target_name_table".to_owned(),
+            "hit_target_vector_token=token-a".to_owned(),
+        ];
+        let mut first_summary = TargetResolutionSummary {
+            target_context: first.target_context.clone(),
+            confidence: TargetConfidence::Possible,
+            score: 10,
+            direct_hp_evidence: false,
+            ..Default::default()
+        };
+        let first_result = store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            local_target_context(path, name),
+        );
+
+        let mut second = hit(1.1, 34_240.0, 20_292.0, 34_240.0);
+        second.target_context = vec![
+            "reason=near_object_path:mon_01_BP".to_owned(),
+            "reason=path_only_target_name_suppressed".to_owned(),
+            "reason=resolved_target_name_table".to_owned(),
+            "hit_target_vector_token=token-b".to_owned(),
+        ];
+        let mut second_summary = TargetResolutionSummary {
+            target_context: second.target_context.clone(),
+            confidence: TargetConfidence::Possible,
+            score: 10,
+            direct_hp_evidence: false,
+            ..Default::default()
+        };
+        let second_result = store.attribute_damage_hit(
+            &mut second,
+            &mut second_summary,
+            local_target_context(path, name),
+        );
+
+        assert_eq!(first.target_name.as_deref(), Some(name));
+        assert_eq!(second.target_name.as_deref(), Some(name));
+        assert_ne!(first_result.target_track_id, second_result.target_track_id);
+        assert_ne!(first_result.generation, second_result.generation);
+    }
+
+    #[test]
+    fn path_only_without_hit_local_token_stays_unknown() {
+        let mut store = TargetTrackStore::default();
+        let mut hit = hit(1.0, 34_240.0, 30_000.0, 34_240.0);
+        hit.target_context = vec![
+            "reason=near_object_path:mon_01_BP".to_owned(),
+            "reason=path_only_target_name_suppressed".to_owned(),
+            "reason=resolved_target_name_table".to_owned(),
+        ];
+        let mut summary = TargetResolutionSummary {
+            target_context: hit.target_context.clone(),
+            confidence: TargetConfidence::Possible,
+            score: 10,
+            direct_hp_evidence: false,
+            ..Default::default()
+        };
+        let result = store.attribute_damage_hit(
+            &mut hit,
+            &mut summary,
+            local_target_context("mon_01_BP", "塞涧尼缇"),
+        );
+
+        assert_eq!(result.target_track_id, None);
+        assert_eq!(hit.target_name, None);
+    }
+
+    #[test]
+    fn boss_path_with_hit_local_token_does_not_use_small_monster_logic() {
+        let mut store = TargetTrackStore::default();
+        let mut hit = hit(1.0, 1_460_091.0, 1_458_526.0, 1_460_091.0);
+        hit.target_context = vec![
+            "reason=near_object_path:boss_13_BP".to_owned(),
+            "reason=path_only_target_name_suppressed".to_owned(),
+            "reason=resolved_target_name_table".to_owned(),
+            "hit_target_vector_token=token-boss".to_owned(),
+        ];
+        let mut summary = TargetResolutionSummary {
+            target_context: hit.target_context.clone(),
+            confidence: TargetConfidence::Possible,
+            score: 10,
+            direct_hp_evidence: false,
+            ..Default::default()
+        };
+        let result = store.attribute_damage_hit(
+            &mut hit,
+            &mut summary,
+            local_target_context("boss_13_BP", "无首铁驭"),
+        );
+
+        assert_eq!(result.target_track_id, None);
+        assert_eq!(hit.target_name, None);
+    }
+
+    #[test]
     fn hp_handle_reuse_after_death_does_not_rename_old_or_new_track() {
         let mut store = TargetTrackStore::default();
         let (mut first, mut first_summary) = named_hit(
@@ -1330,6 +1652,32 @@ mod tests {
             second.target_context.iter().any(|entry| {
                 entry == "target_conflict=hp_handle_reused_without_lifecycle_reset"
             })
+        );
+    }
+
+    #[test]
+    fn exact_alias_expires_after_ttl_without_lifecycle() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) =
+            named_hit(1.0, 1000.0, 900.0, "无首铁驭", "WorldBoss_Boss13", "ttl");
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+
+        let mut late = hit(40.5, 900.0, 850.0, 1000.0);
+        late.target_context.push("boss_hp_guid=ttl".to_owned());
+        let mut late_summary = TargetResolutionSummary::default();
+        let result =
+            store.attribute_damage_hit(&mut late, &mut late_summary, TrackPacketContext::default());
+
+        assert_eq!(result.target_track_id, None);
+        assert_eq!(late.target_name, None);
+        assert!(
+            late.target_context
+                .iter()
+                .any(|entry| entry == "track_reject_reason=hp_stream_mismatch")
         );
     }
 
@@ -1841,6 +2189,8 @@ mod tests {
         let context = TrackPacketContext {
             canonical_target_paths: HashSet::from(["/Game/Monster/Boss_A.Boss_A_C".to_owned()]),
             canonical_target_names: HashSet::from(["A".to_owned()]),
+            local_canonical_target_paths: HashSet::new(),
+            local_canonical_target_names: HashSet::new(),
             hp_handle_keys: HashSet::new(),
             has_multiple_canonical_targets: false,
         };

@@ -5,6 +5,8 @@ const TARGET_NAME_BACKFILL_WINDOW_SECONDS: f64 = 30.0;
 
 use serde::{Deserialize, Serialize};
 
+use crate::target_alias::{target_alias_lookup_keys, target_context_value};
+
 const MAX_COMBAT_HITS: usize = 50_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -86,6 +88,14 @@ pub struct PacketDebug {
     pub payload_preview: String,
     pub payload_hex: String,
     pub decoded_text: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PacketDebugMode {
+    #[default]
+    Off,
+    Summary,
+    FullPayload,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -749,24 +759,6 @@ fn has_conflicting_named_target(hits: &VecDeque<Hit>, rule: &TargetBackfillRule)
         .any(|name| name != rule.target_name)
 }
 
-fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .find_map(|value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
-fn target_context_values<'a>(context: &'a [String], key: &str) -> impl Iterator<Item = &'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .filter_map(move |value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
 fn replace_or_push_context(context: &mut Vec<String>, key: &str, value: &str) -> bool {
     let prefix = format!("{key}=");
     let next = format!("{key}={value}");
@@ -789,80 +781,6 @@ fn push_unique_context(context: &mut Vec<String>, value: String) -> bool {
     }
     context.push(value);
     true
-}
-
-fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> HashSet<String> {
-    let mut keys = HashSet::new();
-    if let Some(target_id) = target_id {
-        extend_equivalent_target_alias_keys(&mut keys, target_id);
-    }
-    for value in target_context_values(context, "target_handle_candidate") {
-        extend_equivalent_target_alias_keys(&mut keys, value);
-    }
-    for value in target_context_values(context, "boss_hp_guid") {
-        extend_equivalent_target_alias_keys(&mut keys, &format!("boss_hp_guid:{value}"));
-    }
-    for value in target_context_values(context, "current_hp_token") {
-        extend_equivalent_target_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
-    }
-    for key in [
-        "actor_channel",
-        "iris_ref32",
-        "netguid32",
-        "netguid_packed",
-        "sdk_net_target",
-    ] {
-        for value in target_context_values(context, key) {
-            extend_equivalent_target_alias_keys(&mut keys, &format!("{key}:{value}"));
-        }
-    }
-    keys
-}
-
-fn extend_equivalent_target_alias_keys(keys: &mut HashSet<String>, key: &str) {
-    for key in equivalent_target_alias_keys(key) {
-        keys.insert(key);
-    }
-}
-
-fn equivalent_target_alias_keys(key: &str) -> Vec<String> {
-    let key = normalize_target_alias_key(key);
-    let mut keys = vec![key.clone()];
-    if let Some(value) = key.strip_prefix("AttributeGuid:") {
-        keys.push(format!("boss_hp_guid:{value}"));
-    } else if let Some(value) = key.strip_prefix("boss_hp_guid:") {
-        keys.push(format!("AttributeGuid:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:currenthp:") {
-        keys.push(format!("current_hp_token:{value}"));
-    } else if let Some(value) = key.strip_prefix("current_hp_token:") {
-        keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:sdk_target:") {
-        keys.push(format!("sdk_net_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("sdk_net_target:") {
-        keys.push(format!("NetRefHandleCandidate:sdk_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:") {
-        keys.push(format!("iris_ref32:{value}"));
-    } else if let Some(value) = key.strip_prefix("iris_ref32:") {
-        keys.push(format!("NetRefHandleCandidate:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetGuidCandidate:") {
-        keys.push(format!("netguid32:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid32:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid_packed:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid32:{value}"));
-    }
-    keys
-}
-
-fn normalize_target_alias_key(key: &str) -> String {
-    let key = key.trim().split('|').next().unwrap_or(key.trim());
-    let Some((kind, value)) = key.split_once(':') else {
-        return key.to_owned();
-    };
-    format!("{kind}:{}", value.trim().to_ascii_lowercase())
 }
 
 #[cfg(test)]

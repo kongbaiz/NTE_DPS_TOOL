@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use crate::parser::find_data_file;
+use crate::parser::{WOODEN_DAMAGE_DESCRIPTIONS_PATH, find_data_file};
 
 const TARGET_RESOURCE_DIR: &str = "res/data/targets";
 const TARGET_RESOURCE_FILES: [&str; 5] = [
@@ -100,7 +100,6 @@ impl ResourceIndex {
 
     pub fn load_default_with_warnings(warnings: &mut Vec<String>) -> Self {
         let mut index = Self::default();
-        let initial_warning_count = warnings.len();
         let mut missing_groups = Vec::new();
         let mut loaded_manual = 0usize;
         for relative in MONSTER_MANUAL_TABLE_FILES {
@@ -146,26 +145,22 @@ impl ResourceIndex {
         if loaded_lacrimosa == 0 {
             missing_groups.push("DT_LacrimosaCollectionData");
         }
+        if let Some(path) = find_data_file(Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH)) {
+            index.load_wooden_damage_descriptions_with_warnings(&path, warnings);
+        }
         for file in TARGET_RESOURCE_FILES {
             let relative = Path::new(TARGET_RESOURCE_DIR).join(file);
             let Some(path) = find_data_file(&relative) else {
-                warnings.push(format!("missing target resource {}", relative.display()));
                 continue;
             };
             index.load_file_with_warnings(&path, warnings);
         }
-        if !missing_groups.is_empty() {
+        if !missing_groups.is_empty() && index.names_by_path.is_empty() {
             warnings.push(format!(
                 "missing target DataTable groups: {}",
                 missing_groups.join(", ")
             ));
         }
-        warnings.push(format!(
-            "target resource index loaded: names_by_path={} canonical_targets_by_path={} warnings_added={}",
-            index.names_by_path.len(),
-            index.canonical_targets_by_path.len(),
-            warnings.len().saturating_sub(initial_warning_count)
-        ));
         index
     }
 
@@ -405,6 +400,32 @@ impl ResourceIndex {
         }
     }
 
+    fn load_wooden_damage_descriptions_with_warnings(
+        &mut self,
+        path: &Path,
+        warnings: &mut Vec<String>,
+    ) {
+        let Some(rows) = read_data_table_rows(path, warnings) else {
+            return;
+        };
+        for (effect_name, row) in rows {
+            let Some(desc) = localized_text(row.get("Desc")) else {
+                continue;
+            };
+            let Some(name) = stolen_monster_name_from_description(&desc) else {
+                continue;
+            };
+            self.insert_monster_id(&effect_name, &name, PRIORITY_LACRIMOSA_COLLECTION);
+            for alias in monster_namespace_aliases(&effect_name) {
+                self.insert_monster_id(&alias, &name, PRIORITY_LACRIMOSA_COLLECTION);
+                self.insert_canonical_target_alias(&effect_name, &alias);
+            }
+            if let Some(target_alias) = monster_namespace_aliases(&effect_name).into_iter().next() {
+                self.insert_canonical_target_alias(&effect_name, &target_alias);
+            }
+        }
+    }
+
     fn insert(&mut self, path: String, name: String, priority: u8) {
         let aliases = lookup_keys_for_path(&path);
         let name = name.trim();
@@ -607,6 +628,24 @@ fn comment_name(comment: &str) -> Option<String> {
     }
     let candidate = candidate.trim_matches(['-', '－', '—', ':', '：', ' ']);
     (!candidate.is_empty() && contains_cjk(candidate)).then(|| candidate.to_owned())
+}
+
+fn stolen_monster_name_from_description(description: &str) -> Option<String> {
+    let mut value = description.trim();
+    for prefix in ["安魂曲偷取-", "安魂曲偷取", "偷取-"] {
+        if let Some(stripped) = value.strip_prefix(prefix) {
+            value = stripped.trim();
+            break;
+        }
+    }
+    value = value
+        .trim_start_matches("Boss")
+        .trim_start_matches("boss")
+        .trim();
+    let value = value
+        .trim_end_matches(|character: char| character.is_ascii_digit())
+        .trim();
+    (!value.is_empty() && contains_cjk(value)).then(|| value.to_owned())
 }
 
 fn contains_cjk(value: &str) -> bool {
@@ -926,4 +965,56 @@ pub fn fallback_name_from_path(path: &str) -> Option<String> {
         return None;
     }
     Some(without_class.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stolen_description_names_monster_namespace() {
+        let mut index = ResourceIndex::default();
+        let name = stolen_monster_name_from_description("安魂曲偷取-Boss庭院花房1")
+            .expect("stolen monster name");
+        index.insert_monster_id(
+            "GE_Boss_07_act06_Dmg_Steal_BP",
+            &name,
+            PRIORITY_LACRIMOSA_COLLECTION,
+        );
+
+        assert_eq!(
+            index.resolved_name_for_gameplay_effect("GE_Boss_07_act06_Dmg_Steal_BP"),
+            Some("庭院花房".to_owned())
+        );
+        assert_eq!(
+            index.resolved_name_for_path("/Game/Blueprints/Abilities/Monster/boss_07/GE/GE_Boss_07_act06_Dmg_Steal_BP.GE_Boss_07_act06_Dmg_Steal_BP_C"),
+            Some("庭院花房".to_owned())
+        );
+    }
+
+    #[test]
+    fn bigworld_monster_variants_resolve_from_data_table() {
+        let index = ResourceIndex::load_default();
+
+        assert_eq!(
+            index.resolved_name_for_path("mon_019_BP_Clone").as_deref(),
+            Some("伤心英熊")
+        );
+        assert_eq!(
+            index.resolved_name_for_path("mon_019_BP_review").as_deref(),
+            Some("伤心英熊")
+        );
+        assert_eq!(
+            index
+                .resolved_name_for_path("mon_35_BP_Blue_World")
+                .as_deref(),
+            Some("罐头锡兵")
+        );
+        assert_eq!(
+            index
+                .resolved_name_for_path("mon_35_BP_Red_World")
+                .as_deref(),
+            Some("罐头锡兵")
+        );
+    }
 }

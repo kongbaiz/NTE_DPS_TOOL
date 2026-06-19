@@ -1,0 +1,6013 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_AdvVisionSceneData",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/Vision/DT_AdvVisionSceneData",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'AdvVisionSceneData'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "AdvVision_RainLiyuuQi_01_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_RainLiyuuQi_01_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_RainLiyuuQi_01_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_RainLiyuuQi_01_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_RainLiyuuQi_01_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_RainLiyuuQi_01_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_RainLiyuuQi_01.W_Unload_AdvVision_RainLiyuuQi_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.258819,
+            "W": 0.965926,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000004
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.300706,
+            "W": 0.953717,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 3859.379,
+            "Y": 108537.86,
+            "Z": 28856.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/W_SimpleNPC_D.W_SimpleNPC_D",
+            "SubPathString": ""
+          }
+        ],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_TuyaGuai_01_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_TuyaGuai_01.W_Unload_AdvVision_TuyaGuai_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78260815,
+            "W": 0.62251467,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.782608,
+            "W": 0.622515,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 34760.0,
+            "Y": 118430.0,
+            "Z": 6990.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/W_SimpleNPC_D.W_SimpleNPC_D",
+            "SubPathString": ""
+          }
+        ],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_YaoDao_01_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_YaoDao_01.W_Unload_AdvVision_YaoDao_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.843391,
+            "W": 0.5373,
+            "IsNormalized": true,
+            "Size": 0.9999998,
+            "SizeSquared": 0.99999964
+          },
+          "Translation": {
+            "X": -195023.11,
+            "Y": 122707.29,
+            "Z": 7192.0503
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_PaperCastle01_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_PaperCastle01.W_Unload_AdvVision_PaperCastle01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 0.5,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.78447896,
+            "W": 0.6201554,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.784479,
+            "W": 0.62015533,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -16400.0,
+            "Y": 66800.0,
+            "Z": 6770.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.99904823,
+            "W": 0.043619394,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_HeheBear_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_HeheBear.W_Unload_AdvVision_HeheBear",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.999048,
+            "W": 0.043619,
+            "IsNormalized": true,
+            "Size": 0.99999976,
+            "SizeSquared": 0.9999995
+          },
+          "Translation": {
+            "X": -283956.88,
+            "Y": 358347.34,
+            "Z": 2312.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_009_Evade/Buff_Challenge_Player_009_Evade.Buff_Challenge_Player_009_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_008_AtkUp/Buff_Challenge_Player_008_Atkup.Buff_Challenge_Player_008_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_007_AtkUp/Buff_Challenge_Mon_007_Atkup.Buff_Challenge_Mon_007_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BoomBox_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BoomBox.W_Unload_AdvVision_BoomBox",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "B1F22D944D06034B2F4380A24C4DE7A6",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.642788,
+            "W": 0.766044,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.9999999
+          },
+          "Translation": {
+            "X": -105746.8,
+            "Y": 95587.66,
+            "Z": 6882.4263
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_flowerBoss_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_flowerBoss.W_Unload_AdvVision_flowerBoss",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "59885CC54049E803097D6C93AD8CDC15",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.382683,
+            "W": 0.92388,
+            "IsNormalized": true,
+            "Size": 1.0000002,
+            "SizeSquared": 1.0000005
+          },
+          "Translation": {
+            "X": -162287.8,
+            "Y": 173451.22,
+            "Z": 8457.887
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_1": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.06104901,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_2": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.061049014,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_3": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.061049014,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_4": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.061049014,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_5": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.061049014,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_WorldFilm_6": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_WorldFilm.W_Unload_AdvVision_WorldFilm",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.061049014,
+            "W": 0.9981348,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.067090005,
+            "W": 0.99774694,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -196046.6,
+            "Y": 217946.33,
+            "Z": 6986.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_1": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_2": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_3": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_4": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_5": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_BlackBook_6": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_BlackBook.W_Unload_AdvVision_BlackBook",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 2457.0652,
+            "Y": 72776.984,
+            "Z": -40192.598
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_1": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_2": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_3": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_4": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_5": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_MotoBoss_01_6": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_MotoBoss_01.W_Unload_AdvVision_MotoBoss_01",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.87022716,
+            "W": 0.4926507,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -153073.86,
+            "Y": 224861.88,
+            "Z": -15988.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_1": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320321,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_2": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320296,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_3": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320296,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_4": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320296,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_5": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320296,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Mammon_6": {
+        "LayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/ArtDataLayer/Level_Art_01.Level_Art_01",
+            "SubPathString": ""
+          }
+        ],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Mammon.W_Unload_AdvVision_Mammon",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.9935719,
+            "W": 0.11320296,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 0.993572,
+            "W": 0.113203,
+            "IsNormalized": true,
+            "Size": 1.0000001,
+            "SizeSquared": 1.0000002
+          },
+          "Translation": {
+            "X": 19742.0,
+            "Y": 120818.0,
+            "Z": 680.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_1": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_2": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_3": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_4": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_5": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss33_6": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss33.W_Unload_AdvVision_Boss33",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": -0.0,
+            "Y": 0.0,
+            "Z": -0.70710677,
+            "W": 0.70710677,
+            "IsNormalized": true,
+            "Size": 0.99999994,
+            "SizeSquared": 0.99999994
+          },
+          "Translation": {
+            "X": -49854.613,
+            "Y": 65296.395,
+            "Z": -19918.0
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_1": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 6.123234E-17,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_2": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_3": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_4": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_5": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      },
+      "AdvVision_Boss08_6": {
+        "LayerAssets": [],
+        "TransformedLoadLayerAssets": [
+          {
+            "AssetPathName": "/Game/Maps/Map_bigworld/DataLayer/WorldDataLayer/UnloadDataLayer/W_Unload_AdvVision_Boss08.W_Unload_AdvVision_Boss08",
+            "SubPathString": ""
+          }
+        ],
+        "NeedUnloadLayerAssets": [],
+        "WorldBossSpawnMgrGuid": "",
+        "UnloadDataLayerDelayTime": 3.0,
+        "BornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "RebornTransform": {
+          "Rotation": {
+            "X": 0.0,
+            "Y": -0.0,
+            "Z": 1.0,
+            "W": 0.0,
+            "IsNormalized": true,
+            "Size": 1.0,
+            "SizeSquared": 1.0
+          },
+          "Translation": {
+            "X": -3594.5989,
+            "Y": 103459.39,
+            "Z": -19908.725
+          },
+          "Scale3D": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+          }
+        },
+        "BuffsCfgMap": [
+          {
+            "Key": "0",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_005_Parry/Buff_Challenge_Player_005_Parry.Buff_Challenge_Player_005_Parry_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_006_Evade/Buff_Challenge_Player_006_Evade.Buff_Challenge_Player_006_Evade_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_003_AtkUP/Buff_Challenge_Mon_003_Atkup.Buff_Challenge_Mon_003_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          },
+          {
+            "Key": "180",
+            "Value": {
+              "PlayerBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_002_LoseHP/Buff_Challenge_Player_002_LoseHP.Buff_Challenge_Player_002_LoseHP_C",
+                  "SubPathString": ""
+                },
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Player_004_AtkUp/Buff_Challenge_Player_004_Atkup.Buff_Challenge_Player_004_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossBuffs": [
+                {
+                  "AssetPathName": "/Game/Blueprints/Abilities/Buff/Challenge/Mon_001_AtkUp/Buff_Challenge_Mon_001_Atkup.Buff_Challenge_Mon_001_Atkup_C",
+                  "SubPathString": ""
+                }
+              ],
+              "BossAddBuffTips": {
+                "CultureInvariantString": null
+              }
+            }
+          }
+        ],
+        "BossTemplate": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        }
+      }
+    }
+  }
+]

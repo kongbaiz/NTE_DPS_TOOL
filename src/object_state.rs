@@ -1005,6 +1005,8 @@ pub fn is_ignored_non_target_path(value: &str) -> bool {
     basename.starts_with("buff_")
         || basename.starts_with("ge_")
         || basename.starts_with("ga_")
+        || basename.contains("steal_montage")
+        || basename.ends_with("_montage")
         || basename.starts_with("drop")
         || basename.starts_with("dropbox")
         || lower.contains("drop_mon_")

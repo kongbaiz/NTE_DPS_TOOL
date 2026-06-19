@@ -26,7 +26,7 @@ use serde::Deserialize;
 
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, HitTargetUpdate, PacketDebug,
-    stable_hit_uid,
+    PacketDebugMode, stable_hit_uid,
 };
 use crate::net_event::{
     NetRuntimeAction, NetRuntimeEvent, NetRuntimeEventKind, NetRuntimeScanOptions,
@@ -51,6 +51,10 @@ use crate::resource_index::ResourceIndex;
 use crate::runtime_mapping::{
     RuntimeMappingAction, RuntimeMappingEvent, RuntimeMappingTimeline,
     find_companion_runtime_mapping_sidecar, load_runtime_mapping_sidecar,
+};
+use crate::target_alias::{
+    equivalent_target_alias_keys, is_hp_alias_key, is_legacy_handle_candidate_id,
+    target_alias_lookup_keys, target_context_value, target_context_values,
 };
 use crate::target_instance::{TargetAlias, TargetAliasKind, TargetInstanceStore};
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary, TargetResolver};
@@ -215,11 +219,11 @@ pub struct CaptureDevice {
 pub struct CaptureHandle {
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
-    raw_capture: RawCaptureBuffer,
+    raw_capture: Option<RawCaptureBuffer>,
 }
 
 impl CaptureHandle {
-    pub fn raw_capture(&self) -> RawCaptureBuffer {
+    pub fn raw_capture(&self) -> Option<RawCaptureBuffer> {
         self.raw_capture.clone()
     }
 
@@ -243,7 +247,7 @@ pub struct RawCaptureBuffer {
 }
 
 struct RawCaptureData {
-    path: PathBuf,
+    path: Option<PathBuf>,
     writer: Option<RawCaptureWriter>,
     packet_count: u64,
     captured_bytes: u64,
@@ -251,6 +255,18 @@ struct RawCaptureData {
 }
 
 impl RawCaptureBuffer {
+    fn disabled() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(RawCaptureData {
+                path: None,
+                writer: None,
+                packet_count: 0,
+                captured_bytes: 0,
+                write_error: None,
+            })),
+        }
+    }
+
     fn new(device: CaptureDevice) -> Self {
         let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let path = PathBuf::from(format!("logs/nte_raw_{timestamp}.pcapng"));
@@ -261,7 +277,7 @@ impl RawCaptureBuffer {
         };
         Self {
             inner: Arc::new(Mutex::new(RawCaptureData {
-                path,
+                path: Some(path),
                 writer,
                 packet_count: 0,
                 captured_bytes: 0,
@@ -301,7 +317,7 @@ impl RawCaptureBuffer {
             .lock()
             .ok()
             .filter(|capture| capture.write_error.is_none())
-            .map(|capture| capture.path.clone())
+            .and_then(|capture| capture.path.clone())
     }
 
     fn finish(&self) {
@@ -326,11 +342,14 @@ impl RawCaptureBuffer {
         if let Some(error) = &capture.write_error {
             return Err(format!("raw capture write failed: {error}"));
         }
-        if path != capture.path {
-            std::fs::copy(&capture.path, path).map_err(|error| {
+        let Some(source_path) = capture.path.as_ref() else {
+            return Err("raw capture was not enabled for this session".to_owned());
+        };
+        if path != source_path {
+            std::fs::copy(source_path, path).map_err(|error| {
                 format!(
                     "failed to copy raw capture {} to {}: {error}",
-                    capture.path.display(),
+                    source_path.display(),
                     path.display()
                 )
             })?;
@@ -572,6 +591,80 @@ fn decode_shifted_payload(data: &[u8], bit_shift: u8) -> Vec<u8> {
         .collect()
 }
 
+struct PayloadScan {
+    shifted: [Vec<u8>; 8],
+}
+
+impl PayloadScan {
+    fn new(payload: &[u8]) -> Self {
+        Self {
+            shifted: std::array::from_fn(|bit_shift| {
+                decode_shifted_payload(payload, bit_shift as u8)
+            }),
+        }
+    }
+
+    fn contains_any_fast_hint(&self) -> bool {
+        self.shifted.iter().any(|shifted| {
+            FAST_SKIP_TEXT_HINTS.iter().any(|hint| {
+                hint.len() <= shifted.len()
+                    && shifted
+                        .windows(hint.len())
+                        .any(|window| window.eq_ignore_ascii_case(hint))
+            })
+        })
+    }
+
+    fn decode_text(&self) -> String {
+        let mut found = Vec::<(usize, String)>::new();
+        for shifted in &self.shifted {
+            for (score, value) in extract_length_prefixed_identifiers(shifted) {
+                if !found.iter().any(|(_, item)| item == &value) {
+                    found.push((score, value));
+                }
+            }
+            for bytes in shifted.split(|byte| !(0x20..=0x7e).contains(byte)) {
+                if bytes.len() < MIN_READABLE_TEXT_LEN {
+                    continue;
+                }
+                let Ok(value) = std::str::from_utf8(bytes) else {
+                    continue;
+                };
+                let value = value.trim();
+                let score = protocol_text_score(value);
+                if score == 0 || found.iter().any(|(_, item)| item == value) {
+                    continue;
+                }
+                found.push((score, value.to_owned()));
+            }
+        }
+        if found.is_empty() {
+            UNREADABLE_PROTOCOL_TEXT.to_owned()
+        } else {
+            found.sort_by_key(|item| std::cmp::Reverse(item.0));
+            found
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+
+    fn may_contain_damage_record(&self) -> bool {
+        self.shifted.iter().any(|shifted| {
+            if shifted.len() < 32 {
+                return false;
+            }
+            (0..=shifted.len() - 32).any(|offset| {
+                shifted[offset..offset + 5] == DAMAGE_FIELD_F32_PREFIX
+                    && shifted[offset + 9..offset + 14] == DAMAGE_FIELD_F32_PREFIX
+                    && shifted[offset + 18..offset + 23] == DAMAGE_FIELD_F32_PREFIX
+                    && shifted[offset + 27..offset + 32] == DAMAGE_FIELD_F64_PREFIX
+            })
+        })
+    }
+}
+
 fn protocol_text_score(value: &str) -> usize {
     let length = value.len();
     if length < MIN_READABLE_TEXT_LEN {
@@ -701,39 +794,7 @@ fn extract_length_prefixed_identifiers(data: &[u8]) -> Vec<(usize, String)> {
 }
 
 fn decode_payload_text(data: &[u8]) -> String {
-    let mut found = Vec::<(usize, String)>::new();
-    for bit_shift in 0..8 {
-        let shifted = decode_shifted_payload(data, bit_shift);
-        for (score, value) in extract_length_prefixed_identifiers(&shifted) {
-            if !found.iter().any(|(_, item)| item == &value) {
-                found.push((score, value));
-            }
-        }
-        for bytes in shifted.split(|byte| !(0x20..=0x7e).contains(byte)) {
-            if bytes.len() < MIN_READABLE_TEXT_LEN {
-                continue;
-            }
-            let Ok(value) = std::str::from_utf8(bytes) else {
-                continue;
-            };
-            let value = value.trim();
-            let score = protocol_text_score(value);
-            if score == 0 || found.iter().any(|(_, item)| item == value) {
-                continue;
-            }
-            found.push((score, value.to_owned()));
-        }
-    }
-    if found.is_empty() {
-        UNREADABLE_PROTOCOL_TEXT.to_owned()
-    } else {
-        found.sort_by_key(|item| std::cmp::Reverse(item.0));
-        found
-            .into_iter()
-            .map(|(_, value)| value)
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    PayloadScan::new(data).decode_text()
 }
 
 fn is_padding_payload(data: &[u8]) -> bool {
@@ -744,30 +805,16 @@ fn is_padding_payload(data: &[u8]) -> bool {
 }
 
 fn should_keep_debug_packet(
-    payload: &[u8],
-    declared_ids: &[u32],
     parsed_hits: usize,
-    decoded_text: &str,
+    has_hp_updates: bool,
+    has_targetish_or_runtime: bool,
+    has_abyss_event: bool,
+    packet_debug_mode: PacketDebugMode,
 ) -> bool {
-    if parsed_hits > 0 || !declared_ids.is_empty() || decoded_text != UNREADABLE_PROTOCOL_TEXT {
+    if matches!(packet_debug_mode, PacketDebugMode::FullPayload) {
         return true;
     }
-    !is_padding_payload(payload) && payload.len() > MAX_IGNORABLE_BINARY_PACKET_LEN
-}
-
-fn shifted_payload_contains_any_fast_hint(payload: &[u8]) -> bool {
-    for bit_shift in 0..8 {
-        let shifted = decode_shifted_payload(payload, bit_shift);
-        if FAST_SKIP_TEXT_HINTS.iter().any(|hint| {
-            hint.len() <= shifted.len()
-                && shifted
-                    .windows(hint.len())
-                    .any(|window| window.eq_ignore_ascii_case(hint))
-        }) {
-            return true;
-        }
-    }
-    false
+    parsed_hits > 0 || has_hp_updates || has_targetish_or_runtime || has_abyss_event
 }
 
 fn should_fast_skip_payload(
@@ -786,28 +833,6 @@ fn should_fast_skip_payload(
         return false;
     }
     !has_text_hint
-}
-
-fn payload_may_contain_damage_record(payload: &[u8]) -> bool {
-    if payload.len() < DAMAGE_RECORD_MIN_LEN {
-        return false;
-    }
-    for bit_shift in 0..8 {
-        let shifted = decode_shifted_payload(payload, bit_shift);
-        if shifted.len() < 32 {
-            continue;
-        }
-        for offset in 0..=shifted.len() - 32 {
-            if shifted[offset..offset + 5] == DAMAGE_FIELD_F32_PREFIX
-                && shifted[offset + 9..offset + 14] == DAMAGE_FIELD_F32_PREFIX
-                && shifted[offset + 18..offset + 23] == DAMAGE_FIELD_F32_PREFIX
-                && shifted[offset + 27..offset + 32] == DAMAGE_FIELD_F64_PREFIX
-            {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn packet_target_path_rank(path: &str) -> usize {
@@ -1263,6 +1288,7 @@ struct PacketDecoder {
     follow_up_damage: FollowUpDamageTracker,
     character_declarations: HashMap<u32, f64>,
     resource_warnings: Vec<String>,
+    packet_debug_mode: PacketDebugMode,
 }
 
 #[derive(Clone, Debug)]
@@ -1316,6 +1342,16 @@ impl Default for PacketDecoder {
             follow_up_damage: FollowUpDamageTracker::default(),
             character_declarations: HashMap::new(),
             resource_warnings,
+            packet_debug_mode: PacketDebugMode::Off,
+        }
+    }
+}
+
+impl PacketDecoder {
+    fn with_packet_debug_mode(packet_debug_mode: PacketDebugMode) -> Self {
+        Self {
+            packet_debug_mode,
+            ..Self::default()
         }
     }
 }
@@ -1386,6 +1422,8 @@ fn target_lock_context_for_packet(
     TrackPacketContext {
         canonical_target_paths,
         canonical_target_names,
+        local_canonical_target_paths: HashSet::new(),
+        local_canonical_target_names: HashSet::new(),
         hp_handle_keys: hp_handles,
         has_multiple_canonical_targets,
     }
@@ -1412,6 +1450,10 @@ fn enrich_track_context_from_hit(
         else {
             continue;
         };
+        context
+            .local_canonical_target_paths
+            .insert(canonical_path.clone());
+        context.local_canonical_target_names.insert(name.clone());
         context.canonical_target_paths.insert(canonical_path);
         context.canonical_target_names.insert(name);
     }
@@ -1759,7 +1801,7 @@ impl PacketDecoder {
             &hit.target_context,
         )
         .into_iter()
-        .filter(|key| is_hp_target_alias_key(key))
+        .filter(|key| is_hp_alias_key(key))
         .any(|key| self.target_handle_recently_dead(&key, hit.timestamp));
         let stale_current_hp_token = target_context_values(&hit.target_context, "current_hp_token")
             .any(|token| {
@@ -2418,7 +2460,7 @@ fn apply_handle_alias_backfill(
         &recent.hit.target_context,
     )
     .into_iter()
-    .filter(|key| !is_hp_target_alias_key(key))
+    .filter(|key| !is_hp_alias_key(key))
     .collect::<Vec<_>>();
     let Some(alias) = lookup_keys.iter().find_map(|key| aliases.get(key)) else {
         return false;
@@ -2451,22 +2493,15 @@ fn alias_matches_existing_target_path(current_path: Option<&str>, alias_path: &s
     current_path.is_some_and(|path| path.eq_ignore_ascii_case(alias_path))
 }
 
-fn is_hp_target_alias_key(key: &str) -> bool {
-    key.starts_with("AttributeGuid:")
-        || key.starts_with("boss_hp_guid:")
-        || key.starts_with("current_hp_token:")
-        || key.starts_with("NetRefHandleCandidate:currenthp:")
-}
-
 fn hits_share_hp_target_handle(left: &Hit, right: &Hit) -> bool {
     let left_keys = target_alias_lookup_keys(left.target_id.as_ref(), &left.target_context)
         .into_iter()
-        .filter(|key| is_hp_target_alias_key(key))
+        .filter(|key| is_hp_alias_key(key))
         .collect::<HashSet<_>>();
     !left_keys.is_empty()
         && target_alias_lookup_keys(right.target_id.as_ref(), &right.target_context)
             .into_iter()
-            .filter(|key| is_hp_target_alias_key(key))
+            .filter(|key| is_hp_alias_key(key))
             .any(|key| left_keys.contains(&key))
 }
 
@@ -2493,6 +2528,58 @@ fn suppress_hit_target_as_recent_death(hit: &mut Hit, summary: &mut TargetResolu
     summary.direct_hp_evidence = false;
 }
 
+fn normalize_final_target_identity(hit: &mut Hit) {
+    if let Some(track_id) = target_context_value(&hit.target_context, "target_track_id") {
+        hit.target_id = Some(track_id.to_owned());
+        return;
+    }
+    let Some(target_id) = hit.target_id.clone() else {
+        return;
+    };
+    if is_legacy_handle_candidate_id(&target_id) {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("target_handle_candidate={target_id}"),
+        );
+        hit.target_id = None;
+    }
+}
+
+fn net_runtime_events_have_identity(events: &[NetRuntimeEvent]) -> bool {
+    events.iter().any(|event| {
+        !event.aliases.is_empty()
+            || event.path.is_some()
+            || event.current_hp.is_some()
+            || event.target_token.is_some()
+    })
+}
+
+fn annotate_unknown_identity_gap(
+    hit: &mut Hit,
+    no_targetish_path: bool,
+    no_net_identity: bool,
+    no_runtime_identity: bool,
+) {
+    if hit.direction == "incoming"
+        || hit.target_name.is_some()
+        || target_context_value(&hit.target_context, "target_track_id").is_some()
+        || target_context_value(&hit.target_context, "target_unresolved").is_some()
+        || !no_targetish_path
+        || !no_net_identity
+        || !no_runtime_identity
+    {
+        return;
+    }
+    push_unique_context(
+        &mut hit.target_context,
+        "target_unresolved=network_identity_not_decoded".to_owned(),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        "target_identity_gap=actor_or_iris_config_id_not_decoded".to_owned(),
+    );
+}
+
 fn apply_handle_alias_to_hit_summary(
     hit: &mut Hit,
     summary: &mut TargetResolutionSummary,
@@ -2509,7 +2596,7 @@ fn apply_handle_alias_to_hit_summary(
         &hit.target_context,
     )
     .into_iter()
-    .filter(|key| !is_hp_target_alias_key(key))
+    .filter(|key| !is_hp_alias_key(key))
     .find_map(|key| aliases.get(&key)) else {
         return false;
     };
@@ -2592,56 +2679,10 @@ fn replace_target_path_context(context: &mut Vec<String>, target_path: &str) {
     push_unique_context(context, format!("target_path={target_path}"));
 }
 
-fn target_context_value<'a>(context: &'a [String], key: &str) -> Option<&'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .find_map(|value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
-fn target_context_values<'a>(context: &'a [String], key: &str) -> impl Iterator<Item = &'a str> {
-    let prefix = format!("{key}=");
-    context
-        .iter()
-        .filter_map(move |value| value.strip_prefix(&prefix))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "None")
-}
-
 fn push_unique_context(context: &mut Vec<String>, value: String) {
     if !context.iter().any(|entry| entry == &value) {
         context.push(value);
     }
-}
-
-fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> Vec<String> {
-    let mut keys = Vec::new();
-    if let Some(target_id) = target_id {
-        extend_equivalent_target_alias_keys(&mut keys, target_id);
-    }
-    for value in target_context_values(context, "target_handle_candidate") {
-        extend_equivalent_target_alias_keys(&mut keys, value);
-    }
-    for value in target_context_values(context, "boss_hp_guid") {
-        extend_equivalent_target_alias_keys(&mut keys, &format!("boss_hp_guid:{value}"));
-    }
-    for value in target_context_values(context, "current_hp_token") {
-        extend_equivalent_target_alias_keys(&mut keys, &format!("current_hp_token:{value}"));
-    }
-    for key in [
-        "actor_channel",
-        "iris_ref32",
-        "netguid32",
-        "netguid_packed",
-        "sdk_net_target",
-    ] {
-        for value in target_context_values(context, key) {
-            extend_equivalent_target_alias_keys(&mut keys, &format!("{key}:{value}"));
-        }
-    }
-    keys
 }
 
 fn extend_equivalent_target_alias_keys(keys: &mut Vec<String>, key: &str) {
@@ -2650,46 +2691,6 @@ fn extend_equivalent_target_alias_keys(keys: &mut Vec<String>, key: &str) {
             keys.push(key);
         }
     }
-}
-
-fn equivalent_target_alias_keys(key: &str) -> Vec<String> {
-    let key = normalize_target_alias_key(key);
-    let mut keys = vec![key.clone()];
-    if let Some(value) = key.strip_prefix("AttributeGuid:") {
-        keys.push(format!("boss_hp_guid:{value}"));
-    } else if let Some(value) = key.strip_prefix("boss_hp_guid:") {
-        keys.push(format!("AttributeGuid:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:currenthp:") {
-        keys.push(format!("current_hp_token:{value}"));
-    } else if let Some(value) = key.strip_prefix("current_hp_token:") {
-        keys.push(format!("NetRefHandleCandidate:currenthp:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:sdk_target:") {
-        keys.push(format!("sdk_net_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("sdk_net_target:") {
-        keys.push(format!("NetRefHandleCandidate:sdk_target:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetRefHandleCandidate:") {
-        keys.push(format!("iris_ref32:{value}"));
-    } else if let Some(value) = key.strip_prefix("iris_ref32:") {
-        keys.push(format!("NetRefHandleCandidate:{value}"));
-    } else if let Some(value) = key.strip_prefix("NetGuidCandidate:") {
-        keys.push(format!("netguid32:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid32:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid_packed:{value}"));
-    } else if let Some(value) = key.strip_prefix("netguid_packed:") {
-        keys.push(format!("NetGuidCandidate:{value}"));
-        keys.push(format!("netguid32:{value}"));
-    }
-    keys
-}
-
-fn normalize_target_alias_key(key: &str) -> String {
-    let key = key.trim().split('|').next().unwrap_or(key.trim());
-    let Some((kind, value)) = key.split_once(':') else {
-        return key.to_owned();
-    };
-    format!("{kind}:{}", value.trim().to_ascii_lowercase())
 }
 
 fn should_apply_target_update(
@@ -2891,7 +2892,8 @@ impl PacketDecoder {
         } else {
             parse_boss_hp_updates(payload)
         };
-        let has_fast_text_hint = shifted_payload_contains_any_fast_hint(payload);
+        let payload_scan = PayloadScan::new(payload);
+        let has_fast_text_hint = payload_scan.contains_any_fast_hint();
         if should_fast_skip_payload(
             payload,
             &ids,
@@ -2902,11 +2904,11 @@ impl PacketDecoder {
         }
 
         let decoded_text = if has_fast_text_hint {
-            decode_payload_text(payload)
+            payload_scan.decode_text()
         } else {
             UNREADABLE_PROTOCOL_TEXT.to_owned()
         };
-        let path_candidates = if has_fast_text_hint {
+        let path_candidates = if !outgoing && has_fast_text_hint {
             extract_path_candidates(payload)
         } else {
             Vec::new()
@@ -2972,7 +2974,9 @@ impl PacketDecoder {
             _ => None,
         };
         let sdk_target_scan_enabled = !outgoing
-            && (!targetish_path_candidates.is_empty()
+            && (!current_hp_updates.is_empty()
+                || !boss_hp_updates.is_empty()
+                || !targetish_path_candidates.is_empty()
                 || !gameplay_effects.is_empty()
                 || has_net_runtime_text_hint(&decoded_text));
         let net_runtime_events = extract_net_runtime_events(
@@ -3005,7 +3009,10 @@ impl PacketDecoder {
         } else {
             (None, None)
         };
-        let mut hits = if outgoing && payload_may_contain_damage_record(payload) {
+        let mut hits = if outgoing
+            && payload.len() >= DAMAGE_RECORD_MIN_LEN
+            && payload_scan.may_contain_damage_record()
+        {
             parse_damage_payload(
                 payload,
                 timestamp,
@@ -3122,6 +3129,12 @@ impl PacketDecoder {
             let hit = &mut hits[index];
             let summary = &mut hit_summaries[index];
             self.apply_target_track_attribution(hit, summary, target_lock_context.clone());
+            annotate_unknown_identity_gap(
+                hit,
+                targetish_path_candidates.is_empty(),
+                net_identity_candidates.is_empty(),
+                !net_runtime_events_have_identity(&net_runtime_events),
+            );
         }
         for index in packet_hit_order {
             let hit = &mut hits[index];
@@ -3149,8 +3162,6 @@ impl PacketDecoder {
             .iter()
             .filter(|hit| include_incoming || hit.direction != "incoming")
             .count();
-        let preview_len = payload.len().min(96);
-        let payload_hex = hex::encode(payload);
         let monster_gameplay_effect_applied =
             self.apply_monster_gameplay_effect_links(timestamp, &monster_gameplay_effect_links);
         if !current_hp_updates.is_empty()
@@ -3162,11 +3173,28 @@ impl PacketDecoder {
         {
             self.backfill_recent_targets(timestamp, sender);
         }
+        let abyss_events = abyss_events_from_text(timestamp, &decoded_text);
+        let has_targetish_or_runtime = !targetish_path_candidates.is_empty()
+            || !net_identity_candidates.is_empty()
+            || !net_runtime_events.is_empty()
+            || packet_target_path_link_applied
+            || net_runtime_applied
+            || monster_gameplay_effect_applied;
+        let should_emit_packet_debug = self.packet_debug_mode != PacketDebugMode::Off
+            && should_keep_debug_packet(
+                accepted,
+                !current_hp_updates.is_empty() || !boss_hp_updates.is_empty(),
+                has_targetish_or_runtime,
+                !abyss_events.is_empty(),
+                self.packet_debug_mode,
+            );
         if current_hp_updates.is_empty()
             && boss_hp_updates.is_empty()
             && targetish_path_candidates.is_empty()
             && net_runtime_notes.is_empty()
-            && !should_keep_debug_packet(payload, &ids, accepted, &decoded_text)
+            && accepted == 0
+            && abyss_events.is_empty()
+            && !should_emit_packet_debug
         {
             return;
         }
@@ -3354,6 +3382,12 @@ impl PacketDecoder {
         }
         for (hit, summary) in &mut inferred_follow_up_hits {
             self.apply_target_track_attribution(hit, summary, target_lock_context.clone());
+            annotate_unknown_identity_gap(
+                hit,
+                targetish_path_candidates.is_empty(),
+                true,
+                !net_runtime_events_have_identity(&net_runtime_events),
+            );
         }
         for (hit, summary) in &mut inferred_follow_up_hits {
             self.clear_dead_target_handles_from_hit(hit);
@@ -3381,31 +3415,48 @@ impl PacketDecoder {
                 );
             }
         }
-        send_packet_events(
-            sender,
-            PacketDebug {
-                timestamp,
-                source: format!("{src}:{src_port}"),
-                destination: format!("{dst}:{dst_port}"),
-                direction: direction.to_owned(),
-                payload_len: payload.len(),
-                declared_ids: ids,
-                parsed_hits: accepted,
-                note,
-                payload_preview: payload_hex[..preview_len * 2].to_owned(),
-                payload_hex,
-                decoded_text,
-            },
-        );
+        if should_emit_packet_debug {
+            let preview_len = payload.len().min(96);
+            let payload_preview = hex::encode(&payload[..preview_len]);
+            let payload_hex = if self.packet_debug_mode == PacketDebugMode::FullPayload {
+                hex::encode(payload)
+            } else {
+                String::new()
+            };
+            send_packet_events(
+                sender,
+                PacketDebug {
+                    timestamp,
+                    source: format!("{src}:{src_port}"),
+                    destination: format!("{dst}:{dst_port}"),
+                    direction: direction.to_owned(),
+                    payload_len: payload.len(),
+                    declared_ids: ids,
+                    parsed_hits: accepted,
+                    note,
+                    payload_preview,
+                    payload_hex,
+                    decoded_text,
+                },
+            );
+        } else {
+            for event in abyss_events {
+                let _ = sender.send(EngineEvent::Abyss(event));
+            }
+        }
         for (hit, summary) in hits.into_iter().zip(hit_summaries) {
             if include_incoming || hit.direction != "incoming" {
                 self.follow_up_damage
                     .observe_hit(&hit, hit.gameplay_effect_index, characters);
+                let mut hit = hit;
+                normalize_final_target_identity(&mut hit);
                 self.remember_target_hit(&hit, summary);
                 let _ = sender.send(EngineEvent::Hit(hit));
             }
         }
         for (hit, summary) in inferred_follow_up_hits {
+            let mut hit = hit;
+            normalize_final_target_identity(&mut hit);
             self.remember_target_hit(&hit, summary);
             let _ = sender.send(EngineEvent::Hit(hit));
         }
@@ -3416,24 +3467,29 @@ pub fn start_capture(
     device: CaptureDevice,
     local_ip: Option<Ipv4Addr>,
     filter: String,
-    include_incoming: bool,
+    options: CaptureOptions,
     characters: Arc<HashMap<u32, CharacterInfo>>,
     sender: Sender<EngineEvent>,
 ) -> CaptureHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
-    let raw_capture = RawCaptureBuffer::new(device.clone());
-    let thread_raw_capture = raw_capture.clone();
+    let raw_capture = options
+        .save_raw_capture
+        .then(|| RawCaptureBuffer::new(device.clone()));
+    let thread_raw_capture = raw_capture
+        .clone()
+        .unwrap_or_else(RawCaptureBuffer::disabled);
     let thread = thread::spawn(move || {
         let result = run_capture(CaptureRunConfig {
             device: &device,
             local_ip,
             filter: &filter,
-            include_incoming,
+            include_incoming: options.include_incoming,
             characters: &characters,
             sender: &sender,
             stop: &thread_stop,
             raw_capture: &thread_raw_capture,
+            packet_debug_mode: options.packet_debug_mode,
         });
         thread_raw_capture.finish();
         let _ = sender.send(EngineEvent::CaptureStopped);
@@ -3448,6 +3504,13 @@ pub fn start_capture(
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct CaptureOptions {
+    pub include_incoming: bool,
+    pub packet_debug_mode: PacketDebugMode,
+    pub save_raw_capture: bool,
+}
+
 struct CaptureRunConfig<'a> {
     device: &'a CaptureDevice,
     local_ip: Option<Ipv4Addr>,
@@ -3457,6 +3520,7 @@ struct CaptureRunConfig<'a> {
     sender: &'a Sender<EngineEvent>,
     stop: &'a AtomicBool,
     raw_capture: &'a RawCaptureBuffer,
+    packet_debug_mode: PacketDebugMode,
 }
 
 fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
@@ -3469,6 +3533,7 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
         sender,
         stop,
         raw_capture,
+        packet_debug_mode,
     } = config;
     // SAFETY: Function pointers are loaded from Npcap and used per the libpcap API.
     unsafe {
@@ -3516,7 +3581,7 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
         }
         program.release();
         let raw_capture_status = raw_capture.path().map_or_else(
-            || "; raw capture unavailable".to_owned(),
+            || "; raw capture disabled".to_owned(),
             |path| format!("; writing raw capture to {}", path.display()),
         );
         let _ = sender.send(EngineEvent::Status(format!(
@@ -3528,7 +3593,7 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
             raw_capture_status
         )));
 
-        let mut decoder = PacketDecoder::default();
+        let mut decoder = PacketDecoder::with_packet_debug_mode(packet_debug_mode);
         if let Some(warning) = decoder.resource_warning() {
             let _ = sender.send(EngineEvent::Warning(warning));
         }
@@ -3576,6 +3641,7 @@ pub fn import_pcapng(
     characters: Arc<HashMap<u32, CharacterInfo>>,
     local_ip_hint: Option<Ipv4Addr>,
     include_incoming: bool,
+    packet_debug_mode: PacketDebugMode,
     sender: Sender<EngineEvent>,
     stop: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
@@ -3590,7 +3656,7 @@ pub fn import_pcapng(
         let result = (|| -> Result<(usize, usize), String> {
             let file = File::open(&path).map_err(|error| error.to_string())?;
             let mut reader = PcapNgReader::new(file).map_err(|error| error.to_string())?;
-            let mut decoder = PacketDecoder::default();
+            let mut decoder = PacketDecoder::with_packet_debug_mode(packet_debug_mode);
             let mut runtime_mapping = load_companion_runtime_mapping(&path, &sender);
             if let Some(warning) = decoder.resource_warning() {
                 let _ = sender.send(EngineEvent::Warning(warning));
@@ -3598,32 +3664,43 @@ pub fn import_pcapng(
             let mut packet_count = 0;
             let mut supported_count = 0;
 
-            while let Some(block) = reader.next_block() {
+            loop {
+                let interface_linktypes = reader
+                    .interfaces()
+                    .iter()
+                    .map(|interface| interface.linktype)
+                    .collect::<Vec<_>>();
+                let Some(block) = reader.next_block() else {
+                    break;
+                };
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
                 let block = block.map_err(|error| error.to_string())?;
-                let (interface_id, timestamp, data) = match block {
-                    Block::EnhancedPacket(packet) => (
-                        packet.interface_id as usize,
-                        packet.timestamp.as_secs_f64(),
-                        packet.data.into_owned(),
-                    ),
-                    Block::SimplePacket(packet) => (0, 0.0, packet.data.into_owned()),
+                let (interface_id, timestamp) = match &block {
+                    Block::EnhancedPacket(packet) => {
+                        (packet.interface_id as usize, packet.timestamp.as_secs_f64())
+                    }
+                    Block::SimplePacket(_) => (0, 0.0),
                     _ => continue,
                 };
                 packet_count += 1;
-                let Some(interface) = reader.interfaces().get(interface_id) else {
+                let Some(linktype) = interface_linktypes.get(interface_id) else {
                     continue;
                 };
-                if interface.linktype != DataLink::ETHERNET {
+                if *linktype != DataLink::ETHERNET {
                     continue;
                 }
                 supported_count += 1;
+                let data = match &block {
+                    Block::EnhancedPacket(packet) => packet.data.as_ref(),
+                    Block::SimplePacket(packet) => packet.data.as_ref(),
+                    _ => continue,
+                };
                 runtime_mapping.align_to_packet_time(timestamp);
                 decoder.apply_runtime_mapping_events(runtime_mapping.pop_due(timestamp), &sender);
                 decoder.process_ethernet_frame(
-                    &data,
+                    data,
                     timestamp,
                     local_ip_hint,
                     include_incoming,
@@ -3749,6 +3826,7 @@ struct ExportPacket {
 
 pub fn import_capture_json(
     path: PathBuf,
+    packet_debug_mode: PacketDebugMode,
     sender: Sender<EngineEvent>,
     stop: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
@@ -3780,7 +3858,7 @@ pub fn import_capture_json(
                 };
                 if take_packet {
                     let packet = packets.next().expect("peeked packet must exist");
-                    if send_export_packet(packet, &sender)? {
+                    if send_export_packet(packet, packet_debug_mode, &sender)? {
                         packet_count += 1;
                     }
                 } else {
@@ -3807,27 +3885,45 @@ pub fn import_capture_json(
     })
 }
 
-fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Result<bool, String> {
-    let declared_ids = parse_export_ids(&packet.declared_ids);
-    let payload = if packet.payload_hex.trim().is_empty() {
-        Vec::new()
-    } else {
-        hex::decode(&packet.payload_hex).map_err(|error| format!("payload_hex 无效: {error}"))?
-    };
-    let decoded_text = if payload.is_empty() {
-        packet.decoded_text
-    } else {
-        decode_payload_text(&payload)
-    };
-    if !should_keep_debug_packet(&payload, &declared_ids, packet.parsed_hits, &decoded_text) {
+fn send_export_packet(
+    packet: ExportPacket,
+    packet_debug_mode: PacketDebugMode,
+    sender: &Sender<EngineEvent>,
+) -> Result<bool, String> {
+    if packet_debug_mode == PacketDebugMode::Off {
         return Ok(false);
     }
-    let evidence = find_declared_character_evidence(&payload);
+    let declared_ids = parse_export_ids(&packet.declared_ids);
+    let (payload, decoded_text) = if packet_debug_mode == PacketDebugMode::FullPayload
+        && !packet.payload_hex.trim().is_empty()
+    {
+        let payload = hex::decode(&packet.payload_hex)
+            .map_err(|error| format!("payload_hex 无效: {error}"))?;
+        let decoded_text = decode_payload_text(&payload);
+        (payload, decoded_text)
+    } else {
+        (Vec::new(), packet.decoded_text)
+    };
+    let has_abyss_event = !abyss_events_from_text(packet.timestamp_unix, &decoded_text).is_empty();
+    if !should_keep_debug_packet(
+        packet.parsed_hits,
+        packet.note.contains("HP"),
+        packet.note.contains("Object/path")
+            || packet.note.contains("Net identity")
+            || packet.note.contains("Net runtime"),
+        has_abyss_event,
+        packet_debug_mode,
+    ) {
+        return Ok(false);
+    }
     let mut note = packet.note;
-    append_packet_note(
-        &mut note,
-        binary_payload_diagnostic(&payload, &packet.direction, &decoded_text, &evidence),
-    );
+    if packet_debug_mode == PacketDebugMode::FullPayload {
+        let evidence = find_declared_character_evidence(&payload);
+        append_packet_note(
+            &mut note,
+            binary_payload_diagnostic(&payload, &packet.direction, &decoded_text, &evidence),
+        );
+    }
     let packet = PacketDebug {
         timestamp: packet.timestamp_unix,
         source: packet.source,
@@ -3838,7 +3934,11 @@ fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Res
         parsed_hits: packet.parsed_hits,
         note,
         payload_preview: packet.payload_preview,
-        payload_hex: packet.payload_hex,
+        payload_hex: if packet_debug_mode == PacketDebugMode::FullPayload {
+            packet.payload_hex
+        } else {
+            String::new()
+        },
         decoded_text,
     };
     for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
@@ -3963,6 +4063,148 @@ mod tests {
     }
 
     #[test]
+    fn json_export_without_payload_hex_imports_fast() {
+        let packet = ExportPacket {
+            timestamp_unix: 1.0,
+            source: "1.1.1.1:1".to_owned(),
+            destination: "2.2.2.2:2".to_owned(),
+            direction: "C2S".to_owned(),
+            payload_len: 128,
+            declared_ids: serde_json::json!([1]),
+            parsed_hits: 1,
+            note: "hit packet".to_owned(),
+            payload_preview: "abcd".to_owned(),
+            payload_hex: "not-valid-hex".to_owned(),
+            decoded_text: UNREADABLE_PROTOCOL_TEXT.to_owned(),
+        };
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        assert!(
+            send_export_packet(packet, PacketDebugMode::Summary, &sender).expect("summary import")
+        );
+        let event = receiver.try_recv().expect("packet event");
+        assert!(matches!(
+            event,
+            EngineEvent::Packet(PacketDebug {
+                payload_hex,
+                ..
+            }) if payload_hex.is_empty()
+        ));
+    }
+
+    #[test]
+    fn final_target_id_never_uses_attribute_guid_when_no_track() {
+        let mut hit = test_hit(1.0, 1000.0, 900.0);
+        hit.target_id = Some("AttributeGuid:ABCDEF|path=WorldBoss_Boss13".to_owned());
+        normalize_final_target_identity(&mut hit);
+        assert_eq!(hit.target_id, None);
+        assert!(hit.target_context.iter().any(|entry| {
+            entry == "target_handle_candidate=AttributeGuid:ABCDEF|path=WorldBoss_Boss13"
+        }));
+    }
+
+    #[test]
+    fn unknown_hit_without_identity_candidates_records_decode_gap() {
+        let mut hit = test_hit(1.0, 1000.0, 900.0);
+        annotate_unknown_identity_gap(&mut hit, true, true, true);
+        assert_eq!(hit.target_name, None);
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| entry == "target_unresolved=network_identity_not_decoded")
+        );
+        assert!(
+            hit.target_context.iter().any(|entry| {
+                entry == "target_identity_gap=actor_or_iris_config_id_not_decoded"
+            })
+        );
+    }
+
+    #[test]
+    fn identity_gap_diagnostic_does_not_override_existing_resolution() {
+        let mut named = test_hit(1.0, 1000.0, 900.0);
+        named.target_name = Some("伤心英熊".to_owned());
+        named
+            .target_context
+            .push("target_track_id=monster:mon_019#1".to_owned());
+        annotate_unknown_identity_gap(&mut named, true, true, true);
+        assert!(
+            !named
+                .target_context
+                .iter()
+                .any(|entry| entry == "target_unresolved=network_identity_not_decoded")
+        );
+
+        let mut ambiguous = test_hit(2.0, 1000.0, 900.0);
+        ambiguous
+            .target_context
+            .push("target_unresolved=ambiguous_multi_target".to_owned());
+        annotate_unknown_identity_gap(&mut ambiguous, true, true, true);
+        assert!(
+            !ambiguous.target_context.iter().any(|entry| {
+                entry == "target_identity_gap=actor_or_iris_config_id_not_decoded"
+            })
+        );
+    }
+
+    #[test]
+    fn payload_scan_reuses_shifted_buffers() {
+        let payload = b"prefix /Game/Monster/Boss CurrentHP suffix";
+        let scan = PayloadScan::new(payload);
+        assert_eq!(scan.shifted.len(), 8);
+        assert!(scan.contains_any_fast_hint());
+        assert!(scan.decode_text().contains("/Game/Monster/Boss"));
+        assert_eq!(scan.shifted.len(), 8);
+    }
+
+    #[test]
+    fn pcap_import_does_not_clone_packet_data() {
+        let path = std::env::temp_dir().join(format!(
+            "nte_pcap_import_borrowed_{}.pcapng",
+            std::process::id()
+        ));
+        {
+            let file = File::create(&path).expect("create pcapng");
+            let mut writer = PcapNgWriter::new(BufWriter::new(file)).expect("pcap writer");
+            writer
+                .write_pcapng_block(InterfaceDescriptionBlock::new(
+                    DataLink::ETHERNET,
+                    CAPTURE_SNAPLEN,
+                ))
+                .expect("write interface");
+            let packet = [0_u8; 64];
+            writer
+                .write_pcapng_block(EnhancedPacketBlock {
+                    interface_id: 0,
+                    timestamp: Duration::from_secs(1),
+                    original_len: packet.len() as u32,
+                    data: Cow::Borrowed(&packet),
+                    options: Vec::new(),
+                })
+                .expect("write packet");
+        }
+
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = import_pcapng(
+            path.clone(),
+            Arc::new(HashMap::new()),
+            None,
+            false,
+            PacketDebugMode::Off,
+            sender,
+            stop,
+        );
+        handle.join().expect("import thread");
+        let events = receiver.try_iter().collect::<Vec<_>>();
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, EngineEvent::Packet(_)))
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn packet_decoder_tracks_terminal_hit_before_death_cleanup() {
         let mut decoder = PacketDecoder::default();
         let mut first = test_hit(1.0, 1000.0, 100.0);
@@ -4007,7 +4249,15 @@ mod tests {
             .expect("set NTE_TEST_CAPTURE to a pcapng path");
         let (sender, receiver) = crossbeam_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));
-        let handle = import_pcapng(path, Arc::new(HashMap::new()), None, false, sender, stop);
+        let handle = import_pcapng(
+            path,
+            Arc::new(HashMap::new()),
+            None,
+            false,
+            PacketDebugMode::Off,
+            sender,
+            stop,
+        );
         let mut hits = Vec::new();
         while let Ok(event) = receiver.recv_timeout(Duration::from_secs(30)) {
             match event {
@@ -4122,5 +4372,61 @@ mod tests {
             dot_unknown_not_ambiguous, 0,
             "DOT hits should either project to a track or carry ambiguous context"
         );
+    }
+
+    #[test]
+    #[ignore]
+    fn dump_replay_target_diagnostics() {
+        let path = std::env::var("NTE_TEST_CAPTURE")
+            .map(PathBuf::from)
+            .expect("set NTE_TEST_CAPTURE to a pcapng path");
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = import_pcapng(
+            path,
+            Arc::new(HashMap::new()),
+            None,
+            false,
+            PacketDebugMode::Summary,
+            sender,
+            stop,
+        );
+        let mut hits = Vec::new();
+        let mut packet_notes = Vec::new();
+        while let Ok(event) = receiver.recv_timeout(Duration::from_secs(30)) {
+            match event {
+                EngineEvent::Hit(hit) => hits.push(hit),
+                EngineEvent::Packet(packet) => {
+                    if packet.parsed_hits > 0 || packet.note.contains("Object/path candidates") {
+                        packet_notes.push(packet.note);
+                    }
+                }
+                EngineEvent::CaptureStopped => break,
+                EngineEvent::Error(error) => panic!("{error}"),
+                _ => {}
+            }
+        }
+        handle.join().expect("import thread should finish");
+
+        eprintln!("diagnostic hits={}", hits.len());
+        for hit in hits.iter().take(120) {
+            eprintln!(
+                "hit t={:.3} dmg={:.0} hp={:.0}->{:.0}/{:.0} target={:?} id={:?} ge={:?} dmg_name={:?} ctx={}",
+                hit.timestamp,
+                hit.damage,
+                hit.target_hp_before,
+                hit.target_hp_after,
+                hit.target_max_hp,
+                hit.target_name,
+                hit.target_id,
+                hit.gameplay_effect_name,
+                hit.damage_name,
+                hit.target_context.join(" | ")
+            );
+        }
+        eprintln!("diagnostic packets={}", packet_notes.len());
+        for note in packet_notes.iter().take(120) {
+            eprintln!("packet {note}");
+        }
     }
 }

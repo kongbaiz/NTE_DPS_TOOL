@@ -1,0 +1,77 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_ReactionData",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/Reaction/DT_ReactionData",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'ReactionConfigData'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "REACTION_RESULT_TYPE_1": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_1",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_COSMOS",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_NATURE",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "GE_ActorReaction_1_Damage",
+        "DamageGEConditionArray": []
+      },
+      "REACTION_RESULT_TYPE_2": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_2",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_NATURE",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_INCANTATION",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "None",
+        "DamageGEConditionArray": []
+      },
+      "REACTION_RESULT_TYPE_3": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_3",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_INCANTATION",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_CHAOS",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "Buff_Reaction_5_new",
+        "DamageGEConditionArray": []
+      },
+      "REACTION_RESULT_TYPE_4": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_4",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_CHAOS",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_PSYCHE",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "Buff_Reaction_4_new",
+        "DamageGEConditionArray": []
+      },
+      "REACTION_RESULT_TYPE_5": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_5",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_PSYCHE",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_LAKSHANA",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "None",
+        "DamageGEConditionArray": []
+      },
+      "REACTION_RESULT_TYPE_6": {
+        "ReactionResult": "EReactionResultType::REACTION_RESULT_TYPE_6",
+        "CharacterElementType1": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_LAKSHANA",
+        "CharacterElementType2": "ECharacterElementType::CHARACTER_ELEMENT_TYPE_COSMOS",
+        "ReactionDisplayText": {
+          "CultureInvariantString": null
+        },
+        "DefaultDamageGE": "None",
+        "DamageGEConditionArray": []
+      }
+    }
+  }
+]

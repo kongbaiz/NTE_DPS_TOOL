@@ -30,6 +30,14 @@ pub fn canonical_target_key_from_name_and_path(name: &str, path: &str) -> Option
     canonical_target_key_for_path(path).or_else(|| canonical_target_key_for_path(name))
 }
 
+pub fn is_boss_target_key(key: &str) -> bool {
+    key.trim().to_ascii_lowercase().starts_with("monster:boss_")
+}
+
+pub fn is_small_monster_target_key(key: &str) -> bool {
+    key.trim().to_ascii_lowercase().starts_with("monster:mon_")
+}
+
 fn target_number_after_marker(value: &str, marker: &str) -> Option<(&'static str, u32)> {
     let prefix = if marker.contains("boss") {
         "boss"
@@ -90,5 +98,9 @@ mod tests {
             canonical_target_key_for_path("boss_08_BP").as_deref(),
             Some("monster:boss_08")
         );
+        assert!(is_boss_target_key("monster:boss_08"));
+        assert!(!is_small_monster_target_key("monster:boss_08"));
+        assert!(is_small_monster_target_key("monster:mon_01"));
+        assert!(!is_boss_target_key("monster:mon_01"));
     }
 }

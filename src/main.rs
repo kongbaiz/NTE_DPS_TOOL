@@ -15,6 +15,7 @@ mod parser;
 mod protocol;
 mod resource_index;
 mod runtime_mapping;
+mod target_alias;
 mod target_fact;
 mod target_identity;
 mod target_instance;

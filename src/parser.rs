@@ -117,6 +117,10 @@ pub fn find_data_file(relative_path: &Path) -> Option<PathBuf> {
         if candidate.is_file() {
             return Some(candidate);
         }
+        let candidate = current_dir.join("res").join(relative_path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
     }
 
     if let Ok(executable) = std::env::current_exe() {
@@ -125,11 +129,23 @@ pub fn find_data_file(relative_path: &Path) -> Option<PathBuf> {
             if candidate.is_file() {
                 return Some(candidate);
             }
+            let candidate = ancestor.join("res").join(relative_path);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
 
     let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    manifest_candidate.is_file().then_some(manifest_candidate)
+    if manifest_candidate.is_file() {
+        return Some(manifest_candidate);
+    }
+    let manifest_res_candidate = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("res")
+        .join(relative_path);
+    manifest_res_candidate
+        .is_file()
+        .then_some(manifest_res_candidate)
 }
 
 pub fn load_characters(path: &Path) -> Result<HashMap<u32, CharacterInfo>> {
