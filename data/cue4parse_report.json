@@ -1,0 +1,495 @@
+{
+  "generated_at": "2026-06-16T15:33:10.5282688+00:00",
+  "paks_directory": "D:\\Neverness To Everness\\Client\\WindowsNoEditor\\HT\\Content",
+  "game": "GAME_NevernessToEverness",
+  "usmap": "D:\\NTE_DPS_TOOL\\NTE-5.6.1.usmap",
+  "registered_archives": [
+    {
+      "name": "global.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": false,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "global.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": false,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk0-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk0-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk0-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk0-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk1-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk1-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk1-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk1-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk101-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk101-Windows_0_P.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk101-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk101-Windows.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk102-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk102-Windows_0_P.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk102-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk102-Windows.utoc",
+      "encrypted": false,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk2-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk2-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk2-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk2-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk3-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk3-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk3-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk3-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk4-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk4-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk4-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk4-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk5-Windows_0_P.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk5-Windows_0_P.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk5-Windows.pak",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    },
+    {
+      "name": "pakchunk5-Windows.utoc",
+      "encrypted": true,
+      "encryption_guid": "00000000000000000000000000000000",
+      "has_directory_index": true,
+      "file_count": 0,
+      "mounted": false
+    }
+  ],
+  "required_keys_before_submit": [
+    "00000000000000000000000000000000"
+  ],
+  "mounted_archive_count": 32,
+  "unmounted_archive_count": 2,
+  "required_keys_after_submit": [],
+  "available_file_count": 486881,
+  "status": "index_available",
+  "targets": [
+    {
+      "target": "DataTable/Character/DT_Character",
+      "matches": [
+        "HT/Content/DataTable/Character/DT_Character.uasset",
+        "HT/Content/DataTable/Character/DT_Character.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Character\\DT_Character.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Skill/DT_GameplayEffectMappingData",
+      "matches": [
+        "HT/Content/DataTable/Skill/DT_GameplayEffectMappingData.uasset",
+        "HT/Content/DataTable/Skill/DT_GameplayEffectMappingData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Skill\\DT_GameplayEffectMappingData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Skill/DT_SkillDamageData",
+      "matches": [
+        "HT/Content/DataTable/Skill/DT_SkillDamageData.uasset",
+        "HT/Content/DataTable/Skill/DT_SkillDamageData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Skill\\DT_SkillDamageData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Skill/Wooden/DT_WoodenStructData",
+      "matches": [
+        "HT/Content/DataTable/Skill/Wooden/DT_WoodenStructData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Skill\\Wooden\\DT_WoodenStructData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Skill/DT_GameplayAbilityTipsData",
+      "matches": [
+        "HT/Content/DataTable/Skill/DT_GameplayAbilityTipsData.uasset",
+        "HT/Content/DataTable/Skill/DT_GameplayAbilityTipsData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Skill\\DT_GameplayAbilityTipsData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Reaction/DT_ReactionData",
+      "matches": [
+        "HT/Content/DataTable/Reaction/DT_ReactionData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Reaction\\DT_ReactionData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Reaction/DT_ReactionDetailUIData",
+      "matches": [
+        "HT/Content/DataTable/Reaction/DT_ReactionDetailUIData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Reaction\\DT_ReactionDetailUIData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Reaction/DT_ReactionDamageData",
+      "matches": [
+        "HT/Content/DataTable/Reaction/DT_ReactionDamageData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Reaction\\DT_ReactionDamageData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Reaction/DT_ReactionElementTypeData",
+      "matches": [
+        "HT/Content/DataTable/Reaction/DT_ReactionElementTypeData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Reaction\\DT_ReactionElementTypeData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Reaction/DT_ReactionExtendDataTable",
+      "matches": [
+        "HT/Content/DataTable/Reaction/DT_ReactionExtendDataTable.uasset",
+        "HT/Content/DataTable/Reaction/DT_ReactionExtendDataTable.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Reaction\\DT_ReactionExtendDataTable.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/ActivityLocalDataLayerDataTable",
+      "matches": [
+        "HT/Content/DataTable/ActivityLocalDataLayerDataTable.uasset",
+        "HT/Content/DataTable/ActivityLocalDataLayerDataTable.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\ActivityLocalDataLayerDataTable.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Vision/DT_Vision",
+      "matches": [
+        "HT/Content/DataTable/Vision/DT_Vision.uasset",
+        "HT/Content/DataTable/VIsion/DT_Vision.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Vision\\DT_Vision.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Vision/DT_AdvVision",
+      "matches": [
+        "HT/Content/DataTable/Vision/DT_AdvVision.uasset",
+        "HT/Content/DataTable/VIsion/DT_AdvVision.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Vision\\DT_AdvVision.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Vision/DT_AdvVisionSceneData",
+      "matches": [
+        "HT/Content/DataTable/Vision/DT_AdvVisionSceneData.uasset",
+        "HT/Content/DataTable/VIsion/DT_AdvVisionSceneData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Vision\\DT_AdvVisionSceneData.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/DT_MonsterManualConfig",
+      "matches": [
+        "HT/Content/DataTable/DT_MonsterManualConfig.uasset",
+        "HT/Content/DataTable/DT_MonsterManualConfig.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\DT_MonsterManualConfig.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Monster/DT_MonsterStaticData_Abyss",
+      "matches": [
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_Abyss.uasset",
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_Abyss.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Monster\\DT_MonsterStaticData_Abyss.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Monster/DT_MonsterStaticData_BigWorld",
+      "matches": [
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld.uasset",
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Monster\\DT_MonsterStaticData_BigWorld.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Monster/DT_MonsterStaticData_BigWorld_Gameplay",
+      "matches": [
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld_Gameplay.uasset",
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld_Gameplay.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Monster\\DT_MonsterStaticData_BigWorld_Gameplay.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Monster/DT_MonsterStaticData_BigWorld_Quest",
+      "matches": [
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld_Quest.uasset",
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_BigWorld_Quest.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Monster\\DT_MonsterStaticData_BigWorld_Quest.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/Monster/DT_MonsterStaticData_Clone",
+      "matches": [
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_Clone.uasset",
+        "HT/Content/DataTable/Monster/DT_MonsterStaticData_Clone.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\Monster\\DT_MonsterStaticData_Clone.json",
+      "export_count": 1
+    },
+    {
+      "target": "DataTable/PackData/DT_MonsterPackData",
+      "matches": [
+        "HT/Content/DataTable/PackData/DT_MonsterPackData.uasset",
+        "HT/Content/DataTable/PackData/DT_MonsterPackData.uasset"
+      ],
+      "status": "exported",
+      "output": "D:\\NTE_DPS_TOOL\\data\\DataTable\\PackData\\DT_MonsterPackData.json",
+      "export_count": 1
+    }
+  ]
+}

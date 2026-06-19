@@ -1,0 +1,265 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_ReactionDetailUIData",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/Reaction/DT_ReactionDetailUIData",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'ReactionDetailUIData'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "1": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_LAKSHANA",
+          "CHARACTER_ELEMENT_TYPE_COSMOS"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guangxiang",
+          "SourceString": "延滞",
+          "LocalizedString": "延滞"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guangxiang_des",
+          "SourceString": "触发异能环合后的<NumGreen>5</>秒内，目标进入延滞状态，移动及攻击速度降低，并随时间逐渐复原。如频繁进入延滞状态，目标恢复至常态的速度将会加快。",
+          "LocalizedString": "触发异能环合后的<NumGreen>5</>秒内，目标进入延滞状态，移动及攻击速度降低，并随时间逐渐复原。如频繁进入延滞状态，目标恢复至常态的速度将会加快。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1008",
+            "ReactionAbilityID": "GA_Skia_Passive_1"
+          },
+          {
+            "CharacterID": "1025",
+            "ReactionAbilityID": "GA_hathor_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination3"
+        ]
+      },
+      "2": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_COSMOS",
+          "CHARACTER_ELEMENT_TYPE_NATURE"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guangling",
+          "SourceString": "创生",
+          "LocalizedString": "创生"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guangling_des",
+          "SourceString": "触发异能环合后，目标附近将诞生<NumGreen>1</>株<bule>「创生株」</>，并绽放<NumGreen>5</>朵<bule>「创生花」</>。\r\n每隔<NumGreen>2</>秒，<bule>「创生花」</>会陆续飞向射程内的目标并爆炸，造成一定范围伤害。\r\n场上最多同时存在<NumGreen>3</>株<bule>「创生株」</>。",
+          "LocalizedString": "触发异能环合后，目标附近将诞生<NumGreen>1</>株<bule>「创生株」</>，并绽放<NumGreen>5</>朵<bule>「创生花」</>。\r\n每隔<NumGreen>2</>秒，<bule>「创生花」</>会陆续飞向射程内的目标并爆炸，造成一定范围伤害。\r\n场上最多同时存在<NumGreen>3</>株<bule>「创生株」</>。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1010",
+            "ReactionAbilityID": "GA_Nanally_Passive_1"
+          },
+          {
+            "CharacterID": "1019",
+            "ReactionAbilityID": "GA_Mint_Passive_1"
+          },
+          {
+            "CharacterID": "1052",
+            "ReactionAbilityID": "GA_Jin_Passive_1"
+          },
+          {
+            "CharacterID": "1055",
+            "ReactionAbilityID": "GA_Kuhara_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination1"
+        ]
+      },
+      "3": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_NATURE",
+          "CHARACTER_ELEMENT_TYPE_INCANTATION"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_lingzhou",
+          "SourceString": "覆纹",
+          "LocalizedString": "覆纹"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_lingzhou_des",
+          "SourceString": "触发异能环合后的<NumGreen>12</>秒内，目标受到<bule>灵属性或咒属性异能伤害</>时，将额外受到一次原伤害<NumGreen>20%</>的<bule>追加攻击伤害</>。",
+          "LocalizedString": "触发异能环合后的<NumGreen>12</>秒内，目标受到<bule>灵属性或咒属性异能伤害</>时，将额外受到一次原伤害<NumGreen>20%</>的<bule>追加攻击伤害</>。"
+        },
+        "InnerData": [],
+        "TriggerTeachArray": [
+          "combination2"
+        ]
+      },
+      "4": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_CHAOS",
+          "CHARACTER_ELEMENT_TYPE_PSYCHE"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_anhun",
+          "SourceString": "黯星",
+          "LocalizedString": "黯星"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_anhun_des",
+          "SourceString": "触发异能环合后的<NumGreen>5</>秒内，目标进入黯星状态。该状态结束时，目标将受到一次高额<bule>心灵伤害</>。",
+          "LocalizedString": "触发异能环合后的<NumGreen>5</>秒内，目标进入黯星状态。该状态结束时，目标将受到一次高额<bule>心灵伤害</>。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1039",
+            "ReactionAbilityID": "GA_Fadia_Passive_1"
+          },
+          {
+            "CharacterID": "1020",
+            "ReactionAbilityID": "GA_Haniel_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination4"
+        ]
+      },
+      "5": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_INCANTATION",
+          "CHARACTER_ELEMENT_TYPE_CHAOS"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_zhouan",
+          "SourceString": "浊燃",
+          "LocalizedString": "浊燃"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_zhouan_des",
+          "SourceString": "触发异能环合后的<NumGreen>15</>秒内，目标进入浊燃状态，期间受到持续伤害。",
+          "LocalizedString": "触发异能环合后的<NumGreen>15</>秒内，目标进入浊燃状态，期间受到持续伤害。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1023",
+            "ReactionAbilityID": "GA_Cang_Passive_1"
+          },
+          {
+            "CharacterID": "1003",
+            "ReactionAbilityID": "GA_Sagiri_Passive_1"
+          },
+          {
+            "CharacterID": "1033",
+            "ReactionAbilityID": "GA_Adler_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination5"
+        ]
+      },
+      "6": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_PSYCHE",
+          "CHARACTER_ELEMENT_TYPE_LAKSHANA"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_hunxiang",
+          "SourceString": "浸染",
+          "LocalizedString": "浸染"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_hunxiang_des",
+          "SourceString": "触发异能环合后的<NumGreen>12</>秒内，目标受到<bule>魂属性或相属性异能伤害</>时，所受伤害量提升<NumGreen>20%</>。",
+          "LocalizedString": "触发异能环合后的<NumGreen>12</>秒内，目标受到<bule>魂属性或相属性异能伤害</>时，所受伤害量提升<NumGreen>20%</>。"
+        },
+        "InnerData": [],
+        "TriggerTeachArray": [
+          "combination6"
+        ]
+      },
+      "7": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_COSMOS",
+          "CHARACTER_ELEMENT_TYPE_NATURE",
+          "CHARACTER_ELEMENT_TYPE_LAKSHANA"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guanglingxiang",
+          "SourceString": "盈蓄",
+          "LocalizedString": "盈蓄"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_guanglingxiang_des",
+          "SourceString": "<bule>「创生花」</>命中处于延滞状态的目标时，当前驻场角色额外获得<NumGreen>10</>点<bule>终结能量</>。",
+          "LocalizedString": "<bule>「创生花」</>命中处于延滞状态的目标时，当前驻场角色额外获得<NumGreen>10</>点<bule>终结能量</>。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1051",
+            "ReactionAbilityID": "GA_Female_Passive_1"
+          },
+          {
+            "CharacterID": "1073",
+            "ReactionAbilityID": "GA_Chiichan073_Passive_1"
+          },
+          {
+            "CharacterID": "1021",
+            "ReactionAbilityID": "GA_Edgar_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination7"
+        ]
+      },
+      "8": {
+        "ReactionElementArray": [
+          "CHARACTER_ELEMENT_TYPE_CHAOS",
+          "CHARACTER_ELEMENT_TYPE_PSYCHE",
+          "CHARACTER_ELEMENT_TYPE_INCANTATION"
+        ],
+        "ReactionResultName": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_zhouanhun",
+          "SourceString": "失谐",
+          "LocalizedString": "失谐"
+        },
+        "ReactionResultDesc": {
+          "TableId": "/Game/Text/ST_ReactionDes.ST_ReactionDes",
+          "Key": "Reaction_zhouanhun_des",
+          "SourceString": "当目标同时处于黯星与浊燃状态时，扣除其一定比例的<bule>倾陷值</>。",
+          "LocalizedString": "当目标同时处于黯星与浊燃状态时，扣除其一定比例的<bule>倾陷值</>。"
+        },
+        "InnerData": [
+          {
+            "CharacterID": "1004",
+            "ReactionAbilityID": "GA_Lacrimosa_Passive_1"
+          },
+          {
+            "CharacterID": "1054",
+            "ReactionAbilityID": "GA_Daffodill_Passive_1"
+          }
+        ],
+        "TriggerTeachArray": [
+          "combination8"
+        ]
+      }
+    }
+  }
+]

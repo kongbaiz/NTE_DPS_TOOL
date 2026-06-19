@@ -1,0 +1,3487 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_MonsterStaticData_BigWorld_Gameplay",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/Monster/DT_MonsterStaticData_BigWorld_Gameplay",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'MonsterStaticData'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "Boss_15_ChallengeLv1_BP": {
+        "Comment": "【高难】音霸魔王1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_15_ChallengeLv2_BP": {
+        "Comment": "【高难】音霸魔王2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_15_ChallengeLv3_BP": {
+        "Comment": "【高难】音霸魔王3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_15_ChallengeLv4_BP": {
+        "Comment": "【高难】音霸魔王4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_15_ChallengeLv5_BP": {
+        "Comment": "【高难】音霸魔王5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 83,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 83,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_15_ChallengeLv6_BP": {
+        "Comment": "【高难】音霸魔王6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_15_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_15_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 88,
+            "MonsterWorldLevelPropModifyID": "Boss_15_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 88,
+            "MonsterClonePropModifyID": "Boss_15_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_07_ChallengeLv1_BP": {
+        "Comment": "【高难】塞润尼缇1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_07_ChallengeLv2_BP": {
+        "Comment": "【高难】塞润尼缇2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_07_ChallengeLv3_BP": {
+        "Comment": "【高难】塞润尼缇3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_07_ChallengeLv4_BP": {
+        "Comment": "【高难】塞润尼缇4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_07_ChallengeLv5_BP": {
+        "Comment": "【高难】塞润尼缇5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 85,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 85,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_07_ChallengeLv6_BP": {
+        "Comment": "【高难】塞润尼缇6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_07_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_07_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 90,
+            "MonsterWorldLevelPropModifyID": "boss_07_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 90,
+            "MonsterClonePropModifyID": "boss_07_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_06_ChallengeLv1_BP": {
+        "Comment": "【高难】胶卷1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_ChallengeLv2_BP": {
+        "Comment": "【高难】胶卷2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_ChallengeLv3_BP": {
+        "Comment": "【高难】胶卷3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_ChallengeLv4_BP": {
+        "Comment": "【高难】胶卷4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_ChallengeLv5_BP": {
+        "Comment": "【高难】胶卷5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 83,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 83,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_ChallengeLv6_BP": {
+        "Comment": "【高难】胶卷6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 88,
+            "MonsterWorldLevelPropModifyID": "Boss_06_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 88,
+            "MonsterClonePropModifyID": "Boss_06_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "Boss_06_Sagiri_BP_Challenge": {
+        "Comment": "【高难】胶卷5-6 小早雾",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_06_Sagiri_BP_Challenge"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_06_Sagiri_BP_Challenge_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 76,
+            "MonsterWorldLevelPropModifyID": "Boss_06_Sagiri_BP_Challenge_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 76,
+            "MonsterClonePropModifyID": "Boss_06_Sagiri_BP_Challenge_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_09_ChallengeLv1_BP": {
+        "Comment": "【高难】黑之书1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_09_ChallengeLv2_BP": {
+        "Comment": "【高难】黑之书2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_09_ChallengeLv3_BP": {
+        "Comment": "【高难】黑之书3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_09_ChallengeLv4_BP": {
+        "Comment": "【高难】黑之书4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_09_ChallengeLv5_BP": {
+        "Comment": "【高难】黑之书5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 85,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 85,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_09_ChallengeLv6_BP": {
+        "Comment": "【高难】黑之书6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_09_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_CHAOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_09_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 90,
+            "MonsterWorldLevelPropModifyID": "boss_09_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 90,
+            "MonsterClonePropModifyID": "boss_09_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv1_BP": {
+        "Comment": "【高难】无首铁驭1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv2_BP": {
+        "Comment": "【高难】无首铁驭2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv3_BP": {
+        "Comment": "【高难】无首铁驭3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv4_BP": {
+        "Comment": "【高难】无首铁驭4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv5_BP": {
+        "Comment": "【高难】无首铁驭5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 85,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 85,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_13_ChallengeLv6_BP": {
+        "Comment": "【高难】无首铁驭6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_13_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_13_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 90,
+            "MonsterWorldLevelPropModifyID": "boss_13_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 90,
+            "MonsterClonePropModifyID": "boss_13_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_17_ChallengeLv1_BP": {
+        "Comment": "【高难】玛门1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_17_ChallengeLv2_BP": {
+        "Comment": "【高难】玛门2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_17_ChallengeLv3_BP": {
+        "Comment": "【高难】玛门3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_17_ChallengeLv4_BP": {
+        "Comment": "【高难】玛门4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_17_ChallengeLv5_BP": {
+        "Comment": "【高难】玛门5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 83,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 83,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "boss_17_ChallengeLv6_BP": {
+        "Comment": "【高难】玛门6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_17_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_17_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 88,
+            "MonsterWorldLevelPropModifyID": "boss_17_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 88,
+            "MonsterClonePropModifyID": "boss_17_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0222
+      },
+      "mon_025_double_1_ChallengeLv1_BP": {
+        "Comment": "【高难】鲤鱼a",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_025_double_1_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 33,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 78,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 33,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 78,
+            "MonsterClonePropModifyID": "mon_025_double_1_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0095
+      },
+      "mon_025_double_2_ChallengeLv1_BP": {
+        "Comment": "【高难】鲤鱼b",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_025_double_2_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 33,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 78,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 33,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 78,
+            "MonsterClonePropModifyID": "mon_025_double_2_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0095
+      },
+      "mon_025_double_ChallengeLv1_BP": {
+        "Comment": "【高难】鲤鱼c",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_025_double_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 33,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 43,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 53,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 63,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 73,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 78,
+            "MonsterWorldLevelPropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 33,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 43,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 53,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 63,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 73,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 78,
+            "MonsterClonePropModifyID": "mon_025_double_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0095
+      },
+      "mon_012_2_ChallengeLv1_BP": {
+        "Comment": "【高难】涂鸦",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_012_2_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_PSYCHE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 39,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 49,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 59,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 69,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 79,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 84,
+            "MonsterWorldLevelPropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 39,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 49,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 59,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 69,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 79,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 84,
+            "MonsterClonePropModifyID": "mon_012_2_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0133
+      },
+      "mon_13_1_ChallengeLv1_BP": {
+        "Comment": "【高难】妖刀a",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_13_1_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 35,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 80,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 35,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 80,
+            "MonsterClonePropModifyID": "mon_13_1_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "mon_13_1_summon_ChallengeLv1_BP": {
+        "Comment": "【高难】妖刀b",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_13_1_summon_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 35,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 80,
+            "MonsterWorldLevelPropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 35,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 80,
+            "MonsterClonePropModifyID": "mon_13_1_summon_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "mon_48_ChallengeLv1_BP": {
+        "Comment": "【高难】瓦楞城堡",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_48_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_LAKSHANA"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_48_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 39,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 49,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 59,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 69,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 79,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 84,
+            "MonsterWorldLevelPropModifyID": "mon_48_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 39,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 49,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 59,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 69,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 79,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 84,
+            "MonsterClonePropModifyID": "mon_48_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0133
+      },
+      "boss_33_ChallengeLv1_BP": {
+        "Comment": "【高难】囿巢鸟1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv2_BP": {
+        "Comment": "【高难】囿巢鸟2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv3_BP": {
+        "Comment": "【高难】囿巢鸟3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv4_BP": {
+        "Comment": "【高难】囿巢鸟4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv5_BP": {
+        "Comment": "【高难】囿巢鸟5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 85,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 85,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv6_BP": {
+        "Comment": "【高难】囿巢鸟6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_COSMOS"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 90,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 90,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "boss_33_ChallengeLv1_Summon": {
+        "Comment": "【高难】囿巢鸟的茧1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv1_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv1_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 35,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv1_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 35,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv1_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_33_ChallengeLv2_Summon": {
+        "Comment": "【高难】囿巢鸟的茧2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv2_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv2_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv2_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv2_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_33_ChallengeLv3_Summon": {
+        "Comment": "【高难】囿巢鸟的茧3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv3_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv3_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv3_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv3_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_33_ChallengeLv4_Summon": {
+        "Comment": "【高难】囿巢鸟的茧4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv4_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv4_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv4_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv4_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_33_ChallengeLv5_Summon": {
+        "Comment": "【高难】囿巢鸟的茧5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv5_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv5_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv5_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv5_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "boss_33_ChallengeLv6_Summon": {
+        "Comment": "【高难】囿巢鸟的茧6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "boss_33_ChallengeLv6_Summon"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NORMAL"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "boss_33_ChallengeLv6_Summon_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 80,
+            "MonsterWorldLevelPropModifyID": "boss_33_ChallengeLv6_Summon_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 80,
+            "MonsterClonePropModifyID": "boss_33_ChallengeLv6_Summon_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0111
+      },
+      "Boss_08_ChallengeLv1_BP": {
+        "Comment": "【高难】斑蝶1",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 45,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 45,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv1_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_08_ChallengeLv2_BP": {
+        "Comment": "【高难】斑蝶2",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv2_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv2_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 55,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 55,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv2_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_08_ChallengeLv3_BP": {
+        "Comment": "【高难】斑蝶3",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv3_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv3_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 65,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 65,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv3_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_08_ChallengeLv4_BP": {
+        "Comment": "【高难】斑蝶4",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv4_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv4_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 75,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 75,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv4_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_08_ChallengeLv5_BP": {
+        "Comment": "【高难】斑蝶5",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv5_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv5_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 85,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 85,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv5_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "Boss_08_ChallengeLv6_BP": {
+        "Comment": "【高难】斑蝶6",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "Boss_08_ChallengeLv6_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_NATURE"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "Boss_08_ChallengeLv6_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 90,
+            "MonsterWorldLevelPropModifyID": "Boss_08_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 90,
+            "MonsterClonePropModifyID": "Boss_08_ChallengeLv6_BP_DataPack0"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0267
+      },
+      "mon_051_ChallengeLv1_BP": {
+        "Comment": "【高难】桀桀熊",
+        "TextName": {
+          "CultureInvariantString": null
+        },
+        "Icon": {
+          "AssetPathName": "",
+          "SubPathString": ""
+        },
+        "Description": {
+          "CultureInvariantString": null
+        },
+        "DropRadius": 0.0,
+        "DropGroupID": "None",
+        "DropNpcGroupID": "None",
+        "DropDelayTime": 0.0,
+        "Tags": [
+          "mon_051_ChallengeLv1_BP"
+        ],
+        "IsVisionActor": false,
+        "VisionSoulID": "None",
+        "UnbalBarTypeList": [
+          "UNBAL_BAR_INCANTATION"
+        ],
+        "AutoDecIntervalTime": 0.0,
+        "bIsWorldLevel": false,
+        "MonsterLevel": 1,
+        "IsUseLeaderPropModifyID": false,
+        "PropModifyID": "mon_051_ChallengeLv1_BP_DataPack0",
+        "WorldLevelArray": [
+          {
+            "MonsterWorldLevel": 39,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterWorldLevel": 49,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterWorldLevel": 59,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterWorldLevel": 69,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterWorldLevel": 79,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterWorldLevel": 84,
+            "MonsterWorldLevelPropModifyID": "mon_051_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "OnlineRatioID": "normal",
+        "bIsCloneDifficultyLevel": true,
+        "CloneDifficultyLevelArray": [
+          {
+            "MonsterCloneLevel": 39,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack0"
+          },
+          {
+            "MonsterCloneLevel": 49,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack1"
+          },
+          {
+            "MonsterCloneLevel": 59,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack2"
+          },
+          {
+            "MonsterCloneLevel": 69,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack3"
+          },
+          {
+            "MonsterCloneLevel": 79,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack4"
+          },
+          {
+            "MonsterCloneLevel": 84,
+            "MonsterClonePropModifyID": "mon_051_ChallengeLv1_BP_DataPack5"
+          }
+        ],
+        "bIsAbyssCloneLevel": false,
+        "AbyssCloneLevelArray": [],
+        "IsTestMonster": false,
+        "IsStoryBalance": false,
+        "BalanceBeDamageBase": 10000.0,
+        "BalanceDamageBasePercent": 0.0133
+      }
+    }
+  }
+]

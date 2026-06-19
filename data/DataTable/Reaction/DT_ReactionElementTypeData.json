@@ -1,0 +1,161 @@
+[
+  {
+    "Type": "DataTable",
+    "Name": "DT_ReactionElementTypeData",
+    "Flags": "RF_Public | RF_Standalone | RF_Transactional | RF_WasLoaded | RF_LoadCompleted",
+    "Class": "UScriptClass'DataTable'",
+    "Package": "/Game/DataTable/Reaction/DT_ReactionElementTypeData",
+    "Properties": {
+      "RowStruct": {
+        "ObjectName": "Class'ReactionElementTypeConfigData'",
+        "ObjectPath": "/Script/HTGame"
+      }
+    },
+    "Rows": {
+      "CHARACTER_ELEMENT_TYPE_COSMOS": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_1.YH_UI_yisefanying_icon_1",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_1_2.YH_UI_yisefanying_icon_1_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_1.YH_UI_yisefanying_icon_1",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_1_2.YH_UI_yisefanying_icon_1_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_02",
+          "SourceString": "光",
+          "LocalizedString": "光"
+        }
+      },
+      "CHARACTER_ELEMENT_TYPE_NATURE": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_3.YH_UI_yisefanying_icon_3",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_3_2.YH_UI_yisefanying_icon_3_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_3.YH_UI_yisefanying_icon_3",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_3_2.YH_UI_yisefanying_icon_3_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_04",
+          "SourceString": "灵",
+          "LocalizedString": "灵"
+        }
+      },
+      "CHARACTER_ELEMENT_TYPE_INCANTATION": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_5.YH_UI_yisefanying_icon_5",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_5_2.YH_UI_yisefanying_icon_5_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_5.YH_UI_yisefanying_icon_5",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_5_2.YH_UI_yisefanying_icon_5_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_03",
+          "SourceString": "咒",
+          "LocalizedString": "咒"
+        }
+      },
+      "CHARACTER_ELEMENT_TYPE_CHAOS": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_2.YH_UI_yisefanying_icon_2",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_2_2.YH_UI_yisefanying_icon_2_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_2.YH_UI_yisefanying_icon_2",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_2_2.YH_UI_yisefanying_icon_2_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_05",
+          "SourceString": "暗",
+          "LocalizedString": "暗"
+        }
+      },
+      "CHARACTER_ELEMENT_TYPE_PSYCHE": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_4.YH_UI_yisefanying_icon_4",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_4_2.YH_UI_yisefanying_icon_4_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_4.YH_UI_yisefanying_icon_4",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_4_2.YH_UI_yisefanying_icon_4_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_07",
+          "SourceString": "魂",
+          "LocalizedString": "魂"
+        }
+      },
+      "CHARACTER_ELEMENT_TYPE_LAKSHANA": {
+        "ActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_6.YH_UI_yisefanying_icon_6",
+          "SubPathString": ""
+        },
+        "InActiveReactionImage": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_6_2.YH_UI_yisefanying_icon_6_2",
+          "SubPathString": ""
+        },
+        "ActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_6.YH_UI_yisefanying_icon_6",
+          "SubPathString": ""
+        },
+        "InActiveReactionBigIcon": {
+          "AssetPathName": "/Game/UI/UI/yisefanying/YH_UI_yisefanying_icon_6_2.YH_UI_yisefanying_icon_6_2",
+          "SubPathString": ""
+        },
+        "ElementText": {
+          "TableId": "/Game/Text/ST_Common.ST_Common",
+          "Key": "character_reactionelementtype_06",
+          "SourceString": "相",
+          "LocalizedString": "相"
+        }
+      }
+    }
+  }
+]
