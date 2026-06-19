@@ -100,38 +100,78 @@ impl ResourceIndex {
 
     pub fn load_default_with_warnings(warnings: &mut Vec<String>) -> Self {
         let mut index = Self::default();
+        let initial_warning_count = warnings.len();
+        let mut missing_groups = Vec::new();
+        let mut loaded_manual = 0usize;
         for relative in MONSTER_MANUAL_TABLE_FILES {
             let Some(path) = find_data_file(Path::new(relative)) else {
                 continue;
             };
+            loaded_manual += 1;
             index.load_monster_manual_file_with_warnings(&path, warnings);
         }
+        if loaded_manual == 0 {
+            missing_groups.push("DT_MonsterManualConfig");
+        }
+        let mut loaded_static = 0usize;
         for relative in MONSTER_STATIC_TABLE_FILES {
             let Some(path) = find_data_file(Path::new(relative)) else {
                 continue;
             };
+            loaded_static += 1;
             index.load_monster_static_file_with_warnings(&path, warnings);
         }
+        if loaded_static == 0 {
+            missing_groups.push("DT_MonsterStaticData");
+        }
+        let mut loaded_pack = 0usize;
         for relative in MONSTER_PACK_TABLE_FILES {
             let Some(path) = find_data_file(Path::new(relative)) else {
                 continue;
             };
+            loaded_pack += 1;
             index.load_monster_pack_file_with_warnings(&path, warnings);
         }
+        if loaded_pack == 0 {
+            missing_groups.push("DT_MonsterPackData");
+        }
+        let mut loaded_lacrimosa = 0usize;
         for relative in LACRIMOSA_COLLECTION_TABLE_FILES {
             let Some(path) = find_data_file(Path::new(relative)) else {
                 continue;
             };
+            loaded_lacrimosa += 1;
             index.load_lacrimosa_collection_file_with_warnings(&path, warnings);
+        }
+        if loaded_lacrimosa == 0 {
+            missing_groups.push("DT_LacrimosaCollectionData");
         }
         for file in TARGET_RESOURCE_FILES {
             let relative = Path::new(TARGET_RESOURCE_DIR).join(file);
             let Some(path) = find_data_file(&relative) else {
+                warnings.push(format!("missing target resource {}", relative.display()));
                 continue;
             };
             index.load_file_with_warnings(&path, warnings);
         }
+        if !missing_groups.is_empty() {
+            warnings.push(format!(
+                "missing target DataTable groups: {}",
+                missing_groups.join(", ")
+            ));
+        }
+        warnings.push(format!(
+            "target resource index loaded: names_by_path={} canonical_targets_by_path={} warnings_added={}",
+            index.names_by_path.len(),
+            index.canonical_targets_by_path.len(),
+            warnings.len().saturating_sub(initial_warning_count)
+        ));
         index
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_test_target(&mut self, path: &str, name: &str) {
+        self.insert(path.to_owned(), name.to_owned(), PRIORITY_OVERRIDE);
     }
 
     pub fn display_name_for_path(&self, path: &str) -> Option<String> {

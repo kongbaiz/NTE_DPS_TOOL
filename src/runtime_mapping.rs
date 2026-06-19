@@ -220,7 +220,7 @@ fn aliases_from_value(value: &Value, connection: Option<&str>) -> Vec<TargetAlia
         TargetAliasKind::CurrentHpToken,
         &["current_hp_token", "currenthp_token"],
     );
-    aliases.sort_by(|left, right| left.key().cmp(&right.key()));
+    aliases.sort_by_key(|alias| alias.key());
     aliases.dedup_by(|left, right| left.key() == right.key());
     aliases
 }

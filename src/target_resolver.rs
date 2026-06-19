@@ -141,6 +141,16 @@ impl TargetResolver {
                 }
             }
         }
+        if let Some(instances) = instances {
+            let active_named = instances.active_named_instance_count(hit.timestamp);
+            if active_named > 1 {
+                for candidate in &mut candidates {
+                    candidate
+                        .reasons
+                        .push(format!("active_named_instances:{active_named}"));
+                }
+            }
+        }
         candidates.sort_by(compare_target_candidates);
         candidates
     }
@@ -225,6 +235,7 @@ fn apply_candidates_to_hit(hit: &mut Hit, candidates: &[TargetCandidate]) {
             .push(format!("ignored_non_target_path={path}"));
     }
     append_target_handle_context(hit, top);
+    append_unresolved_context(hit, candidates);
     if let Some(resolution) = resolved_display_name_from_candidates(candidates) {
         if let Some(path) = &resolution.target_path {
             hit.target_context.push(format!("target_path={path}"));
@@ -250,7 +261,7 @@ fn apply_candidates_to_hit(hit: &mut Hit, candidates: &[TargetCandidate]) {
             ));
         }
         hit.target_name = Some(resolution.name);
-    } else if candidate_can_display_target_name(top)
+    } else if candidate_can_display_target_name(top, candidates)
         && let Some(path) = &top.target_path
         && !is_ignored_non_target_path(path)
     {
@@ -348,7 +359,7 @@ fn resolved_display_name_from_candidates(
     }
     let mut named = candidates
         .iter()
-        .filter(|candidate| candidate_can_display_target_name(candidate))
+        .filter(|candidate| candidate_can_display_target_name(candidate, candidates))
         .collect::<Vec<_>>();
     if named.is_empty() {
         return None;
@@ -357,7 +368,7 @@ fn resolved_display_name_from_candidates(
 
     let selected = candidates
         .first()
-        .filter(|candidate| candidate_can_display_target_name(candidate))
+        .filter(|candidate| candidate_can_display_target_name(candidate, candidates))
         .unwrap_or(named[0]);
     let selected_name = selected.target_name.clone()?;
     let selected_target_path = selected.target_path.clone();
@@ -385,7 +396,10 @@ fn candidate_recent_death_suppressed(candidate: &TargetCandidate) -> bool {
         .any(|reason| reason == "recent_death_suppressed_stale_target")
 }
 
-fn candidate_can_display_target_name(candidate: &TargetCandidate) -> bool {
+fn candidate_can_display_target_name(
+    candidate: &TargetCandidate,
+    candidates: &[TargetCandidate],
+) -> bool {
     if candidate.target_name.is_none()
         || candidate_recent_death_suppressed(candidate)
         || candidate
@@ -398,6 +412,7 @@ fn candidate_can_display_target_name(candidate: &TargetCandidate) -> bool {
                 "path_only_target_name_suppressed"
                     | "hp_handle_path_without_direct_hp_suppressed"
                     | "net_identity_path_anchor_unconfirmed"
+                    | "runtime_unique_active_named_instance"
             )
         })
     {
@@ -407,9 +422,73 @@ fn candidate_can_display_target_name(candidate: &TargetCandidate) -> bool {
         return candidate
             .reasons
             .iter()
-            .any(|reason| reason.starts_with("runtime_alias:"));
+            .any(|reason| reason.starts_with("runtime_alias:"))
+            || (candidate
+                .reasons
+                .iter()
+                .any(|reason| reason == "runtime_hp_timeline_unique")
+                && !has_named_direct_hp_conflict(candidate, candidates));
     }
-    false
+    candidate_has_direct_hp_evidence(candidate)
+        && !has_named_direct_hp_conflict(candidate, candidates)
+}
+
+fn has_named_direct_hp_conflict(
+    candidate: &TargetCandidate,
+    candidates: &[TargetCandidate],
+) -> bool {
+    let candidate_key = candidate_conflict_key(candidate);
+    candidates
+        .iter()
+        .filter(|other| candidate_has_direct_hp_evidence(other))
+        .filter(|other| other.target_name.is_some())
+        .map(candidate_conflict_key)
+        .any(|key| key != candidate_key)
+}
+
+fn append_unresolved_context(hit: &mut Hit, candidates: &[TargetCandidate]) {
+    if candidates.iter().any(|candidate| {
+        candidate.target_path.is_some()
+            && candidate.target_name.is_none()
+            && !candidate_has_direct_hp_evidence(candidate)
+    }) {
+        hit.target_context
+            .push("target_unresolved=resource_name_missing".to_owned());
+        if let Some(path) = candidates.iter().find_map(|candidate| {
+            candidate
+                .target_path
+                .as_deref()
+                .filter(|path| !is_ignored_non_target_path(path))
+        }) {
+            hit.target_context
+                .push(format!("unresolved_target_path={path}"));
+        }
+    }
+    if candidates.iter().any(|candidate| {
+        candidate_has_direct_hp_evidence(candidate) && candidate.target_name.is_none()
+    }) {
+        hit.target_context
+            .push("target_unresolved=hp_evidence_without_table_name".to_owned());
+    }
+    let named_direct_hp = candidates
+        .iter()
+        .filter(|candidate| candidate_has_direct_hp_evidence(candidate))
+        .filter(|candidate| candidate.target_name.is_some())
+        .map(candidate_conflict_key)
+        .collect::<HashSet<_>>();
+    if named_direct_hp.len() > 1
+        || candidates.iter().any(|candidate| {
+            candidate
+                .reasons
+                .iter()
+                .any(|reason| reason == "conflict:multiple_candidates")
+        })
+    {
+        hit.target_context
+            .push("target_unresolved=ambiguous_multi_target".to_owned());
+        hit.target_context
+            .push("target_suppressed=ambiguous_multi_target".to_owned());
+    }
 }
 
 fn compare_named_candidates(left: &TargetCandidate, right: &TargetCandidate) -> std::cmp::Ordering {
@@ -761,4 +840,195 @@ fn nearly_equal(left: f64, right: f64, scale: f64) -> bool {
 
 fn hp_tolerance(scale: f64) -> f64 {
     HP_MATCH_TOLERANCE_ABSOLUTE.max(scale.abs() * HP_MATCH_TOLERANCE_RATIO)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::object_state::ObjectHandleKind;
+    use crate::target_instance::{TargetAlias, TargetAliasKind, TargetInstanceStore};
+
+    fn test_hit(timestamp: f64, before: f64, after: f64, damage: f64) -> Hit {
+        Hit {
+            timestamp,
+            char_id: 1,
+            char_name: "tester".to_owned(),
+            char_known: true,
+            damage,
+            byte_offset: 10,
+            bit_shift: 0,
+            char_source: "test".to_owned(),
+            direction: "outgoing".to_owned(),
+            target_hp_before: before,
+            target_hp_after: after,
+            target_max_hp: before,
+            target_hp_percent: after / before * 100.0,
+            target_id: None,
+            target_name: None,
+            target_context: Vec::new(),
+            gameplay_effect_index: None,
+            gameplay_effect_name: None,
+            ability_name: None,
+            damage_name: None,
+            attack_type: None,
+        }
+    }
+
+    fn resources_with_targets() -> ResourceIndex {
+        let mut resources = ResourceIndex::default();
+        resources.insert_test_target("/Game/Monster/Boss_001_BP.Boss_001_BP_C", "Target A");
+        resources.insert_test_target("/Game/Monster/Boss_002_BP.Boss_002_BP_C", "Target B");
+        resources
+    }
+
+    fn observe_direct_hp(
+        store: &mut ObjectStateStore,
+        resources: &ResourceIndex,
+        guid: [u8; 16],
+        path: &str,
+        before: f64,
+        after: f64,
+    ) {
+        let handle = hex::encode(guid);
+        store.observe_path_handle_candidate(
+            1.0,
+            ObjectHandleKind::AttributeGuid,
+            handle,
+            path,
+            resources,
+            "test_path_anchor".to_owned(),
+            255,
+        );
+        store.observe_hp_guid_update(1.0, guid, before, Some(before), "before".to_owned());
+        store.observe_hp_guid_update(1.1, guid, after, Some(before), "after".to_owned());
+    }
+
+    #[test]
+    fn direct_hp_unique_candidate_displays_only_that_target() {
+        let resources = resources_with_targets();
+        let mut store = ObjectStateStore::default();
+        observe_direct_hp(
+            &mut store,
+            &resources,
+            [1; 16],
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C",
+            1000.0,
+            900.0,
+        );
+        let mut hit = test_hit(1.1, 1000.0, 900.0, 100.0);
+        let resolver = TargetResolver;
+        let paths = [PathCandidate {
+            value: "/Game/Monster/Boss_002_BP.Boss_002_BP_C".to_owned(),
+            byte_offset: 20,
+            bit_shift: 0,
+            score: 255,
+        }];
+
+        resolver.apply_to_hit_with_summary(
+            &mut hit,
+            &store,
+            &TargetInstanceStore::default(),
+            &paths,
+            &resources,
+        );
+
+        assert_eq!(hit.target_name.as_deref(), Some("Target A"));
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "target_path=/Game/Monster/Boss_001_BP.Boss_001_BP_C" })
+        );
+    }
+
+    #[test]
+    fn ambiguous_direct_hp_candidates_do_not_display_name() {
+        let resources = resources_with_targets();
+        let mut store = ObjectStateStore::default();
+        observe_direct_hp(
+            &mut store,
+            &resources,
+            [1; 16],
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C",
+            1000.0,
+            900.0,
+        );
+        observe_direct_hp(
+            &mut store,
+            &resources,
+            [2; 16],
+            "/Game/Monster/Boss_002_BP.Boss_002_BP_C",
+            1000.0,
+            900.0,
+        );
+        let mut hit = test_hit(1.1, 1000.0, 900.0, 100.0);
+
+        TargetResolver.apply_to_hit_with_summary(
+            &mut hit,
+            &store,
+            &TargetInstanceStore::default(),
+            &[],
+            &resources,
+        );
+
+        assert_eq!(hit.target_name, None);
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "target_unresolved=ambiguous_multi_target" })
+        );
+    }
+
+    #[test]
+    fn multiple_active_instances_require_hit_alias_or_direct_hp() {
+        let resources = resources_with_targets();
+        let store = ObjectStateStore::default();
+        let mut instances = TargetInstanceStore::default();
+        instances.observe_runtime_mapping(
+            1.0,
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C".to_owned(),
+            "Target A".to_owned(),
+            vec![TargetAlias::new(TargetAliasKind::NetGuid32, "aaaa")],
+        );
+        instances.observe_runtime_mapping(
+            1.0,
+            "/Game/Monster/Boss_002_BP.Boss_002_BP_C".to_owned(),
+            "Target B".to_owned(),
+            vec![TargetAlias::new(TargetAliasKind::NetGuid32, "bbbb")],
+        );
+        let mut hit = test_hit(1.2, 1000.0, 900.0, 100.0);
+
+        TargetResolver.apply_to_hit_with_summary(&mut hit, &store, &instances, &[], &resources);
+
+        assert_eq!(hit.target_name, None);
+    }
+
+    #[test]
+    fn missing_resource_name_suppresses_display_even_with_hp_evidence() {
+        let resources = ResourceIndex::default();
+        let mut store = ObjectStateStore::default();
+        observe_direct_hp(
+            &mut store,
+            &resources,
+            [3; 16],
+            "/Game/Monster/Boss_003_BP.Boss_003_BP_C",
+            1000.0,
+            900.0,
+        );
+        let mut hit = test_hit(1.1, 1000.0, 900.0, 100.0);
+
+        TargetResolver.apply_to_hit_with_summary(
+            &mut hit,
+            &store,
+            &TargetInstanceStore::default(),
+            &[],
+            &resources,
+        );
+
+        assert_eq!(hit.target_name, None);
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "target_unresolved=hp_evidence_without_table_name" })
+        );
+    }
 }

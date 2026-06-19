@@ -56,6 +56,7 @@ pub struct Hit {
 
 #[derive(Clone, Debug)]
 pub struct HitTargetUpdate {
+    pub hit_uid: String,
     pub timestamp: f64,
     pub char_id: u32,
     pub damage: f64,
@@ -66,6 +67,10 @@ pub struct HitTargetUpdate {
     pub target_context: Vec<String>,
     pub target_score: i32,
     pub target_confidence: String,
+    pub old_target_id: Option<String>,
+    pub update_reason: Option<String>,
+    pub update_strength: Option<String>,
+    pub target_generation: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -540,11 +545,28 @@ pub enum EngineEvent {
 }
 
 fn hit_matches_update(hit: &Hit, update: &HitTargetUpdate) -> bool {
+    let computed_uid = stable_hit_uid(hit);
+    if !update.hit_uid.is_empty() {
+        return update.hit_uid == computed_uid;
+    }
     hit.timestamp.to_bits() == update.timestamp.to_bits()
         && hit.char_id == update.char_id
         && hit.damage.to_bits() == update.damage.to_bits()
         && hit.byte_offset == update.byte_offset
         && hit.bit_shift == update.bit_shift
+}
+
+pub fn stable_hit_uid(hit: &Hit) -> String {
+    format!(
+        "{:016x}:{:08x}:{:016x}:{}:{}:{:016x}:{:016x}",
+        hit.timestamp.to_bits(),
+        hit.char_id,
+        hit.damage.to_bits(),
+        hit.byte_offset,
+        hit.bit_shift,
+        hit.target_hp_before.to_bits(),
+        hit.target_hp_after.to_bits()
+    )
 }
 
 struct TargetBackfillRule {
@@ -595,6 +617,10 @@ impl TargetBackfillRule {
 fn apply_target_update_to_hits(hits: &mut VecDeque<Hit>, update: &HitTargetUpdate) -> bool {
     let _ = update.target_score;
     let _ = update.target_confidence.as_str();
+    let _ = update.old_target_id.as_deref();
+    let _ = update.update_reason.as_deref();
+    let _ = update.update_strength.as_deref();
+    let _ = update.target_generation.as_deref();
     let mut changed = false;
     for hit in hits
         .iter_mut()
@@ -625,6 +651,25 @@ fn apply_exact_target_update(hit: &mut Hit, update: &HitTargetUpdate) -> bool {
     if has_recent_death_suppressed_target(&hit.target_context) && update.target_name.is_some() {
         return false;
     }
+    if let (Some(old_name), Some(new_name)) =
+        (hit.target_name.as_deref(), update.target_name.as_deref())
+        && old_name != new_name
+    {
+        return push_unique_context(
+            &mut hit.target_context,
+            "target_conflict=locked_name_mismatch".to_owned(),
+        );
+    }
+    if hit.target_id.is_some()
+        && update.target_id.is_some()
+        && hit.target_id != update.target_id
+        && !update_has_authoritative_lifecycle_reset(update)
+    {
+        return push_unique_context(
+            &mut hit.target_context,
+            "target_conflict=locked_path_mismatch".to_owned(),
+        );
+    }
     let changed = hit.target_id != update.target_id
         || hit.target_name != update.target_name
         || hit.target_context != update.target_context;
@@ -634,6 +679,13 @@ fn apply_exact_target_update(hit: &mut Hit, update: &HitTargetUpdate) -> bool {
         hit.target_context = update.target_context.clone();
     }
     changed
+}
+
+fn update_has_authoritative_lifecycle_reset(update: &HitTargetUpdate) -> bool {
+    update
+        .target_context
+        .iter()
+        .any(|entry| entry.starts_with("target_lifecycle_reset="))
 }
 
 fn apply_target_backfill_rule(hit: &mut Hit, rule: &TargetBackfillRule) -> bool {
@@ -731,6 +783,14 @@ fn replace_or_push_context(context: &mut Vec<String>, key: &str, value: &str) ->
     changed
 }
 
+fn push_unique_context(context: &mut Vec<String>, value: String) -> bool {
+    if context.iter().any(|entry| entry == &value) {
+        return false;
+    }
+    context.push(value);
+    true
+}
+
 fn target_alias_lookup_keys(target_id: Option<&String>, context: &[String]) -> HashSet<String> {
     let mut keys = HashSet::new();
     if let Some(target_id) = target_id {
@@ -803,4 +863,68 @@ fn normalize_target_alias_key(key: &str) -> String {
         return key.to_owned();
     };
     format!("{kind}:{}", value.trim().to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hit_with_target(name: Option<&str>, id: Option<&str>) -> Hit {
+        Hit {
+            timestamp: 1.0,
+            char_id: 7,
+            char_name: "tester".to_owned(),
+            char_known: true,
+            damage: 100.0,
+            byte_offset: 22,
+            bit_shift: 1,
+            char_source: "test".to_owned(),
+            direction: "outgoing".to_owned(),
+            target_hp_before: 1000.0,
+            target_hp_after: 900.0,
+            target_max_hp: 1000.0,
+            target_hp_percent: 90.0,
+            target_id: id.map(str::to_owned),
+            target_name: name.map(str::to_owned),
+            target_context: Vec::new(),
+            gameplay_effect_index: None,
+            gameplay_effect_name: None,
+            ability_name: None,
+            damage_name: None,
+            attack_type: None,
+        }
+    }
+
+    #[test]
+    fn exact_update_cannot_rename_locked_hit() {
+        let mut hits = VecDeque::from([hit_with_target(Some("Target A"), Some("a#1"))]);
+        let original_uid = stable_hit_uid(hits.front().expect("hit"));
+        let update = HitTargetUpdate {
+            hit_uid: original_uid,
+            timestamp: 1.0,
+            char_id: 7,
+            damage: 100.0,
+            byte_offset: 22,
+            bit_shift: 1,
+            target_id: Some("b#1".to_owned()),
+            target_name: Some("Target B".to_owned()),
+            target_context: vec!["target_path=/Game/Monster/B".to_owned()],
+            target_score: 120,
+            target_confidence: "confirmed".to_owned(),
+            old_target_id: Some("a#1".to_owned()),
+            update_reason: Some("test".to_owned()),
+            update_strength: Some("confirmed".to_owned()),
+            target_generation: Some("1".to_owned()),
+        };
+
+        assert!(apply_target_update_to_hits(&mut hits, &update));
+        let hit = hits.front().expect("hit after update");
+        assert_eq!(hit.target_name.as_deref(), Some("Target A"));
+        assert_eq!(hit.target_id.as_deref(), Some("a#1"));
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "target_conflict=locked_name_mismatch" })
+        );
+    }
 }

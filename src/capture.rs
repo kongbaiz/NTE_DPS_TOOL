@@ -26,6 +26,7 @@ use serde::Deserialize;
 
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, HitTargetUpdate, PacketDebug,
+    stable_hit_uid,
 };
 use crate::net_event::{
     NetRuntimeAction, NetRuntimeEvent, NetRuntimeEventKind, NetRuntimeScanOptions,
@@ -1316,6 +1317,7 @@ impl Default for PacketDecoder {
 
 fn target_update_from_hit(hit: &Hit, summary: &TargetResolutionSummary) -> HitTargetUpdate {
     HitTargetUpdate {
+        hit_uid: stable_hit_uid(hit),
         timestamp: hit.timestamp,
         char_id: hit.char_id,
         damage: hit.damage,
@@ -1326,6 +1328,15 @@ fn target_update_from_hit(hit: &Hit, summary: &TargetResolutionSummary) -> HitTa
         target_context: hit.target_context.clone(),
         target_score: summary.score,
         target_confidence: summary.confidence.as_str().to_owned(),
+        old_target_id: None,
+        update_reason: target_context_value(&hit.target_context, "target_name_resolution")
+            .map(str::to_owned),
+        update_strength: Some(summary.confidence.as_str().to_owned()),
+        target_generation: hit
+            .target_id
+            .as_deref()
+            .and_then(|target_id| target_id.rsplit_once('#').map(|(_, generation)| generation))
+            .map(str::to_owned),
     }
 }
 
@@ -2277,6 +2288,14 @@ fn merge_target_handle_alias(
         aliases
             .entry(target_id)
             .and_modify(|existing| {
+                if !existing
+                    .target_path
+                    .eq_ignore_ascii_case(&alias.target_path)
+                    || existing.target_name != alias.target_name
+                {
+                    existing.last_seen_at = existing.last_seen_at.max(alias.last_seen_at);
+                    return;
+                }
                 existing.target_path = alias.target_path.clone();
                 existing.target_name = alias.target_name.clone();
                 existing.source = alias.source.clone();
@@ -2585,6 +2604,19 @@ fn should_apply_target_update(
     new: &TargetResolutionSummary,
 ) -> bool {
     if has_recent_death_suppressed_target(&old.target_context) && new.target_name.is_some() {
+        return false;
+    }
+    if let (Some(old_name), Some(new_name)) =
+        (old.target_name.as_deref(), new.target_name.as_deref())
+        && old_name != new_name
+    {
+        return false;
+    }
+    if old.target_id.is_some()
+        && new.target_id.is_some()
+        && old.target_id != new.target_id
+        && !new.direct_hp_evidence
+    {
         return false;
     }
     if old.target_id == new.target_id

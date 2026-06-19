@@ -257,21 +257,14 @@ impl TargetInstanceStore {
                 instance,
                 TargetConfidence::Probable,
                 90,
-                "runtime_hp_timeline".to_owned(),
-            ));
-        }
-        let active = self
-            .active_named_instances(hit.timestamp)
-            .collect::<Vec<_>>();
-        if active.len() == 1 {
-            return Some(instance_resolution(
-                active[0],
-                TargetConfidence::Possible,
-                45,
-                "runtime_unique_active_named_instance".to_owned(),
+                "runtime_hp_timeline_unique".to_owned(),
             ));
         }
         None
+    }
+
+    pub fn active_named_instance_count(&self, timestamp: f64) -> usize {
+        self.active_named_instances(timestamp).count()
     }
 
     pub fn instance_for_alias(&self, alias: &TargetAlias) -> Option<&RuntimeTargetInstance> {
@@ -318,8 +311,13 @@ impl TargetInstanceStore {
         }
         if let Some(instance) = self.instances.get_mut(&current_id) {
             instance.last_seen_at = timestamp;
-            instance.target_name = target_name;
-            instance.canonical_path = canonical_path;
+            if instance
+                .canonical_path
+                .eq_ignore_ascii_case(&canonical_path)
+            {
+                instance.target_name = target_name;
+                instance.canonical_path = canonical_path;
+            }
             if instance.state == RuntimeTargetState::Expired {
                 instance.state = RuntimeTargetState::Active;
             }
@@ -662,4 +660,56 @@ fn hp_pair_matches_hit(
 
 fn nearly_equal(left: f64, right: f64, scale: f64) -> bool {
     (left - right).abs() <= HP_MATCH_TOLERANCE_ABSOLUTE.max(scale.abs() * HP_MATCH_TOLERANCE_RATIO)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_alias_lock_does_not_rename_to_different_path() {
+        let mut store = TargetInstanceStore::default();
+        let alias = TargetAlias::new(TargetAliasKind::NetGuid32, "abcd");
+        let first_id = store.observe_runtime_mapping(
+            1.0,
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C".to_owned(),
+            "Target A".to_owned(),
+            vec![alias.clone()],
+        );
+        let second_id = store.observe_runtime_mapping(
+            1.5,
+            "/Game/Monster/Boss_002_BP.Boss_002_BP_C".to_owned(),
+            "Target B".to_owned(),
+            vec![alias.clone()],
+        );
+
+        assert_eq!(first_id, second_id);
+        let first = store.instance(&first_id).expect("first instance");
+        assert_eq!(first.target_name, "Target A");
+        assert_eq!(
+            first.canonical_path,
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C"
+        );
+    }
+
+    #[test]
+    fn same_name_same_path_keeps_distinct_generations_for_distinct_aliases() {
+        let mut store = TargetInstanceStore::default();
+        let first_id = store.observe_runtime_mapping(
+            1.0,
+            "/Game/Monster/Mon_001_BP.Mon_001_BP_C".to_owned(),
+            "Same Target".to_owned(),
+            vec![TargetAlias::new(TargetAliasKind::NetGuid32, "a1")],
+        );
+        let second_id = store.observe_runtime_mapping(
+            2.0,
+            "/Game/Monster/Mon_001_BP.Mon_001_BP_C".to_owned(),
+            "Same Target".to_owned(),
+            vec![TargetAlias::new(TargetAliasKind::NetGuid32, "a2")],
+        );
+
+        assert_ne!(first_id, second_id);
+        assert_eq!(store.instance(&first_id).expect("first").spawn_seq, 1);
+        assert_eq!(store.instance(&second_id).expect("second").spawn_seq, 2);
+    }
 }
