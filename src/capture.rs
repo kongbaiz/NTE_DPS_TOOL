@@ -1349,26 +1349,74 @@ fn target_lock_context_for_packet(
     path_candidates: &[PathCandidate],
     current_hp_updates: &[ParsedCurrentHpUpdate],
     boss_hp_updates: &[ParsedBossHpUpdate],
+    resources: &ResourceIndex,
 ) -> TrackPacketContext {
-    let targetish_path_count = path_candidates
-        .iter()
-        .filter(|candidate| is_targetish_path(&candidate.value))
-        .map(|candidate| candidate.value.to_ascii_lowercase())
-        .collect::<HashSet<_>>()
-        .len();
+    let mut canonical_target_paths = HashSet::new();
+    let mut canonical_target_names = HashSet::new();
+    for candidate in path_candidates {
+        if is_ignored_non_target_path(&candidate.value) || !is_targetish_path(&candidate.value) {
+            continue;
+        }
+        let canonical_path = resources
+            .canonical_target_path_for_path(&candidate.value)
+            .unwrap_or_else(|| candidate.value.clone());
+        let Some(name) = resources
+            .resolved_name_for_path(&candidate.value)
+            .or_else(|| resources.resolved_name_for_path(&canonical_path))
+        else {
+            continue;
+        };
+        canonical_target_paths.insert(canonical_path);
+        canonical_target_names.insert(name);
+    }
     let mut hp_handles = HashSet::new();
     for update in boss_hp_updates {
-        hp_handles.insert(format!("boss:{}", hex::encode(update.target_handle)));
+        hp_handles.insert(format!(
+            "boss_hp_guid:{}",
+            hex::encode(update.target_handle)
+        ));
     }
     for update in current_hp_updates {
         if let Some(token) = current_hp_target_token(&update.target_hint) {
-            hp_handles.insert(format!("current:{}", hex::encode(token)));
+            hp_handles.insert(format!("current_hp_token:{}", hex::encode(token)));
         }
     }
+    let has_multiple_canonical_targets =
+        canonical_target_paths.len() > 1 || canonical_target_names.len() > 1;
     TrackPacketContext {
-        targetish_path_count,
-        active_hp_handle_count: hp_handles.len(),
+        canonical_target_paths,
+        canonical_target_names,
+        hp_handle_keys: hp_handles,
+        has_multiple_canonical_targets,
     }
+}
+
+fn enrich_track_context_from_hit(
+    context: &mut TrackPacketContext,
+    hit: &Hit,
+    resources: &ResourceIndex,
+) {
+    for entry in &hit.target_context {
+        let Some(path) = entry.strip_prefix("reason=near_object_path:") else {
+            continue;
+        };
+        if is_ignored_non_target_path(path) {
+            continue;
+        }
+        let canonical_path = resources
+            .canonical_target_path_for_path(path)
+            .unwrap_or_else(|| path.to_owned());
+        let Some(name) = resources
+            .resolved_name_for_path(path)
+            .or_else(|| resources.resolved_name_for_path(&canonical_path))
+        else {
+            continue;
+        };
+        context.canonical_target_paths.insert(canonical_path);
+        context.canonical_target_names.insert(name);
+    }
+    context.has_multiple_canonical_targets =
+        context.canonical_target_paths.len() > 1 || context.canonical_target_names.len() > 1;
 }
 
 fn load_resource<T>(
@@ -1549,11 +1597,12 @@ impl PacketDecoder {
         &mut self,
         hit: &mut Hit,
         summary: &mut TargetResolutionSummary,
-        context: TrackPacketContext,
+        mut context: TrackPacketContext,
     ) {
         if hit.direction == "incoming" {
             return;
         }
+        enrich_track_context_from_hit(&mut context, hit, &self.resource_index);
         self.target_tracks
             .attribute_damage_hit(hit, summary, context);
     }
@@ -3010,8 +3059,12 @@ impl PacketDecoder {
         }
         hits.retain(|hit| !is_non_player_damage_effect(hit.gameplay_effect_name.as_deref()));
 
-        let target_lock_context =
-            target_lock_context_for_packet(&path_candidates, &current_hp_updates, &boss_hp_updates);
+        let target_lock_context = target_lock_context_for_packet(
+            &path_candidates,
+            &current_hp_updates,
+            &boss_hp_updates,
+            &self.resource_index,
+        );
         let mut hit_summaries = Vec::with_capacity(hits.len());
         for hit in &mut hits {
             let mut summary = if hit.direction != "incoming" {
@@ -3068,7 +3121,7 @@ impl PacketDecoder {
         for &index in &packet_hit_order {
             let hit = &mut hits[index];
             let summary = &mut hit_summaries[index];
-            self.apply_target_track_attribution(hit, summary, target_lock_context);
+            self.apply_target_track_attribution(hit, summary, target_lock_context.clone());
         }
         for index in packet_hit_order {
             let hit = &mut hits[index];
@@ -3300,7 +3353,7 @@ impl PacketDecoder {
             self.register_target_handle_alias_for_hit(hit, summary);
         }
         for (hit, summary) in &mut inferred_follow_up_hits {
-            self.apply_target_track_attribution(hit, summary, target_lock_context);
+            self.apply_target_track_attribution(hit, summary, target_lock_context.clone());
         }
         for (hit, summary) in &mut inferred_follow_up_hits {
             self.clear_dead_target_handles_from_hit(hit);
@@ -3971,6 +4024,9 @@ mod tests {
         let mut ambiguous_unknown = 0usize;
         let mut terminal_named = 0usize;
         let mut terminal_names = HashSet::<String>::new();
+        let mut dot_named = 0usize;
+        let mut dot_unknown_not_ambiguous = 0usize;
+        let mut dot_unknown_samples = Vec::new();
         for hit in &hits {
             if hit
                 .target_context
@@ -3993,6 +4049,41 @@ mod tests {
                     terminal_names.insert(name.to_owned());
                 }
             }
+            let is_requiem_bleed = hit
+                .damage_name
+                .as_deref()
+                .is_some_and(|name| name.contains("安魂曲流血伤害"));
+            if is_requiem_bleed {
+                if hit.target_name.is_some() {
+                    dot_named += 1;
+                } else if !hit
+                    .target_context
+                    .iter()
+                    .any(|entry| entry == "target_unresolved=ambiguous_multi_target")
+                {
+                    dot_unknown_not_ambiguous += 1;
+                    if dot_unknown_samples.len() < 5 {
+                        dot_unknown_samples.push(format!(
+                            "t={:.3} hp={:.0}->{:.0}/{:.0} ctx={}",
+                            hit.timestamp,
+                            hit.target_hp_before,
+                            hit.target_hp_after,
+                            hit.target_max_hp,
+                            hit.target_context
+                                .iter()
+                                .filter(|entry| {
+                                    entry.starts_with("track_")
+                                        || entry.starts_with("target_unresolved=")
+                                        || entry.starts_with("reason=")
+                                })
+                                .take(8)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(" | ")
+                        ));
+                    }
+                }
+            }
             let Some(track_id) = target_context_value(&hit.target_context, "target_track_id")
             else {
                 continue;
@@ -4011,18 +4102,25 @@ mod tests {
             .filter(|(_, names)| names.len() > 1)
             .collect::<Vec<_>>();
         println!(
-            "replay target track stats: hits={} projected={} terminal_named={} terminal_names={:?} ambiguous_unknown={} named_tracks={} names_by_track={:?}",
+            "replay target track stats: hits={} projected={} terminal_named={} terminal_names={:?} ambiguous_unknown={} dot_named={} dot_unknown_not_ambiguous={} dot_unknown_samples={:?} named_tracks={} names_by_track={:?}",
             hits.len(),
             projected,
             terminal_named,
             terminal_names,
             ambiguous_unknown,
+            dot_named,
+            dot_unknown_not_ambiguous,
+            dot_unknown_samples,
             names_by_track.len(),
             names_by_track
         );
         assert!(
             conflicting_tracks.is_empty(),
             "same target_track_id/generation had multiple names: {conflicting_tracks:?}"
+        );
+        assert_eq!(
+            dot_unknown_not_ambiguous, 0,
+            "DOT hits should either project to a track or carry ambiguous context"
         );
     }
 }

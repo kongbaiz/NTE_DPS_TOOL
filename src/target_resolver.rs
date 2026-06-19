@@ -670,7 +670,6 @@ fn score_object(
         reasons.push("last_hp_close_to_hit_after".to_owned());
     }
     if hit.target_max_hp > 500_000.0 && object.hp_current.is_some() {
-        score += 5;
         reasons.push("target_max_hp_only_weak".to_owned());
     }
 

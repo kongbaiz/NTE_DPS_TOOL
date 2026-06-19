@@ -16,6 +16,7 @@ mod protocol;
 mod resource_index;
 mod runtime_mapping;
 mod target_fact;
+mod target_identity;
 mod target_instance;
 mod target_resolver;
 mod target_track;

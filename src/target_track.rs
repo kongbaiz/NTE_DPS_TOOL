@@ -5,10 +5,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::model::Hit;
 use crate::object_state::is_ignored_non_target_path;
 use crate::target_fact::DamageHitFact;
+use crate::target_identity::canonical_target_key_from_name_and_path;
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary};
 
-const ACTIVE_TRACK_WINDOW_SECONDS: f64 = 3.0;
-const HP_CONTINUITY_WINDOW_SECONDS: f64 = 2.5;
+const ACTIVE_TRACK_WINDOW_SECONDS: f64 = 3.5;
+const HP_CONTINUITY_WINDOW_SECONDS: f64 = 3.5;
 const HANDLE_QUARANTINE_SECONDS: f64 = 8.0;
 const HP_MATCH_TOLERANCE_ABSOLUTE: f64 = 2.0;
 const HP_MATCH_TOLERANCE_RATIO: f64 = 0.002;
@@ -49,7 +50,7 @@ pub struct HpTimelinePoint {
     pub timestamp: f64,
     pub hp_before: f64,
     pub hp_after: f64,
-    pub hp_reported_max: f64,
+    pub reported_max_hp_observation: Option<f64>,
     pub hit_uid: Option<String>,
 }
 
@@ -57,8 +58,10 @@ pub struct HpTimelinePoint {
 pub struct TargetTrack {
     pub track_id: TargetTrackId,
     pub generation: u32,
+    pub canonical_target_key: String,
     pub target_name: Option<String>,
-    pub target_path: Option<String>,
+    pub display_target_path: Option<String>,
+    pub observed_paths: HashSet<String>,
     pub label_state: TargetLabelState,
     pub lifecycle: TargetLifecycle,
     pub first_seen_at: f64,
@@ -73,10 +76,12 @@ pub struct TargetTrack {
     quarantined_at: Option<f64>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TrackPacketContext {
-    pub targetish_path_count: usize,
-    pub active_hp_handle_count: usize,
+    pub canonical_target_paths: HashSet<String>,
+    pub canonical_target_names: HashSet<String>,
+    pub hp_handle_keys: HashSet<String>,
+    pub has_multiple_canonical_targets: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -95,7 +100,7 @@ pub struct TargetTrackStore {
     tracks: HashMap<String, TargetTrack>,
     non_hp_alias_index: HashMap<String, String>,
     hp_handle_index: HashMap<String, String>,
-    generation_by_path: HashMap<String, u32>,
+    generation_by_canonical_key: HashMap<String, u32>,
 }
 
 impl TargetTrackStore {
@@ -110,11 +115,16 @@ impl TargetTrackStore {
         }
 
         let fact = DamageHitFact::from(&*hit);
-        let mut result = if safe_named_hit(hit, summary) {
-            self.observe_named_hit(hit, summary, &fact)
-        } else {
-            self.attribute_unnamed_hit(hit, summary, &fact, context)
-        };
+        let mut result = AttributionResult::default();
+        if safe_named_hit(hit, summary) {
+            result = self.observe_named_hit(hit, summary, &fact);
+        }
+        if hit.target_name.is_none() || !has_target_track_id(hit) {
+            let track_result = self.attribute_unnamed_hit(hit, summary, &fact, &context);
+            if track_result.target_track_id.is_some() || track_result.ambiguous {
+                result = track_result;
+            }
+        }
 
         if hit.target_hp_after <= 1.0 {
             if result.target_track_id.is_none() {
@@ -159,11 +169,13 @@ impl TargetTrackStore {
         else {
             return AttributionResult::default();
         };
+        let canonical_key = canonical_target_key_from_name_and_path(&name, &path)
+            .unwrap_or_else(|| fallback_canonical_key(&path));
         let non_hp_aliases = non_hp_alias_keys(hit.target_id.as_ref(), &hit.target_context);
         let hp_handles = hp_handle_keys(hit.target_id.as_ref(), &hit.target_context);
 
-        if self.alias_conflict(hit, &non_hp_aliases, &path, &name, false)
-            || self.alias_conflict(hit, &hp_handles, &path, &name, true)
+        if self.alias_conflict(hit, &non_hp_aliases, &canonical_key, &name, false)
+            || self.alias_conflict(hit, &hp_handles, &canonical_key, &name, true)
         {
             summary.target_context = hit.target_context.clone();
             return AttributionResult {
@@ -175,17 +187,14 @@ impl TargetTrackStore {
 
         let track_key = self
             .track_for_non_hp_aliases(&non_hp_aliases)
-            .or_else(|| self.single_active_same_label_track(&path, &name, fact.timestamp))
-            .unwrap_or_else(|| self.create_track(&path, fact.timestamp));
+            .or_else(|| self.single_active_same_canonical_key_track(&canonical_key, fact.timestamp))
+            .or_else(|| self.track_for_hp_handle_same_canonical_key(&hp_handles, &canonical_key))
+            .unwrap_or_else(|| self.create_track(&canonical_key, &path, fact.timestamp));
 
         let Some(track) = self.tracks.get_mut(&track_key) else {
             return AttributionResult::default();
         };
-        if track
-            .target_path
-            .as_deref()
-            .is_some_and(|existing| !existing.eq_ignore_ascii_case(&path))
-        {
+        if track.canonical_target_key != canonical_key {
             push_unique_context(
                 &mut hit.target_context,
                 "target_conflict=locked_path_mismatch".to_owned(),
@@ -221,7 +230,8 @@ impl TargetTrackStore {
         }
 
         track.target_name = Some(name.clone());
-        track.target_path = Some(path.clone());
+        track.display_target_path = Some(path.clone());
+        track.observed_paths.insert(path.clone());
         track.label_state = TargetLabelState::Locked;
         track.lifecycle = if hit.target_hp_after <= 1.0 {
             TargetLifecycle::Dying
@@ -243,7 +253,7 @@ impl TargetTrackStore {
             target_track_id: Some(track.track_id.clone()),
             generation: Some(track.generation),
             target_name: track.target_name.clone(),
-            target_path: track.target_path.clone(),
+            target_path: track.display_target_path.clone(),
             projected: false,
             ambiguous: false,
             reason: Some("track_named_hit".to_owned()),
@@ -255,9 +265,16 @@ impl TargetTrackStore {
         hit: &mut Hit,
         summary: &mut TargetResolutionSummary,
         fact: &DamageHitFact,
-        context: TrackPacketContext,
+        context: &TrackPacketContext,
     ) -> AttributionResult {
         if !can_attribute_unknown(hit) {
+            push_track_reject(
+                hit,
+                self.active_track_count(fact.timestamp),
+                0,
+                "hard_conflict",
+            );
+            summary.target_context = hit.target_context.clone();
             return AttributionResult::default();
         }
 
@@ -287,34 +304,24 @@ impl TargetTrackStore {
             );
         }
 
-        if self.multi_target_guard_blocks(fact.timestamp, &context) {
-            push_ambiguous_context(hit);
-            summary.target_context = hit.target_context.clone();
-            return AttributionResult {
-                ambiguous: true,
-                reason: Some("ambiguous_multi_target".to_owned()),
-                ..Default::default()
-            };
-        }
-
-        let mut matches = self
-            .active_tracks(fact.timestamp)
-            .filter(|track| hp_continuity_matches(track, fact))
-            .map(|track| track.track_id.0.clone())
-            .collect::<Vec<_>>();
-        matches.sort();
-        matches.dedup();
+        let matches = self.matching_track_keys_for_hit(fact);
+        append_track_diagnostics(hit, self.active_track_count(fact.timestamp), matches.len());
         if matches.len() == 1 {
-            return self.project_track_key_to_hit(
-                &matches[0],
-                hit,
-                summary,
-                fact,
-                "single_active_hp_stream",
-            );
+            let reason = if is_dot_or_followup_damage(hit) {
+                "single_active_track_dot"
+            } else {
+                "single_active_track_projection"
+            };
+            return self.project_track_key_to_hit(&matches[0], hit, summary, fact, reason);
         }
         if matches.len() > 1 {
             push_ambiguous_context(hit);
+            replace_or_push_context(&mut hit.target_context, "track_decision", "not_projected");
+            replace_or_push_context(
+                &mut hit.target_context,
+                "track_reject_reason",
+                "multiple_matching_tracks",
+            );
             summary.target_context = hit.target_context.clone();
             return AttributionResult {
                 ambiguous: true,
@@ -322,6 +329,55 @@ impl TargetTrackStore {
                 ..Default::default()
             };
         }
+        if matches.is_empty()
+            && self.active_track_count(fact.timestamp) == 0
+            && is_dot_or_followup_damage(hit)
+            && !context.has_multiple_canonical_targets
+            && context.canonical_target_paths.len() == 1
+            && context.canonical_target_names.len() == 1
+        {
+            let path = context
+                .canonical_target_paths
+                .iter()
+                .next()
+                .expect("checked one path")
+                .clone();
+            let name = context
+                .canonical_target_names
+                .iter()
+                .next()
+                .expect("checked one name")
+                .clone();
+            let canonical_key = canonical_target_key_from_name_and_path(&name, &path)
+                .unwrap_or_else(|| fallback_canonical_key(&path));
+            let track_key = self.create_track(&canonical_key, &path, fact.timestamp);
+            if let Some(track) = self.tracks.get_mut(&track_key) {
+                track.target_name = Some(name);
+                track.display_target_path = Some(path.clone());
+                track.observed_paths.insert(path);
+                track.label_state = TargetLabelState::Locked;
+                track.lifecycle = TargetLifecycle::Active;
+                track.source = Some(TrackIdentitySource::DirectHpTimeline);
+            }
+            return self.project_track_key_to_hit(
+                &track_key,
+                hit,
+                summary,
+                fact,
+                "single_active_track_dot",
+            );
+        }
+        push_track_reject(
+            hit,
+            self.active_track_count(fact.timestamp),
+            matches.len(),
+            if context.has_multiple_canonical_targets {
+                "no_matching_track_multiple_canonical_targets"
+            } else {
+                "hp_stream_mismatch"
+            },
+        );
+        summary.target_context = hit.target_context.clone();
         AttributionResult::default()
     }
 
@@ -381,7 +437,7 @@ impl TargetTrackStore {
             target_track_id: Some(track.track_id.clone()),
             generation: Some(track.generation),
             target_name: track.target_name.clone(),
-            target_path: track.target_path.clone(),
+            target_path: track.display_target_path.clone(),
             projected: true,
             ambiguous: false,
             reason: Some(reason.to_owned()),
@@ -399,20 +455,22 @@ impl TargetTrackStore {
         track.quarantined_at = Some(timestamp);
     }
 
-    fn create_track(&mut self, target_path: &str, timestamp: f64) -> String {
+    fn create_track(&mut self, canonical_key: &str, display_path: &str, timestamp: f64) -> String {
         let generation = self
-            .generation_by_path
-            .entry(target_path.to_owned())
+            .generation_by_canonical_key
+            .entry(canonical_key.to_owned())
             .and_modify(|value| *value += 1)
             .or_insert(1);
-        let track_key = format!("{target_path}#{generation}");
+        let track_key = format!("{canonical_key}#{generation}");
         self.tracks.insert(
             track_key.clone(),
             TargetTrack {
                 track_id: TargetTrackId(track_key.clone()),
                 generation: *generation,
+                canonical_target_key: canonical_key.to_owned(),
                 target_name: None,
-                target_path: Some(target_path.to_owned()),
+                display_target_path: Some(display_path.to_owned()),
+                observed_paths: HashSet::from([display_path.to_owned()]),
                 label_state: TargetLabelState::Provisional,
                 lifecycle: TargetLifecycle::Provisional,
                 first_seen_at: timestamp,
@@ -436,21 +494,31 @@ impl TargetTrackStore {
             .find_map(|key| self.non_hp_alias_index.get(key).cloned())
     }
 
-    fn single_active_same_label_track(
+    fn single_active_same_canonical_key_track(
         &self,
-        path: &str,
-        name: &str,
+        canonical_key: &str,
         timestamp: f64,
     ) -> Option<String> {
         let mut matches = self
             .active_tracks(timestamp)
-            .filter(|track| {
-                track
-                    .target_path
-                    .as_deref()
-                    .is_some_and(|track_path| track_path.eq_ignore_ascii_case(path))
-                    && track.target_name.as_deref() == Some(name)
-            })
+            .filter(|track| track.canonical_target_key == canonical_key)
+            .map(|track| track.track_id.0.clone())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches.remove(0))
+    }
+
+    fn track_for_hp_handle_same_canonical_key(
+        &self,
+        hp_handles: &HashSet<String>,
+        canonical_key: &str,
+    ) -> Option<String> {
+        let mut matches = hp_handles
+            .iter()
+            .filter_map(|key| self.hp_handle_index.get(key))
+            .filter_map(|track_key| self.tracks.get(track_key))
+            .filter(|track| track.canonical_target_key == canonical_key)
             .map(|track| track.track_id.0.clone())
             .collect::<Vec<_>>();
         matches.sort();
@@ -491,11 +559,15 @@ impl TargetTrackStore {
             .filter(move |track| track_is_active(track, timestamp))
     }
 
-    fn multi_target_guard_blocks(&self, timestamp: f64, context: &TrackPacketContext) -> bool {
-        self.active_track_count(timestamp) > 1
-            || context.targetish_path_count > 1
-            || context.active_hp_handle_count > 1
-            || self.same_name_multi_instance_active(timestamp)
+    fn matching_track_keys_for_hit(&self, fact: &DamageHitFact) -> Vec<String> {
+        let mut matches = self
+            .active_tracks(fact.timestamp)
+            .filter(|track| track_can_explain_hit(track, fact))
+            .map(|track| track.track_id.0.clone())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.dedup();
+        matches
     }
 
     fn same_name_multi_instance_active(&self, timestamp: f64) -> bool {
@@ -513,7 +585,7 @@ impl TargetTrackStore {
         &self,
         hit: &mut Hit,
         aliases: &HashSet<String>,
-        path: &str,
+        canonical_key: &str,
         name: &str,
         hp_handle: bool,
     ) -> bool {
@@ -529,10 +601,7 @@ impl TargetTrackStore {
             let Some(track) = self.tracks.get(track_key) else {
                 continue;
             };
-            if track
-                .target_path
-                .as_deref()
-                .is_some_and(|track_path| track_path.eq_ignore_ascii_case(path))
+            if track.canonical_target_key == canonical_key
                 && track.target_name.as_deref() == Some(name)
             {
                 continue;
@@ -542,11 +611,7 @@ impl TargetTrackStore {
                     &mut hit.target_context,
                     "target_conflict=hp_handle_reused_without_lifecycle_reset".to_owned(),
                 );
-            } else if !track
-                .target_path
-                .as_deref()
-                .is_some_and(|track_path| track_path.eq_ignore_ascii_case(path))
-            {
+            } else if track.canonical_target_key != canonical_key {
                 push_unique_context(
                     &mut hit.target_context,
                     "target_conflict=locked_path_mismatch".to_owned(),
@@ -569,12 +634,9 @@ fn safe_named_hit(hit: &Hit, summary: &TargetResolutionSummary) -> bool {
         .is_some_and(|name| !name.trim().is_empty())
         && !hit.target_context.iter().any(|entry| {
             entry.starts_with("target_conflict=")
-                || entry == "target_unresolved=ambiguous_multi_target"
-                || entry == "target_suppressed=ambiguous_multi_target"
                 || matches!(
                     entry.as_str(),
                     "reason=last_hp_close_to_hit_after"
-                        | "reason=target_max_hp_only_weak"
                         | "reason=path_only_target_name_suppressed"
                         | "reason=runtime_unique_active_named_instance"
                         | "reason=single_high_confidence_target_window"
@@ -592,7 +654,7 @@ fn can_attribute_unknown(hit: &Hit) -> bool {
         && !hit.target_context.iter().any(|entry| {
             entry.starts_with("target_conflict=")
                 || entry == "reason=recent_death_suppressed_stale_target"
-                || entry == "target_unresolved=ambiguous_multi_target"
+                || entry == "target_lifecycle=dead_or_expired"
         })
 }
 
@@ -650,9 +712,14 @@ fn project_track_to_hit(
         hit.target_name = Some(name.clone());
         replace_or_push_context(&mut hit.target_context, "target_name", name);
     }
-    if let Some(path) = &track.target_path {
+    if let Some(path) = &track.display_target_path {
         replace_or_push_context(&mut hit.target_context, "target_path", path);
     }
+    replace_or_push_context(
+        &mut hit.target_context,
+        "canonical_target_key",
+        &track.canonical_target_key,
+    );
     replace_or_push_context(
         &mut hit.target_context,
         "target_track_id",
@@ -664,10 +731,38 @@ fn project_track_to_hit(
         &track.generation.to_string(),
     );
     if projected {
+        remove_stale_unresolved_context(&mut hit.target_context);
         replace_or_push_context(
             &mut hit.target_context,
             "target_name_resolution",
-            "track_continuity_projected",
+            if reason == "single_active_track_dot" {
+                "track_dot_projection"
+            } else {
+                "track_continuity_projected"
+            },
+        );
+        replace_or_push_context(&mut hit.target_context, "track_decision", "projected");
+        replace_or_push_context(&mut hit.target_context, "track_reason", reason);
+    }
+    for path in &track.observed_paths {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("observed_target_path={path}"),
+        );
+    }
+    if let Some(previous_max) = previous_reported_max_observation(track, hit)
+        && reported_max_changed(previous_max, hit.target_max_hp)
+    {
+        push_unique_context(
+            &mut hit.target_context,
+            format!(
+                "target_hp_max_changed={:.0}->{:.0}",
+                previous_max, hit.target_max_hp
+            ),
+        );
+        push_unique_context(
+            &mut hit.target_context,
+            "target_hp_max_unstable=true".to_owned(),
         );
     }
     push_unique_context(&mut hit.target_context, format!("reason={reason}"));
@@ -688,7 +783,7 @@ fn update_track_damage(track: &mut TargetTrack, fact: &DamageHitFact) {
         timestamp: fact.timestamp,
         hp_before: fact.hp_before,
         hp_after: fact.hp_after,
-        hp_reported_max: fact.hp_reported_max,
+        reported_max_hp_observation: Some(fact.hp_reported_max),
         hit_uid: Some(fact.hit_uid.clone()),
     });
     while track.hp_timeline.len() > MAX_HP_TIMELINE_PER_TRACK {
@@ -696,28 +791,41 @@ fn update_track_damage(track: &mut TargetTrack, fact: &DamageHitFact) {
     }
 }
 
-fn hp_continuity_matches(track: &TargetTrack, fact: &DamageHitFact) -> bool {
+fn track_can_explain_hit(track: &TargetTrack, fact: &DamageHitFact) -> bool {
+    hp_stream_matches_single_track(track, fact)
+}
+
+fn hp_stream_matches_single_track(track: &TargetTrack, fact: &DamageHitFact) -> bool {
     if !track_is_active(track, fact.timestamp) || track.hp_timeline.is_empty() {
         return false;
     }
-    let Some(last) = track.hp_timeline.back() else {
-        return false;
-    };
-    let age = fact.timestamp - last.timestamp;
-    if !(0.0..=HP_CONTINUITY_WINDOW_SECONDS).contains(&age) {
+    if fact.timestamp - track.last_seen_at > HP_CONTINUITY_WINDOW_SECONDS {
         return false;
     }
-    let tolerance = hp_tolerance(last.hp_before.max(fact.hp_before));
-    if fact.hp_after > last.hp_before + tolerance {
+    let recent = track
+        .hp_timeline
+        .iter()
+        .filter(|point| {
+            fact.timestamp >= point.timestamp
+                && fact.timestamp - point.timestamp <= HP_CONTINUITY_WINDOW_SECONDS
+        })
+        .collect::<Vec<_>>();
+    if recent.is_empty() {
         return false;
     }
-    let max_base = last.hp_reported_max.max(fact.hp_reported_max).max(1.0);
-    let max_delta_ratio = (last.hp_reported_max - fact.hp_reported_max).abs() / max_base;
-    max_delta_ratio <= 0.03
-        || track
-            .hp_timeline
-            .iter()
-            .any(|point| fact.hp_after <= point.hp_after + tolerance)
+    let max_seen_hp = recent
+        .iter()
+        .flat_map(|point| [point.hp_before, point.hp_after])
+        .fold(f64::MIN, f64::max);
+    let tolerance = hp_tolerance(max_seen_hp.max(fact.hp_before));
+    let last_timestamp = recent
+        .iter()
+        .map(|point| point.timestamp)
+        .fold(f64::MIN, f64::max);
+    fact.timestamp - last_timestamp <= HP_CONTINUITY_WINDOW_SECONDS
+        && fact.hp_after >= 0.0
+        && fact.hp_before >= fact.hp_after
+        && fact.hp_after <= max_seen_hp + tolerance
 }
 
 fn terminal_hit_matches_track(track: &TargetTrack, fact: &DamageHitFact) -> bool {
@@ -916,6 +1024,81 @@ fn hp_tolerance(scale: f64) -> f64 {
     HP_MATCH_TOLERANCE_ABSOLUTE.max(scale.abs() * HP_MATCH_TOLERANCE_RATIO)
 }
 
+fn fallback_canonical_key(path: &str) -> String {
+    format!("path:{}", path.trim().to_ascii_lowercase())
+}
+
+fn previous_reported_max_observation(track: &TargetTrack, hit: &Hit) -> Option<f64> {
+    track
+        .hp_timeline
+        .iter()
+        .rev()
+        .filter(|point| {
+            !(point.timestamp.to_bits() == hit.timestamp.to_bits()
+                && point.hp_before.to_bits() == hit.target_hp_before.to_bits()
+                && point.hp_after.to_bits() == hit.target_hp_after.to_bits())
+        })
+        .find_map(|point| point.reported_max_hp_observation)
+}
+
+fn reported_max_changed(previous: f64, current: f64) -> bool {
+    if previous <= 0.0 || current <= 0.0 {
+        return false;
+    }
+    (previous - current).abs() > hp_tolerance(previous.max(current))
+}
+
+fn is_dot_or_followup_damage(hit: &Hit) -> bool {
+    let text = [
+        hit.damage_name.as_deref(),
+        hit.attack_type.as_deref(),
+        hit.gameplay_effect_name.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ")
+    .to_ascii_lowercase();
+    ["流血", "持续", "dot", "bleed", "follow"]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn has_target_track_id(hit: &Hit) -> bool {
+    target_context_value(&hit.target_context, "target_track_id").is_some()
+}
+
+fn remove_stale_unresolved_context(context: &mut Vec<String>) {
+    context.retain(|entry| {
+        !matches!(
+            entry.as_str(),
+            "target_unresolved=ambiguous_multi_target"
+                | "target_suppressed=ambiguous_multi_target"
+                | "target_unresolved=hp_evidence_without_table_name"
+                | "target_unresolved=resource_name_missing"
+        )
+    });
+}
+
+fn append_track_diagnostics(context_hit: &mut Hit, active_count: usize, matching_count: usize) {
+    replace_or_push_context(
+        &mut context_hit.target_context,
+        "track_active_count",
+        &active_count.to_string(),
+    );
+    replace_or_push_context(
+        &mut context_hit.target_context,
+        "track_matching_count",
+        &matching_count.to_string(),
+    );
+}
+
+fn push_track_reject(hit: &mut Hit, active_count: usize, matching_count: usize, reason: &str) {
+    append_track_diagnostics(hit, active_count, matching_count);
+    replace_or_push_context(&mut hit.target_context, "track_decision", "not_projected");
+    replace_or_push_context(&mut hit.target_context, "track_reject_reason", reason);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1028,7 +1211,7 @@ mod tests {
         );
 
         for (timestamp, before, after, max) in [
-            (1.2, 1_368_969.0, 1_369_056.0, 1_685_262.0),
+            (1.2, 1_368_969.0, 1_368_056.0, 1_685_262.0),
             (1.8, 1_346_337.0, 1_341_619.0, 1_676_678.0),
             (2.4, 1_331_566.0, 1_323_571.0, 1_667_752.0),
         ] {
@@ -1063,8 +1246,8 @@ mod tests {
         );
         let (mut second, mut second_summary) = named_hit(
             1.1,
-            2000.0,
-            1900.0,
+            1000.0,
+            920.0,
             "B",
             "/Game/Monster/Boss_B.Boss_B_C",
             "b",
@@ -1217,6 +1400,166 @@ mod tests {
     }
 
     #[test]
+    fn max_hp_change_does_not_break_track_continuity() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1_460_091.0,
+            1_458_526.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "a",
+        );
+        first.target_max_hp = 1_460_091.0;
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        let first_track = target_context_value(&first.target_context, "target_track_id")
+            .expect("first track")
+            .to_owned();
+        for (timestamp, before, after, max) in [
+            (1.2, 1_459_670.0, 1_438_552.0, 1_459_249.0),
+            (1.5, 1_430_648.0, 1_427_852.0, 1_455_875.0),
+        ] {
+            let mut hit = hit(timestamp, before, after, max);
+            let mut summary = TargetResolutionSummary::default();
+            let result =
+                store.attribute_damage_hit(&mut hit, &mut summary, TrackPacketContext::default());
+            assert!(result.projected);
+            assert_eq!(hit.target_name.as_deref(), Some("无首铁驭"));
+            assert_eq!(
+                target_context_value(&hit.target_context, "target_track_id"),
+                Some(first_track.as_str())
+            );
+            assert_eq!(
+                target_context_value(&hit.target_context, "target_generation"),
+                Some("1")
+            );
+        }
+    }
+
+    #[test]
+    fn max_hp_large_change_records_context_but_keeps_track() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1_460_091.0,
+            1_458_526.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "a",
+        );
+        first.target_max_hp = 1_460_091.0;
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+
+        let mut second = hit(1.2, 1_458_526.0, 1_355_219.0, 1_355_219.0);
+        second.target_context.push("boss_hp_guid=a".to_owned());
+        let mut second_summary = TargetResolutionSummary::default();
+        let result = store.attribute_damage_hit(
+            &mut second,
+            &mut second_summary,
+            TrackPacketContext::default(),
+        );
+        assert!(result.projected);
+        assert_eq!(second.target_name.as_deref(), Some("无首铁驭"));
+        assert_eq!(second.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert!(
+            second
+                .target_context
+                .iter()
+                .any(|entry| entry.starts_with("target_hp_max_changed="))
+        );
+        assert!(
+            second
+                .target_context
+                .iter()
+                .any(|entry| entry == "target_hp_max_unstable=true")
+        );
+        assert!(
+            !second
+                .target_context
+                .iter()
+                .any(|entry| entry.starts_with("target_unresolved="))
+        );
+        assert_eq!(
+            target_context_value(&second.target_context, "target_generation"),
+            Some("1")
+        );
+    }
+
+    #[test]
+    fn max_hp_same_but_different_alias_does_not_merge() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) =
+            named_hit(1.0, 1000.0, 900.0, "A", "WorldBoss_Boss13", "a");
+        first.target_context.push("netguid32=aaa".to_owned());
+        first.target_max_hp = 1000.0;
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        let (mut second, mut second_summary) =
+            named_hit(1.1, 1000.0, 900.0, "B", "WorldBoss_Boss08", "b");
+        second.target_context.push("netguid32=bbb".to_owned());
+        second.target_max_hp = 1000.0;
+        store.attribute_damage_hit(
+            &mut second,
+            &mut second_summary,
+            TrackPacketContext::default(),
+        );
+
+        assert_eq!(first.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert_eq!(second.target_id.as_deref(), Some("monster:boss_08#1"));
+    }
+
+    #[test]
+    fn target_max_hp_only_weak_does_not_veto_direct_hp_named_hit() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1_460_091.0,
+            1_458_526.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "a",
+        );
+        first
+            .target_context
+            .push("reason=target_max_hp_only_weak".to_owned());
+        first
+            .target_context
+            .push("reason=hp_guid_timeline_match:test".to_owned());
+        first_summary.target_context = first.target_context.clone();
+        first_summary.direct_hp_evidence = true;
+        let result = store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        assert_eq!(
+            result.target_track_id.as_ref().map(|id| id.0.as_str()),
+            Some("monster:boss_13#1")
+        );
+
+        let mut second = hit(1.2, 1_458_526.0, 1_450_000.0, 1_355_219.0);
+        let mut second_summary = TargetResolutionSummary::default();
+        let projected = store.attribute_damage_hit(
+            &mut second,
+            &mut second_summary,
+            TrackPacketContext::default(),
+        );
+        assert!(projected.projected);
+        assert_eq!(second.target_name.as_deref(), Some("无首铁驭"));
+    }
+
+    #[test]
     fn old_hits_are_never_rewritten_to_different_track_name() {
         let mut store = TargetTrackStore::default();
         let (mut first, mut first_summary) = named_hit(
@@ -1254,5 +1597,301 @@ mod tests {
                 .iter()
                 .any(|entry| entry == "target_conflict=locked_path_mismatch")
         );
+    }
+
+    #[test]
+    fn old_resolver_ambiguous_does_not_block_single_track_projection() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1500.0,
+            1450.0,
+            "无首铁驭",
+            "/Game/Monster/Boss_Headless.Boss_Headless_C",
+            "a",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+
+        let mut unknown = hit(1.2, 1450.0, 1440.0, 1500.0);
+        unknown
+            .target_context
+            .push("target_unresolved=ambiguous_multi_target".to_owned());
+        unknown
+            .target_context
+            .push("target_suppressed=ambiguous_multi_target".to_owned());
+        let mut summary = TargetResolutionSummary::default();
+        let result =
+            store.attribute_damage_hit(&mut unknown, &mut summary, TrackPacketContext::default());
+
+        assert!(result.projected);
+        assert_eq!(unknown.target_name.as_deref(), Some("无首铁驭"));
+        assert!(
+            !unknown
+                .target_context
+                .iter()
+                .any(|entry| entry == "target_unresolved=ambiguous_multi_target")
+        );
+        assert!(
+            unknown
+                .target_context
+                .iter()
+                .any(|entry| { entry == "target_name_resolution=track_continuity_projected" })
+        );
+    }
+
+    #[test]
+    fn raw_multiple_path_candidates_same_target_do_not_block_projection() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1000.0,
+            900.0,
+            "A",
+            "/Game/Monster/Boss_A.Boss_A_C",
+            "a",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        let context = TrackPacketContext {
+            canonical_target_paths: HashSet::from(["/Game/Monster/Boss_A.Boss_A_C".to_owned()]),
+            canonical_target_names: HashSet::from(["A".to_owned()]),
+            hp_handle_keys: HashSet::new(),
+            has_multiple_canonical_targets: false,
+        };
+        let mut unknown = hit(1.2, 900.0, 850.0, 1000.0);
+        let mut summary = TargetResolutionSummary::default();
+        let result = store.attribute_damage_hit(&mut unknown, &mut summary, context);
+        assert!(result.projected);
+        assert_eq!(unknown.target_name.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn multiple_hp_updates_same_track_do_not_block_projection() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1000.0,
+            900.0,
+            "A",
+            "/Game/Monster/Boss_A.Boss_A_C",
+            "a",
+        );
+        first.target_context.push("current_hp_token=b".to_owned());
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        let context = TrackPacketContext {
+            hp_handle_keys: HashSet::from([
+                "boss_hp_guid:a".to_owned(),
+                "current_hp_token:b".to_owned(),
+            ]),
+            ..Default::default()
+        };
+        let mut unknown = hit(1.2, 900.0, 850.0, 1000.0);
+        let mut summary = TargetResolutionSummary::default();
+        let result = store.attribute_damage_hit(&mut unknown, &mut summary, context);
+        assert!(result.projected);
+        assert_eq!(unknown.target_name.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn dot_damage_single_active_track_projects() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1_460_091.0,
+            1_458_526.0,
+            "无首铁驭",
+            "/Game/Monster/Boss_Headless.Boss_Headless_C",
+            "a",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        let mut dot = hit(1.1, 1_459_670.0, 1_459_249.0, 1_460_091.0);
+        dot.damage_name = Some("安魂曲流血伤害L".to_owned());
+        let mut summary = TargetResolutionSummary::default();
+        let result =
+            store.attribute_damage_hit(&mut dot, &mut summary, TrackPacketContext::default());
+        assert!(result.projected);
+        assert_eq!(dot.target_name.as_deref(), Some("无首铁驭"));
+        assert!(
+            dot.target_context
+                .iter()
+                .any(|entry| entry == "target_name_resolution=track_dot_projection")
+        );
+    }
+
+    #[test]
+    fn dot_damage_multi_target_remains_unknown() {
+        let mut store = TargetTrackStore::default();
+        let (mut first, mut first_summary) = named_hit(
+            1.0,
+            1000.0,
+            900.0,
+            "A",
+            "/Game/Monster/Boss_A.Boss_A_C",
+            "a",
+        );
+        let (mut second, mut second_summary) = named_hit(
+            1.0,
+            1000.0,
+            910.0,
+            "B",
+            "/Game/Monster/Boss_B.Boss_B_C",
+            "b",
+        );
+        store.attribute_damage_hit(
+            &mut first,
+            &mut first_summary,
+            TrackPacketContext::default(),
+        );
+        store.attribute_damage_hit(
+            &mut second,
+            &mut second_summary,
+            TrackPacketContext::default(),
+        );
+        let mut dot = hit(1.1, 910.0, 880.0, 1000.0);
+        dot.damage_name = Some("安魂曲流血伤害L".to_owned());
+        let mut summary = TargetResolutionSummary::default();
+        let result =
+            store.attribute_damage_hit(&mut dot, &mut summary, TrackPacketContext::default());
+        assert!(result.ambiguous);
+        assert_eq!(dot.target_name, None);
+        assert!(
+            dot.target_context
+                .iter()
+                .any(|entry| entry == "target_unresolved=ambiguous_multi_target")
+        );
+    }
+
+    #[test]
+    fn attribute_guid_and_class_path_merge_into_one_track() {
+        let mut store = TargetTrackStore::default();
+        let (mut hit1, mut summary1) = named_hit(
+            1.0,
+            1000.0,
+            900.0,
+            "无首铁驭",
+            "WorldBoss_Boss13",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        hit1.target_id =
+            Some("AttributeGuid:94b599e5291b934a8bef735771caa138|path=WorldBoss_Boss13".to_owned());
+        store.attribute_damage_hit(&mut hit1, &mut summary1, TrackPacketContext::default());
+
+        let (mut hit2, mut summary2) = named_hit(
+            1.5,
+            900.0,
+            850.0,
+            "无首铁驭",
+            "/Game/Blueprints/Character/Monster/boss_13/boss_13_BP.boss_13_BP_C",
+            "94b599e5291b934a8bef735771caa138",
+        );
+        store.attribute_damage_hit(&mut hit2, &mut summary2, TrackPacketContext::default());
+
+        assert_eq!(hit1.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert_eq!(hit2.target_id.as_deref(), Some("monster:boss_13#1"));
+        assert_eq!(
+            target_context_value(&hit1.target_context, "target_track_id"),
+            target_context_value(&hit2.target_context, "target_track_id")
+        );
+        assert!(
+            !hit2
+                .target_context
+                .iter()
+                .any(|entry| entry == "target_conflict=locked_path_mismatch")
+        );
+        let track = store
+            .track(&TargetTrackId("monster:boss_13#1".to_owned()))
+            .expect("merged track");
+        assert_eq!(track.canonical_target_key, "monster:boss_13");
+        assert!(track.observed_paths.contains("WorldBoss_Boss13"));
+        assert!(
+            track
+                .observed_paths
+                .contains("/Game/Blueprints/Character/Monster/boss_13/boss_13_BP.boss_13_BP_C")
+        );
+    }
+
+    #[test]
+    fn no_duplicate_generation_for_same_monster_alias_switch() {
+        let mut store = TargetTrackStore::default();
+        for (timestamp, path) in [
+            (1.0, "WorldBoss_Boss13"),
+            (
+                1.4,
+                "/Game/Blueprints/Character/Monster/boss_13/boss_13_BP.boss_13_BP_C",
+            ),
+            (1.8, "WorldBoss_Boss13"),
+        ] {
+            let (mut hit, mut summary) = named_hit(
+                timestamp,
+                1000.0 - timestamp * 10.0,
+                990.0 - timestamp * 10.0,
+                "无首铁驭",
+                path,
+                "94b599e5291b934a8bef735771caa138",
+            );
+            store.attribute_damage_hit(&mut hit, &mut summary, TrackPacketContext::default());
+            assert_eq!(hit.target_id.as_deref(), Some("monster:boss_13#1"));
+            assert!(
+                !hit.target_context
+                    .iter()
+                    .any(|entry| entry == "target_conflict=locked_path_mismatch")
+            );
+        }
+        let track = store
+            .track(&TargetTrackId("monster:boss_13#1".to_owned()))
+            .expect("merged track");
+        assert_eq!(track.observed_paths.len(), 2);
+    }
+
+    #[test]
+    fn screenshot_sequence_regression_projects_dot_rows() {
+        let mut store = TargetTrackStore::default();
+        let sequence = [
+            (1.0, true, 1_460_091.0, 1_458_526.0),
+            (1.1, false, 1_460_091.0, 1_459_670.0),
+            (2.0, true, 1_459_249.0, 1_441_960.0),
+            (2.1, false, 1_459_249.0, 1_438_552.0),
+            (3.0, true, 1_455_875.0, 1_430_648.0),
+            (3.1, false, 1_455_875.0, 1_427_852.0),
+        ];
+        for (timestamp, named, before, after) in sequence {
+            if named {
+                let (mut hit, mut summary) = named_hit(
+                    timestamp,
+                    before,
+                    after,
+                    "无首铁驭",
+                    "/Game/Monster/Boss_Headless.Boss_Headless_C",
+                    "a",
+                );
+                store.attribute_damage_hit(&mut hit, &mut summary, TrackPacketContext::default());
+            } else {
+                let mut hit = hit(timestamp, before, after, before);
+                hit.damage_name = Some("安魂曲流血伤害L".to_owned());
+                let mut summary = TargetResolutionSummary::default();
+                let result = store.attribute_damage_hit(
+                    &mut hit,
+                    &mut summary,
+                    TrackPacketContext::default(),
+                );
+                assert!(result.projected, "DOT row at {timestamp} should project");
+                assert_eq!(hit.target_name.as_deref(), Some("无首铁驭"));
+            }
+        }
     }
 }
