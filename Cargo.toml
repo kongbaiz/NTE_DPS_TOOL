@@ -26,6 +26,7 @@ windows-sys = { version = "0.60", features = [
     "Win32_Graphics_Dwm",
     "Win32_NetworkManagement_IpHelper",
     "Win32_Networking_WinSock",
+    "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",

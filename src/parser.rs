@@ -664,6 +664,19 @@ fn declared_character_for_shift(evidence: &[(u32, u8, usize)], bit_shift: u8) ->
     matched
 }
 
+fn damage_record_targets_declared_character(
+    record: &ParsedDamageRecord,
+    character_id: Option<u32>,
+    evidence: &[(u32, u8, usize)],
+) -> bool {
+    let Some(character_id) = character_id else {
+        return false;
+    };
+    evidence.iter().any(|(id, shift, offset)| {
+        *id == character_id && *shift == record.bit_shift && *offset > record.byte_offset
+    })
+}
+
 pub fn parse_damage_payload(
     data: &[u8],
     timestamp: f64,
@@ -699,18 +712,15 @@ pub fn parse_damage_payload(
                 }
             });
         let target_hp_after = (target_hp_before - damage).max(0.0);
-        let direction = if target_max_hp <= MAX_PLAUSIBLE_CHARACTER_HP
-            && resolved_packet_char_id.is_some()
-            && evidence
-                .iter()
-                .any(|(id, shift, _)| Some(*id) == resolved_packet_char_id && *shift == bit_shift)
-        {
-            "incoming"
-        } else if resolved_packet_char_id.is_some() {
-            "outgoing"
-        } else {
-            "unknown"
-        };
+        let direction =
+            if damage_record_targets_declared_character(&record, resolved_packet_char_id, evidence)
+            {
+                "incoming"
+            } else if resolved_packet_char_id.is_some() {
+                "outgoing"
+            } else {
+                "unknown"
+            };
         hits.push(Hit {
             timestamp,
             char_id,
@@ -954,7 +964,7 @@ mod character_tests {
     #[test]
     fn incoming_damage_keeps_legacy_target_fields_empty() {
         let mut payload = b"/Game/Blueprints/Character/Monster/boss_07/".to_vec();
-        payload.extend_from_slice(&encoded_damage_record(100.0, 10_000.0, 20_000.0));
+        payload.extend_from_slice(&encoded_damage_record(100.0, 1_500_000.0, 2_000_000.0));
         payload.extend_from_slice(&[5, 0, 0, 0, b'1', b'0', b'0', b'1', 0]);
         let evidence = find_declared_character_evidence(&payload);
         let characters = HashMap::from([(
@@ -976,6 +986,50 @@ mod character_tests {
         assert!(hits[0].target_id.is_none());
         assert!(hits[0].target_name.is_none());
         assert!(hits[0].target_context.is_empty());
+    }
+
+    #[test]
+    fn low_target_max_hp_without_matching_character_alignment_stays_outgoing() {
+        let payload = encoded_damage_record(100.0, 10_000.0, 20_000.0);
+        let evidence = [(1001, 1, 200)];
+        let characters = HashMap::from([(
+            1001,
+            CharacterInfo {
+                name_zh: "Nanally".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: None,
+            },
+        )]);
+
+        let hits = parse_damage_payload(&payload, 1.0, Some(1001), None, &characters, &evidence);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "outgoing");
+        assert_eq!(hits[0].char_id, 1001);
+    }
+
+    #[test]
+    fn same_shift_character_anchor_before_damage_record_stays_outgoing() {
+        let payload = encoded_damage_record(100.0, 10_000.0, 20_000.0);
+        let evidence = [(1001, 0, 0)];
+        let characters = HashMap::from([(
+            1001,
+            CharacterInfo {
+                name_zh: "Nanally".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: None,
+            },
+        )]);
+
+        let hits = parse_damage_payload(&payload, 1.0, Some(1001), None, &characters, &evidence);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "outgoing");
+        assert_eq!(hits[0].char_id, 1001);
     }
 
     #[test]

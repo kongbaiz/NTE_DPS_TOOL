@@ -1172,6 +1172,13 @@ fn resolve_damage_name(
     if let Some(name) = wooden_names.get(effect_name) {
         return Some(name.clone());
     }
+    if let Some(base_effect_name) = effect_name
+        .strip_suffix("_Explode_Damage")
+        .map(|prefix| format!("{prefix}_Damage"))
+        && let Some(name) = wooden_names.get(&base_effect_name)
+    {
+        return Some(name.clone());
+    }
     let ability_name = skills.get(effect_name)?.ability_name.as_deref()?;
     let mut names = skills
         .iter()
@@ -1795,10 +1802,10 @@ fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Res
     } else {
         hex::decode(&packet.payload_hex).map_err(|error| format!("payload_hex 无效: {error}"))?
     };
-    let decoded_text = if payload.is_empty() {
-        packet.decoded_text
-    } else {
+    let decoded_text = if packet.decoded_text.trim().is_empty() && !payload.is_empty() {
         decode_payload_text(&payload)
+    } else {
+        packet.decoded_text
     };
     if !should_keep_debug_packet(&payload, &declared_ids, packet.parsed_hits, &decoded_text) {
         return Ok(false);
@@ -2046,6 +2053,34 @@ mod tests {
     }
 
     #[test]
+    fn send_export_packet_preserves_exported_decoded_text() {
+        let (sender, receiver) = unbounded();
+        let packet = ExportPacket {
+            timestamp_unix: 1.0,
+            source: "127.0.0.1:1234".to_owned(),
+            destination: "127.0.0.1:5678".to_owned(),
+            direction: "S2C".to_owned(),
+            payload_len: 2,
+            declared_ids: serde_json::json!([]),
+            parsed_hits: 1,
+            note: String::new(),
+            payload_preview: "0000".to_owned(),
+            payload_hex: "0000".to_owned(),
+            decoded_text: "导出时的协议文本".to_owned(),
+        };
+
+        assert!(send_export_packet(packet, &sender).is_ok());
+        match receiver.try_recv().expect("packet event should be emitted") {
+            EngineEvent::Packet(packet) => {
+                assert_eq!(packet.decoded_text, "导出时的协议文本");
+                assert_eq!(packet.payload_hex, "0000");
+            }
+            _ => panic!("expected packet event"),
+        }
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
     fn local_ip_hint_controls_import_direction_inference() {
         let local_ip = Ipv4Addr::new(10, 0, 0, 2);
         let remote_ip = Ipv4Addr::new(10, 0, 0, 3);
@@ -2160,6 +2195,32 @@ mod tests {
         assert_eq!(
             resolve_damage_name("GE_Player_Daffodill_Skill6_Damage", &skills, &names).as_deref(),
             Some("达芙蒂尔技能")
+        );
+    }
+
+    #[test]
+    fn resolves_explode_damage_name_from_base_effect() {
+        let skills = HashMap::from([(
+            "GE_Player_Lacrimosa_B_Melee3_Explode_Damage".to_owned(),
+            GameplayEffectSkill {
+                damage_source_category: Some("A".to_owned()),
+                ability_name: Some("GA_Lacrimosa_Melee".to_owned()),
+                attack_type: "普攻".to_owned(),
+            },
+        )]);
+        let names = HashMap::from([(
+            "GE_Player_Lacrimosa_B_Melee3_Damage".to_owned(),
+            "安魂曲普攻B".to_owned(),
+        )]);
+
+        assert_eq!(
+            resolve_damage_name(
+                "GE_Player_Lacrimosa_B_Melee3_Explode_Damage",
+                &skills,
+                &names
+            )
+            .as_deref(),
+            Some("安魂曲普攻B")
         );
     }
 

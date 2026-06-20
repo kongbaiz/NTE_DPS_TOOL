@@ -1,7 +1,10 @@
 use std::collections::{HashMap, VecDeque};
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
+use std::fs::File;
+use std::io::{BufWriter, Write as IoWrite};
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -16,6 +19,10 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::Graphics::Dwm::{
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+};
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, LWA_ALPHA,
@@ -1137,7 +1144,11 @@ impl DpsApp {
             return;
         };
 
-        match std::fs::write(&path, self.capture_export_json()) {
+        match atomic_write_file(&path, |writer| {
+            let mut out = IoFmtWriter::new(writer);
+            self.write_capture_export_json(&mut out);
+            out.finish()
+        }) {
             Ok(()) => {
                 self.status = "已导出抓包信息".to_owned();
                 self.last_error = None;
@@ -1183,7 +1194,7 @@ impl DpsApp {
         }
     }
 
-    fn capture_export_json(&self) -> String {
+    fn write_capture_export_json(&self, mut out: &mut dyn std::fmt::Write) {
         let duration = self.state.duration().max(0.001);
         let packet_count = self.state.packets.len();
         let hit_count = self.state.hits.len();
@@ -1199,7 +1210,6 @@ impl DpsApp {
         let mut rows: Vec<_> = self.state.stats.values().collect();
         rows.sort_by(|left, right| right.damage.total_cmp(&left.damage));
 
-        let mut out = String::new();
         writeln!(&mut out, "{{").ok();
         writeln!(
             &mut out,
@@ -1571,7 +1581,6 @@ impl DpsApp {
         }
         writeln!(&mut out, "  ]").ok();
         writeln!(&mut out, "}}").ok();
-        out
     }
 
     fn selected_party_state(&self) -> Option<&PartyCombatState> {
@@ -3272,7 +3281,7 @@ impl DpsApp {
                 return;
             }
         };
-        if let Err(error) = std::fs::write(&path, text) {
+        if let Err(error) = atomic_write_text(&path, &text) {
             self.character_editor.message = format!("保存 {} 失败: {error}", path.display());
             self.character_editor.dirty = true;
             return;
@@ -3738,6 +3747,30 @@ fn hit_type_label(hit: &crate::model::Hit) -> &str {
         "unknown" => "候选输出",
         _ => hit_specific_type(hit),
     }
+}
+
+fn hit_detail_hover_text(hit: &crate::model::Hit, include_character: bool) -> String {
+    let mut lines = Vec::new();
+    if include_character {
+        lines.push(format!("{} · {}", hit.char_name, hit_type_label(hit)));
+    } else {
+        lines.push(hit_type_label(hit).to_owned());
+    }
+    lines.push(format!("伤害：{}", format_number(hit.damage)));
+    if hit.target_max_hp > 0.0 {
+        lines.push(format!(
+            "目标 HP：{} / {}  {:.1}%",
+            format_number(hit.target_hp_after),
+            format_number(hit.target_max_hp),
+            hit.target_hp_percent
+        ));
+    }
+    if hit.direction == "unknown" {
+        lines.push("方向尚未确认".to_owned());
+    } else if let Some(ability_name) = hit.ability_name.as_deref() {
+        lines.push(format!("GA：{ability_name}"));
+    }
+    lines.join("\n")
 }
 
 fn aggregate_character_skill_damage(
@@ -4213,7 +4246,7 @@ fn draw_character_hit_row(
         egui::FontId::proportional(12.0),
         contrast_text(type_color),
         egui::Align::Center,
-        Some(hit_specific_type(hit)),
+        None,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
@@ -4245,29 +4278,7 @@ fn draw_character_hit_row(
         },
     );
     draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono.clone());
-    if response.hovered() {
-        let mut details = if incoming {
-            "角色受到的伤害".to_owned()
-        } else if hit.direction == "unknown" {
-            "候选输出：方向尚未确认".to_owned()
-        } else {
-            format!("攻击类型：{}", hit_specific_type(hit))
-        };
-        details.push_str(&format!(
-            "\ndirection={}\nchar_source={}",
-            hit.direction, hit.char_source
-        ));
-        if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\nGA：{ability_name}"));
-        }
-        if let Some(damage_name) = hit.damage_name.as_deref() {
-            details.push_str(&format!("\n招式：{damage_name}"));
-        }
-        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
-        }
-        response.on_hover_text(details);
-    }
+    response.on_hover_text(hit_detail_hover_text(hit, false));
 }
 
 fn draw_team_hit_header(ui: &mut egui::Ui, layout: TeamHitLayout) {
@@ -4401,7 +4412,7 @@ fn draw_team_hit_row(
         egui::FontId::proportional(12.0),
         contrast_text(type_color),
         egui::Align::Center,
-        Some(hit_specific_type(hit)),
+        None,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
@@ -4438,34 +4449,7 @@ fn draw_team_hit_row(
         },
     );
     draw_target_hp_text(ui, hp_cell_rect, hit, text_color, mono);
-    if response.hovered() {
-        let mut details = format!(
-            "{} · 角色 ID {} · {}",
-            hit.char_name,
-            hit.char_id,
-            if incoming {
-                "角色受到的伤害"
-            } else if hit.direction == "unknown" {
-                "候选输出：方向尚未确认"
-            } else {
-                hit.attack_type.as_deref().unwrap_or("攻击类型未知")
-            }
-        );
-        details.push_str(&format!(
-            "\ndirection={}\nchar_source={}",
-            hit.direction, hit.char_source
-        ));
-        if let Some(ability_name) = hit.ability_name.as_deref() {
-            details.push_str(&format!("\nGA：{ability_name}"));
-        }
-        if let Some(damage_name) = hit.damage_name.as_deref() {
-            details.push_str(&format!("\n招式：{damage_name}"));
-        }
-        if let Some(effect_name) = hit.gameplay_effect_name.as_deref() {
-            details.push_str(&format!("\nGameplayEffect：{effect_name}"));
-        }
-        response.on_hover_text(details);
-    }
+    response.on_hover_text(hit_detail_hover_text(hit, true));
 }
 
 fn draw_hit_metric_row(ui: &mut egui::Ui, metrics: [(&str, String, Color32); 5]) {
@@ -4624,7 +4608,6 @@ fn draw_target_hp_text(
         format_number(hit.target_max_hp),
         hit.target_hp_percent
     );
-    let hp_tooltip = format!("{target}\n{hp}");
     draw_clipped_label(
         ui,
         target_rect,
@@ -4632,7 +4615,7 @@ fn draw_target_hp_text(
         egui::FontId::proportional(12.0),
         target_color,
         egui::Align::Min,
-        Some(target),
+        None,
     );
     draw_clipped_label(
         ui,
@@ -4641,7 +4624,7 @@ fn draw_target_hp_text(
         hp_font,
         ui.visuals().weak_text_color(),
         egui::Align::Min,
-        Some(&hp_tooltip),
+        None,
     );
 }
 
@@ -4704,6 +4687,118 @@ fn draw_team_hit_column_separators(
     }
 }
 
+struct IoFmtWriter<'a, W: IoWrite> {
+    inner: &'a mut W,
+    error: Option<String>,
+}
+
+impl<'a, W: IoWrite> IoFmtWriter<'a, W> {
+    fn new(inner: &'a mut W) -> Self {
+        Self { inner, error: None }
+    }
+
+    fn finish(self) -> Result<(), String> {
+        self.error.map_or(Ok(()), Err)
+    }
+}
+
+impl<W: IoWrite> std::fmt::Write for IoFmtWriter<'_, W> {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        if self.error.is_some() {
+            return Err(std::fmt::Error);
+        }
+        if let Err(error) = self.inner.write_all(value.as_bytes()) {
+            self.error = Some(error.to_string());
+            return Err(std::fmt::Error);
+        }
+        Ok(())
+    }
+}
+
+fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
+    atomic_write_file(path, |writer| {
+        writer
+            .write_all(text.as_bytes())
+            .map_err(|error| error.to_string())
+    })
+}
+
+fn atomic_write_file<F>(path: &Path, write: F) -> Result<(), String>
+where
+    F: FnOnce(&mut BufWriter<File>) -> Result<(), String>,
+{
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let temp_path = temporary_write_path(path);
+    let result = (|| {
+        let file = File::create(&temp_path)
+            .map_err(|error| format!("创建临时文件 {} 失败: {error}", temp_path.display()))?;
+        let mut writer = BufWriter::new(file);
+        write(&mut writer)?;
+        writer.flush().map_err(|error| error.to_string())?;
+        writer
+            .get_ref()
+            .sync_all()
+            .map_err(|error| error.to_string())?;
+        drop(writer);
+        replace_file(&temp_path, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp_path);
+    }
+    result
+}
+
+fn temporary_write_path(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut name = OsString::from(".");
+    name.push(path.file_name().unwrap_or_else(|| OsStr::new("nte-write")));
+    name.push(format!(
+        ".{}.{}.tmp",
+        std::process::id(),
+        Local::now().format("%Y%m%d%H%M%S%3f")
+    ));
+    parent.join(name)
+}
+
+#[cfg(windows)]
+fn replace_file(temp_path: &Path, path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let temp_wide = temp_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let path_wide = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        MoveFileExW(
+            temp_wide.as_ptr(),
+            path_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(format!(
+            "替换 {} 失败: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn replace_file(temp_path: &Path, path: &Path) -> Result<(), String> {
+    std::fs::rename(temp_path, path)
+        .map_err(|error| format!("替换 {} 失败: {error}", path.display()))
+}
 fn default_export_filename() -> String {
     format!("nte_capture_{}.json", Local::now().format("%Y%m%d_%H%M%S"))
 }
@@ -4782,8 +4877,8 @@ fn character_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, dirt
     ui.end_row();
 }
 
-fn write_abyss_half_json(
-    out: &mut String,
+fn write_abyss_half_json<W: std::fmt::Write + ?Sized>(
+    out: &mut W,
     key: &str,
     party: &PartyCombatState,
     trailing_comma: bool,
