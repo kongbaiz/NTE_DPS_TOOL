@@ -24,6 +24,7 @@ use pcap_file::pcapng::blocks::interface_description::{
 use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
 use serde::Deserialize;
 
+use crate::class_hint::ClassHintStore;
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, EngineEvent, Hit, HitTargetUpdate, PacketDebug,
     PacketDebugMode, stable_hit_uid,
@@ -48,6 +49,7 @@ use crate::parser::{
 
 use crate::protocol::{TransportPacket, parse_single_bunch, parse_transport_packet};
 use crate::resource_index::ResourceIndex;
+use crate::runtime_handle::RuntimeHandleStore;
 use crate::runtime_mapping::{
     RuntimeMappingAction, RuntimeMappingEvent, RuntimeMappingTimeline,
     find_companion_runtime_mapping_sidecar, load_runtime_mapping_sidecar,
@@ -58,6 +60,7 @@ use crate::target_alias::{
 };
 use crate::target_instance::{TargetAlias, TargetAliasKind, TargetInstanceStore};
 use crate::target_resolver::{TargetConfidence, TargetResolutionSummary, TargetResolver};
+use crate::target_stream::{TargetStreamObservation, TargetStreamStore};
 use crate::target_track::{TargetTrackStore, TrackPacketContext};
 use crate::ue_bitstream::{PathCandidate, extract_path_candidates};
 
@@ -860,7 +863,7 @@ fn is_non_player_damage_effect(effect_name: Option<&str>) -> bool {
 
 fn refine_hit_direction_after_effect(hit: &mut Hit, packet_direction: PacketDirection) {
     if packet_direction != PacketDirection::ClientToServer
-        || hit.direction != "incoming"
+        || hit.direction != "unknown"
         || hit.char_source != "packet"
     {
         return;
@@ -874,10 +877,9 @@ fn refine_hit_direction_after_effect(hit: &mut Hit, packet_direction: PacketDire
     if !player_or_reaction_effect {
         return;
     }
-    hit.direction = "outgoing".to_owned();
     push_unique_context(
         &mut hit.target_context,
-        "direction_corrected=c2s_player_effect_low_hp_target".to_owned(),
+        "direction_candidate=c2s_player_or_reaction_effect".to_owned(),
     );
 }
 
@@ -1108,11 +1110,352 @@ const MAX_DISPLAY_DAMAGE_CORRECTION_RATIO: f64 = 0.03;
 const MAX_PENDING_FOLLOW_UP_HITS: usize = 256;
 const MAX_RECENT_TARGET_HITS: usize = 2048;
 const TARGET_BACKFILL_WINDOW_SECONDS: f64 = 90.0;
+const PLAYER_HP_STREAM_FALLBACK_WINDOW_SECONDS: f64 = 8.0;
+const HP_RECONCILIATION_WINDOW_SECONDS: f64 = 0.300;
+const HP_RECONCILIATION_ABSOLUTE_TOLERANCE: f64 = 2.0;
+const HP_RECONCILIATION_RELATIVE_TOLERANCE: f64 = 0.002;
 
 #[derive(Clone)]
 struct PendingHit {
     hit: Hit,
     gameplay_effect_index: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingHpReconciliationHit {
+    hit: Hit,
+}
+
+#[derive(Clone, Debug)]
+struct SdkTargetHpConfirmation {
+    current_hp: f64,
+    stream: TargetStreamObservation,
+    class_hint: Option<String>,
+    class_hint_name: Option<String>,
+    class_hint_confidence: Option<TargetConfidence>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HpConfirmationKind {
+    CurrentHp,
+    BossHp,
+    SdkTarget,
+}
+
+#[derive(Clone, Debug)]
+struct PlayerHpObservation {
+    timestamp: f64,
+    hp: f64,
+    char_id: Option<u32>,
+    hint: String,
+}
+
+#[derive(Default)]
+struct PlayerHpTracker {
+    by_hint: HashMap<String, PlayerHpObservation>,
+    active_stream: Option<PlayerHpObservation>,
+}
+
+impl PlayerHpTracker {
+    fn observe_updates(
+        &mut self,
+        timestamp: f64,
+        updates: &[ParsedCurrentHpUpdate],
+        active_char_id: Option<u32>,
+        fallback_char_id: Option<u32>,
+        characters: &HashMap<u32, CharacterInfo>,
+    ) -> Vec<Hit> {
+        let mut hits = Vec::new();
+        for update in updates {
+            let hp = update.current_hp as f64;
+            let hint = current_hp_observation_hint(update);
+            let exact_previous = self.by_hint.get(&hint).cloned();
+            let fallback_previous = exact_previous.is_none().then(|| {
+                self.active_stream
+                    .as_ref()
+                    .filter(|previous| {
+                        previous.hint != hint
+                            && timestamp - previous.timestamp
+                                <= PLAYER_HP_STREAM_FALLBACK_WINDOW_SECONDS
+                            && previous.hp > hp
+                    })
+                    .cloned()
+            });
+            let (previous, stream_context) = match (exact_previous, fallback_previous.flatten()) {
+                (Some(previous), _) if previous.hp > hp => (Some(previous), hint.clone()),
+                (None, Some(previous)) => (Some(previous), "active_player_fallback".to_owned()),
+                _ => (None, hint.clone()),
+            };
+            if let Some(previous) = previous {
+                let damage = previous.hp - hp;
+                if damage >= 1.0 {
+                    let char_id = active_char_id
+                        .or(fallback_char_id)
+                        .or(previous.char_id)
+                        .unwrap_or(0);
+                    let (char_name, char_known) = characters.get(&char_id).map_or_else(
+                        || {
+                            if char_id == 0 {
+                                ("未知角色".to_owned(), false)
+                            } else {
+                                (format!("角色 {char_id}"), false)
+                            }
+                        },
+                        |character| (character.name_zh.clone(), true),
+                    );
+                    let char_resolution = if active_char_id.is_some() {
+                        "active_player"
+                    } else if fallback_char_id.is_some() || previous.char_id.is_some() {
+                        "fallback"
+                    } else {
+                        "unknown"
+                    };
+                    let max_hp = previous.hp.max(hp).max(1.0);
+                    let mut target_context = vec![
+                        "incoming_source=current_hp_delta".to_owned(),
+                        format!("current_hp_token={hint}"),
+                        format!("current_hp_before={:.0}", previous.hp),
+                        format!("current_hp_after={:.0}", hp),
+                        format!("char_resolution={char_resolution}"),
+                    ];
+                    if stream_context == "active_player_fallback" {
+                        target_context.push("current_hp_stream=active_player_fallback".to_owned());
+                    } else {
+                        target_context.push(format!("current_hp_stream={stream_context}"));
+                    }
+                    hits.push(Hit {
+                        timestamp,
+                        char_id,
+                        char_name,
+                        char_known,
+                        damage,
+                        byte_offset: update.byte_offset,
+                        bit_shift: update.bit_shift,
+                        char_source: "current_hp_delta".to_owned(),
+                        direction: "incoming".to_owned(),
+                        target_hp_before: previous.hp,
+                        target_hp_after: hp,
+                        target_max_hp: max_hp,
+                        target_hp_percent: hp / max_hp * 100.0,
+                        target_id: None,
+                        target_name: None,
+                        target_context,
+                        gameplay_effect_index: None,
+                        gameplay_effect_name: None,
+                        ability_name: None,
+                        damage_name: Some("受击".to_owned()),
+                        attack_type: Some("受击".to_owned()),
+                    });
+                }
+            }
+            let observation = PlayerHpObservation {
+                timestamp,
+                hp,
+                char_id: active_char_id.or(fallback_char_id),
+                hint: hint.clone(),
+            };
+            self.by_hint.insert(hint, observation.clone());
+            self.active_stream = Some(observation);
+        }
+        self.by_hint.retain(|_, observation| {
+            timestamp - observation.timestamp <= PLAYER_HP_STREAM_FALLBACK_WINDOW_SECONDS * 2.0
+        });
+        if self.active_stream.as_ref().is_some_and(|observation| {
+            timestamp - observation.timestamp > PLAYER_HP_STREAM_FALLBACK_WINDOW_SECONDS * 2.0
+        }) {
+            self.active_stream = None;
+        }
+        hits
+    }
+}
+
+fn current_hp_observation_hint(update: &ParsedCurrentHpUpdate) -> String {
+    current_hp_target_token(&update.target_hint).map_or_else(
+        || format!("hint:{}", hex::encode(update.target_hint)),
+        |token| format!("token:{}", short_hex(&token)),
+    )
+}
+
+fn should_wait_for_hp_reconciliation(hit: &Hit) -> bool {
+    hit.direction == "unknown"
+        && hit
+            .target_context
+            .iter()
+            .any(|entry| entry == "direction_pending=c2s_hp_reconciliation")
+}
+
+fn apply_hp_confirmation_to_hit(
+    hit: &mut Hit,
+    current_hp_updates: &[ParsedCurrentHpUpdate],
+    boss_hp_updates: &[ParsedBossHpUpdate],
+    sdk_hp_updates: &[SdkTargetHpConfirmation],
+) -> Option<HpConfirmationKind> {
+    if !should_wait_for_hp_reconciliation(hit) {
+        return None;
+    }
+    if let Some(update) = current_hp_updates
+        .iter()
+        .find(|update| hp_value_matches(hit.target_hp_after, update.current_hp as f64))
+    {
+        mark_hit_incoming_from_current_hp(hit, update);
+        return Some(HpConfirmationKind::CurrentHp);
+    }
+    if let Some(update) = boss_hp_updates
+        .iter()
+        .find(|update| hp_value_matches(hit.target_hp_after, update.current_hp as f64))
+    {
+        mark_hit_outgoing_from_boss_hp(hit, update);
+        return Some(HpConfirmationKind::BossHp);
+    }
+    if let Some(update) = sdk_hp_updates
+        .iter()
+        .find(|update| hp_value_matches(hit.target_hp_after, update.current_hp))
+    {
+        mark_hit_outgoing_from_sdk_target(hit, update);
+        return Some(HpConfirmationKind::SdkTarget);
+    }
+    None
+}
+
+fn is_current_hp_delta_hit(hit: &Hit) -> bool {
+    hit.direction == "incoming"
+        && hit
+            .target_context
+            .iter()
+            .any(|entry| entry == "incoming_source=current_hp_delta")
+}
+
+fn hp_value_matches(left: f64, right: f64) -> bool {
+    let delta = (left - right).abs();
+    delta <= HP_RECONCILIATION_ABSOLUTE_TOLERANCE
+        || delta <= left.abs().max(right.abs()).max(1.0) * HP_RECONCILIATION_RELATIVE_TOLERANCE
+}
+
+fn mark_hit_incoming_from_current_hp(hit: &mut Hit, update: &ParsedCurrentHpUpdate) {
+    hit.direction = "incoming".to_owned();
+    hit.target_id = None;
+    hit.target_name = None;
+    hit.target_context.retain(|entry| {
+        !entry.starts_with("target_")
+            && !entry.starts_with("reason=runtime_")
+            && !entry.starts_with("runtime_target_instance=")
+            && !entry.starts_with("boss_hp_guid=")
+    });
+    push_unique_context(
+        &mut hit.target_context,
+        "direction_confirmed=current_hp_after_match".to_owned(),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        format!("current_hp_after={:.0}", update.current_hp),
+    );
+    if let Some(token) = current_hp_target_token(&update.target_hint) {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("current_hp_token={}", short_hex(&token)),
+        );
+    }
+}
+
+fn mark_hit_outgoing_from_boss_hp(hit: &mut Hit, update: &ParsedBossHpUpdate) {
+    hit.direction = "outgoing".to_owned();
+    let handle = hex::encode(update.target_handle);
+    push_unique_context(
+        &mut hit.target_context,
+        "direction_confirmed=boss_hp_after_match".to_owned(),
+    );
+    push_unique_context(&mut hit.target_context, format!("boss_hp_guid={handle}"));
+    push_unique_context(
+        &mut hit.target_context,
+        format!("target_handle_candidate=AttributeGuid:{handle}"),
+    );
+    push_unique_context(&mut hit.target_context, format!("base_handle={handle}"));
+    push_unique_context(
+        &mut hit.target_context,
+        "hp_timeline_match=boss_hp_after_match".to_owned(),
+    );
+}
+
+fn mark_hit_outgoing_from_sdk_target(hit: &mut Hit, update: &SdkTargetHpConfirmation) {
+    hit.direction = "outgoing".to_owned();
+    push_unique_context(
+        &mut hit.target_context,
+        "direction_confirmed=target_hp_after_match".to_owned(),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        "hp_timeline_match=sdk_target_after_match".to_owned(),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        format!("base_handle={}", update.stream.base_handle),
+    );
+    push_unique_context(
+        &mut hit.target_context,
+        format!("target_stream={}", update.stream.stream_id),
+    );
+    if let Some(slot) = update.stream.slot {
+        push_unique_context(&mut hit.target_context, format!("sdk_target_slot={slot}"));
+    }
+    if let Some(suffix) = &update.stream.suffix_hex {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("sdk_target_suffix={suffix}"),
+        );
+    }
+    if let Some(class_hint) = &update.class_hint {
+        push_unique_context(&mut hit.target_context, format!("class_hint={class_hint}"));
+    }
+    if let Some(name) = &update.class_hint_name {
+        hit.target_name = Some(name.clone());
+        replace_target_context_value(&mut hit.target_context, "target_name", name);
+        replace_target_context_value(
+            &mut hit.target_context,
+            "target_name_resolution",
+            "class_hint_stream_order",
+        );
+        push_unique_context(&mut hit.target_context, format!("class_hint_name={name}"));
+    }
+    if let Some(confidence) = update.class_hint_confidence {
+        push_unique_context(
+            &mut hit.target_context,
+            format!("class_hint_confidence={}", confidence.as_str()),
+        );
+    }
+}
+
+fn finalize_unconfirmed_hp_direction(hit: &mut Hit) {
+    if hit.direction != "unknown" {
+        return;
+    }
+    if hit
+        .target_context
+        .iter()
+        .any(|entry| entry == "direction_confirmed=current_hp_after_match")
+    {
+        hit.direction = "incoming".to_owned();
+    } else if hit.target_max_hp > 500_000.0 {
+        hit.direction = "outgoing".to_owned();
+        push_unique_context(
+            &mut hit.target_context,
+            "direction_confirmed=high_target_hp_candidate".to_owned(),
+        );
+    } else if hit
+        .target_context
+        .iter()
+        .any(|entry| entry == "direction_candidate=c2s_player_or_reaction_effect")
+    {
+        hit.direction = "outgoing".to_owned();
+        push_unique_context(
+            &mut hit.target_context,
+            "direction_confirmed=c2s_player_effect_no_current_hp_match".to_owned(),
+        );
+    } else {
+        push_unique_context(
+            &mut hit.target_context,
+            "direction_unresolved=hp_reconciliation_timeout".to_owned(),
+        );
+    }
 }
 
 #[derive(Default)]
@@ -1156,7 +1499,7 @@ impl FollowUpDamageTracker {
         gameplay_effect_index: Option<u32>,
         characters: &HashMap<u32, CharacterInfo>,
     ) {
-        if hit.direction == "incoming"
+        if hit.direction != "outgoing"
             || hit.char_id == 0
             || hit.target_max_hp <= 500_000.0
             || hit.target_hp_before <= 0.0
@@ -1302,6 +1645,9 @@ struct PacketDecoder {
     wooden_damage_names: HashMap<String, String>,
     object_state: ObjectStateStore,
     target_instances: TargetInstanceStore,
+    runtime_handles: RuntimeHandleStore,
+    target_streams: TargetStreamStore,
+    class_hints: ClassHintStore,
     target_tracks: TargetTrackStore,
     resource_index: ResourceIndex,
     target_resolver: TargetResolver,
@@ -1309,9 +1655,13 @@ struct PacketDecoder {
     target_handle_aliases: HashMap<String, HandleTargetAlias>,
     recent_dead_target_handles: HashMap<String, f64>,
     follow_up_damage: FollowUpDamageTracker,
+    player_hp: PlayerHpTracker,
+    pending_hp_reconciliation: VecDeque<PendingHpReconciliationHit>,
+    active_player_char_id: Option<u32>,
     character_declarations: HashMap<u32, f64>,
     resource_warnings: Vec<String>,
     packet_debug_mode: PacketDebugMode,
+    packet_index: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -1356,6 +1706,9 @@ impl Default for PacketDecoder {
             wooden_damage_names,
             object_state: ObjectStateStore::default(),
             target_instances: TargetInstanceStore::default(),
+            runtime_handles: RuntimeHandleStore::default(),
+            target_streams: TargetStreamStore::default(),
+            class_hints: ClassHintStore::default(),
             target_tracks: TargetTrackStore::default(),
             resource_index: ResourceIndex::load_default_with_warnings(&mut resource_warnings),
             target_resolver: TargetResolver,
@@ -1363,9 +1716,13 @@ impl Default for PacketDecoder {
             target_handle_aliases: HashMap::new(),
             recent_dead_target_handles: HashMap::new(),
             follow_up_damage: FollowUpDamageTracker::default(),
+            player_hp: PlayerHpTracker::default(),
+            pending_hp_reconciliation: VecDeque::new(),
+            active_player_char_id: None,
             character_declarations: HashMap::new(),
             resource_warnings,
             packet_debug_mode: PacketDebugMode::Off,
+            packet_index: 0,
         }
     }
 }
@@ -1511,8 +1868,96 @@ impl PacketDecoder {
         (!self.resource_warnings.is_empty()).then(|| self.resource_warnings.join("; "))
     }
 
+    fn reconcile_hp_confirmations(
+        &mut self,
+        timestamp: f64,
+        new_hits: Vec<Hit>,
+        current_hp_updates: &[ParsedCurrentHpUpdate],
+        boss_hp_updates: &[ParsedBossHpUpdate],
+        sdk_hp_updates: &[SdkTargetHpConfirmation],
+    ) -> Vec<Hit> {
+        let mut ready = Vec::new();
+        let mut still_pending = VecDeque::new();
+        let mut consumed_current_hp_after = Vec::new();
+        while let Some(mut pending) = self.pending_hp_reconciliation.pop_front() {
+            if let Some(kind) = apply_hp_confirmation_to_hit(
+                &mut pending.hit,
+                current_hp_updates,
+                boss_hp_updates,
+                sdk_hp_updates,
+            ) {
+                if kind == HpConfirmationKind::CurrentHp {
+                    consumed_current_hp_after.push(pending.hit.target_hp_after);
+                }
+                ready.push(pending.hit);
+            } else if timestamp - pending.hit.timestamp >= HP_RECONCILIATION_WINDOW_SECONDS {
+                finalize_unconfirmed_hp_direction(&mut pending.hit);
+                ready.push(pending.hit);
+            } else {
+                still_pending.push_back(pending);
+            }
+        }
+        self.pending_hp_reconciliation = still_pending;
+
+        for mut hit in new_hits {
+            if is_current_hp_delta_hit(&hit)
+                && consumed_current_hp_after
+                    .iter()
+                    .any(|hp| hp_value_matches(*hp, hit.target_hp_after))
+            {
+                continue;
+            }
+            if apply_hp_confirmation_to_hit(
+                &mut hit,
+                current_hp_updates,
+                boss_hp_updates,
+                sdk_hp_updates,
+            )
+            .is_some()
+            {
+                ready.push(hit);
+            } else if should_wait_for_hp_reconciliation(&hit) {
+                self.pending_hp_reconciliation
+                    .push_back(PendingHpReconciliationHit { hit });
+            } else {
+                if hit.direction == "unknown" {
+                    finalize_unconfirmed_hp_direction(&mut hit);
+                }
+                ready.push(hit);
+            }
+        }
+        ready
+    }
+
+    fn flush_pending_hp_reconciliation(
+        &mut self,
+        include_incoming: bool,
+        characters: &HashMap<u32, CharacterInfo>,
+        sender: &Sender<EngineEvent>,
+    ) {
+        let hits = self
+            .pending_hp_reconciliation
+            .drain(..)
+            .map(|mut pending| {
+                finalize_unconfirmed_hp_direction(&mut pending.hit);
+                pending.hit
+            })
+            .collect::<Vec<_>>();
+        self.finalize_and_emit_hits(
+            hits,
+            TrackPacketContext::default(),
+            &[],
+            true,
+            true,
+            true,
+            include_incoming,
+            characters,
+            sender,
+        );
+    }
+
     fn remember_target_hit(&mut self, hit: &Hit, summary: TargetResolutionSummary) {
-        if hit.direction == "incoming" {
+        if hit.direction != "outgoing" {
             return;
         }
         self.register_target_handle_alias_for_hit(hit, &summary);
@@ -1664,12 +2109,124 @@ impl PacketDecoder {
         summary: &mut TargetResolutionSummary,
         mut context: TrackPacketContext,
     ) {
-        if hit.direction == "incoming" {
+        if hit.direction != "outgoing" {
             return;
         }
         enrich_track_context_from_hit(&mut context, hit, &self.resource_index);
         self.target_tracks
             .attribute_damage_hit(hit, summary, context);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finalize_and_emit_hits(
+        &mut self,
+        mut hits: Vec<Hit>,
+        target_lock_context: TrackPacketContext,
+        path_candidates: &[PathCandidate],
+        no_targetish_path: bool,
+        no_net_identity: bool,
+        no_runtime_identity: bool,
+        include_incoming: bool,
+        characters: &HashMap<u32, CharacterInfo>,
+        sender: &Sender<EngineEvent>,
+    ) -> usize {
+        let mut hit_summaries = Vec::with_capacity(hits.len());
+        for hit in &mut hits {
+            let mut summary = if hit.direction == "outgoing" {
+                self.target_resolver.apply_to_hit_with_summary(
+                    hit,
+                    &self.object_state,
+                    &self.target_instances,
+                    path_candidates,
+                    &self.resource_index,
+                )
+            } else {
+                TargetResolutionSummary::from_hit_and_candidates(hit, &[])
+            };
+            if hit.direction == "outgoing" {
+                if hit.target_id.is_none()
+                    && hit.target_name.is_none()
+                    && self.target_instances.observe_hit_vector_hit(hit).is_some()
+                {
+                    summary = self.target_resolver.apply_to_hit_with_summary(
+                        hit,
+                        &self.object_state,
+                        &self.target_instances,
+                        path_candidates,
+                        &self.resource_index,
+                    );
+                }
+                self.suppress_recently_dead_target_on_hit(hit, &mut summary);
+                self.register_target_handle_alias_for_hit(hit, &summary);
+                apply_handle_alias_to_hit_summary(hit, &mut summary, &self.target_handle_aliases);
+                self.register_target_handle_alias_for_hit(hit, &summary);
+            }
+            hit_summaries.push(summary);
+        }
+        for (hit, summary) in hits.iter_mut().zip(&mut hit_summaries) {
+            if hit.direction == "outgoing" {
+                apply_handle_alias_to_hit_summary(hit, summary, &self.target_handle_aliases);
+            }
+        }
+        let mut hit_order = (0..hits.len()).collect::<Vec<_>>();
+        hit_order.sort_by(|left, right| {
+            hits[*left]
+                .timestamp
+                .total_cmp(&hits[*right].timestamp)
+                .then_with(|| hits[*left].byte_offset.cmp(&hits[*right].byte_offset))
+                .then_with(|| hits[*left].bit_shift.cmp(&hits[*right].bit_shift))
+        });
+        let mut dead_hits: Vec<Hit> = Vec::new();
+        for &index in &hit_order {
+            let hit = &mut hits[index];
+            let summary = &mut hit_summaries[index];
+            if hit.direction == "outgoing"
+                && hit.target_hp_after > 1.0
+                && dead_hits.iter().any(|dead_hit| {
+                    hit.timestamp >= dead_hit.timestamp
+                        && hit.timestamp - dead_hit.timestamp
+                            <= DEAD_TARGET_HANDLE_REUSE_WINDOW_SECONDS
+                        && hits_share_hp_target_handle(hit, dead_hit)
+                })
+            {
+                suppress_hit_target_as_recent_death(hit, summary);
+            }
+            if hit.direction == "outgoing" && hit.target_hp_after <= 1.0 {
+                dead_hits.push(hit.clone());
+            }
+        }
+        for &index in &hit_order {
+            let hit = &mut hits[index];
+            let summary = &mut hit_summaries[index];
+            self.apply_target_track_attribution(hit, summary, target_lock_context.clone());
+            annotate_unknown_identity_gap(
+                hit,
+                no_targetish_path,
+                no_net_identity,
+                no_runtime_identity,
+            );
+        }
+        for index in hit_order {
+            let hit = &mut hits[index];
+            let summary = &mut hit_summaries[index];
+            if hit.direction == "outgoing" && hit.target_hp_after <= 1.0 {
+                self.clear_dead_target_handles_from_hit(hit);
+                summary.target_context = hit.target_context.clone();
+            }
+        }
+        let mut accepted = 0usize;
+        for (hit, summary) in hits.into_iter().zip(hit_summaries) {
+            if include_incoming || hit.direction != "incoming" {
+                self.follow_up_damage
+                    .observe_hit(&hit, hit.gameplay_effect_index, characters);
+                let mut hit = hit;
+                normalize_final_target_identity(&mut hit);
+                self.remember_target_hit(&hit, summary);
+                let _ = sender.send(EngineEvent::Hit(hit));
+                accepted += 1;
+            }
+        }
+        accepted
     }
 
     fn register_target_instance_alias_keys(
@@ -1945,6 +2502,12 @@ impl PacketDecoder {
         }
         for update in boss_hp_updates {
             let handle = hex::encode(update.target_handle);
+            self.runtime_handles.observe_hp(
+                timestamp,
+                handle.clone(),
+                update.current_hp as f64,
+                "boss_hp",
+            );
             let dead_key = format!("AttributeGuid:{handle}");
             let live_after_recent_death =
                 update.current_hp > 1.0 && self.target_handle_recently_dead(&dead_key, timestamp);
@@ -2136,6 +2699,49 @@ impl PacketDecoder {
             notes.push(event.summary());
         }
         (notes, applied)
+    }
+
+    fn sdk_hp_confirmations_from_events(
+        &mut self,
+        timestamp: f64,
+        events: &[NetRuntimeEvent],
+    ) -> Vec<SdkTargetHpConfirmation> {
+        let nearby_hints = self.class_hints.hints_near(timestamp, 2.5, 0.5);
+        events
+            .iter()
+            .filter(|event| event.kind == NetRuntimeEventKind::SdkTargetData)
+            .filter_map(|event| {
+                let target_token = event.target_token.as_deref()?;
+                let current_hp = event.current_hp? as f64;
+                let stream = self.target_streams.observe_sdk_target(
+                    timestamp,
+                    target_token,
+                    current_hp,
+                    &nearby_hints,
+                )?;
+                self.runtime_handles.observe_hp(
+                    timestamp,
+                    stream.base_handle.clone(),
+                    current_hp,
+                    "sdk_target_hp",
+                );
+                let stream_state = self.target_streams.stream(&stream.stream_id);
+                let class_hint = stream_state
+                    .and_then(|state| state.class_hint.as_ref())
+                    .map(|hint| hint.canonical_class.clone());
+                let class_hint_name = stream_state.and_then(|state| state.target_name.clone());
+                let class_hint_confidence = stream_state
+                    .and_then(|state| state.class_hint.as_ref())
+                    .map(|hint| hint.confidence);
+                Some(SdkTargetHpConfirmation {
+                    current_hp,
+                    stream,
+                    class_hint,
+                    class_hint_name,
+                    class_hint_confidence,
+                })
+            })
+            .collect()
     }
 
     fn apply_monster_gameplay_effect_links(
@@ -2889,6 +3495,7 @@ impl PacketDecoder {
         characters: &HashMap<u32, CharacterInfo>,
         sender: &Sender<EngineEvent>,
     ) {
+        self.packet_index = self.packet_index.saturating_add(1);
         let Some((src, src_port, dst, dst_port, payload)) = parse_udp_ipv4(packet) else {
             return;
         };
@@ -2928,6 +3535,20 @@ impl PacketDecoder {
             !current_hp_updates.is_empty() || !boss_hp_updates.is_empty(),
             has_fast_text_hint,
         ) {
+            let ready_hits = self.reconcile_hp_confirmations(timestamp, Vec::new(), &[], &[], &[]);
+            if !ready_hits.is_empty() {
+                self.finalize_and_emit_hits(
+                    ready_hits,
+                    TrackPacketContext::default(),
+                    &[],
+                    true,
+                    true,
+                    true,
+                    include_incoming,
+                    characters,
+                    sender,
+                );
+            }
             return;
         }
 
@@ -2936,11 +3557,20 @@ impl PacketDecoder {
         } else {
             UNREADABLE_PROTOCOL_TEXT.to_owned()
         };
-        let path_candidates = if !outgoing && has_fast_text_hint {
+        let path_candidates = if has_fast_text_hint {
             extract_path_candidates(payload)
         } else {
             Vec::new()
         };
+        for candidate in &path_candidates {
+            let _ = self.class_hints.observe_path(
+                timestamp,
+                self.packet_index,
+                packet_direction,
+                &candidate.value,
+                &self.resource_index,
+            );
+        }
         for candidate in &path_candidates {
             self.object_state
                 .observe_path_candidate(timestamp, candidate, &self.resource_index);
@@ -3019,9 +3649,10 @@ impl PacketDecoder {
                 include_sdk_target_data: sdk_target_scan_enabled,
             },
         );
+        let sdk_hp_confirmations =
+            self.sdk_hp_confirmations_from_events(timestamp, &net_runtime_events);
         let (net_runtime_notes, net_runtime_applied) =
             self.apply_net_runtime_events(timestamp, &net_runtime_events);
-        self.apply_hp_updates_to_state(timestamp, &current_hp_updates, &boss_hp_updates);
         let (packet_char_id, fallback_char_id) = if outgoing {
             let session_key = (src, src_port, dst, dst_port);
             let packet_char_id = if ids.len() == 1 {
@@ -3031,11 +3662,24 @@ impl PacketDecoder {
             };
             if let Some(id) = packet_char_id {
                 self.session_characters.insert(session_key, id);
+                self.active_player_char_id = Some(id);
             }
             let fallback = self.session_characters.get(&session_key).copied();
             (packet_char_id, fallback)
         } else {
             (None, None)
+        };
+        self.apply_hp_updates_to_state(timestamp, &current_hp_updates, &boss_hp_updates);
+        let mut hp_delta_hits = if outgoing {
+            Vec::new()
+        } else {
+            self.player_hp.observe_updates(
+                timestamp,
+                &current_hp_updates,
+                self.active_player_char_id,
+                fallback_char_id,
+                characters,
+            )
         };
         let mut hits = if outgoing
             && payload.len() >= DAMAGE_RECORD_MIN_LEN
@@ -3055,6 +3699,7 @@ impl PacketDecoder {
         } else {
             Vec::new()
         };
+        hits.append(&mut hp_delta_hits);
         for hit in &mut hits {
             attach_runtime_alias_context(hit, &net_identity_candidates, &net_runtime_events);
             enrich_hit_with_gameplay_effect(
@@ -3065,7 +3710,6 @@ impl PacketDecoder {
                 &self.wooden_damage_names,
             );
             refine_hit_direction_after_effect(hit, packet_direction);
-            self.target_instances.observe_hit_vector_hit(hit);
             if hit
                 .attack_type
                 .as_deref()
@@ -3098,6 +3742,13 @@ impl PacketDecoder {
             }
         }
         hits.retain(|hit| !is_non_player_damage_effect(hit.gameplay_effect_name.as_deref()));
+        let mut hits = self.reconcile_hp_confirmations(
+            timestamp,
+            hits,
+            &current_hp_updates,
+            &boss_hp_updates,
+            &sdk_hp_confirmations,
+        );
 
         let target_lock_context = target_lock_context_for_packet(
             &path_candidates,
@@ -3107,7 +3758,7 @@ impl PacketDecoder {
         );
         let mut hit_summaries = Vec::with_capacity(hits.len());
         for hit in &mut hits {
-            let mut summary = if hit.direction != "incoming" {
+            let mut summary = if hit.direction == "outgoing" {
                 self.target_resolver.apply_to_hit_with_summary(
                     hit,
                     &self.object_state,
@@ -3118,7 +3769,19 @@ impl PacketDecoder {
             } else {
                 TargetResolutionSummary::from_hit_and_candidates(hit, &[])
             };
-            if hit.direction != "incoming" {
+            if hit.direction == "outgoing" {
+                if hit.target_id.is_none()
+                    && hit.target_name.is_none()
+                    && self.target_instances.observe_hit_vector_hit(hit).is_some()
+                {
+                    summary = self.target_resolver.apply_to_hit_with_summary(
+                        hit,
+                        &self.object_state,
+                        &self.target_instances,
+                        &path_candidates,
+                        &self.resource_index,
+                    );
+                }
                 self.suppress_recently_dead_target_on_hit(hit, &mut summary);
                 self.register_target_handle_alias_for_hit(hit, &summary);
                 apply_handle_alias_to_hit_summary(hit, &mut summary, &self.target_handle_aliases);
@@ -3127,7 +3790,7 @@ impl PacketDecoder {
             hit_summaries.push(summary);
         }
         for (hit, summary) in hits.iter_mut().zip(&mut hit_summaries) {
-            if hit.direction != "incoming" {
+            if hit.direction == "outgoing" {
                 apply_handle_alias_to_hit_summary(hit, summary, &self.target_handle_aliases);
             }
         }
@@ -3143,7 +3806,7 @@ impl PacketDecoder {
         for &index in &packet_hit_order {
             let hit = &mut hits[index];
             let summary = &mut hit_summaries[index];
-            if hit.direction != "incoming"
+            if hit.direction == "outgoing"
                 && hit.target_hp_after > 1.0
                 && packet_dead_hits.iter().any(|dead_hit| {
                     hit.timestamp >= dead_hit.timestamp
@@ -3154,7 +3817,7 @@ impl PacketDecoder {
             {
                 suppress_hit_target_as_recent_death(hit, summary);
             }
-            if hit.direction != "incoming" && hit.target_hp_after <= 1.0 {
+            if hit.direction == "outgoing" && hit.target_hp_after <= 1.0 {
                 packet_dead_hits.push(hit.clone());
             }
         }
@@ -3172,7 +3835,7 @@ impl PacketDecoder {
         for index in packet_hit_order {
             let hit = &mut hits[index];
             let summary = &mut hit_summaries[index];
-            if hit.direction != "incoming" && hit.target_hp_after <= 1.0 {
+            if hit.direction == "outgoing" && hit.target_hp_after <= 1.0 {
                 self.clear_dead_target_handles_from_hit(hit);
                 summary.target_context = hit.target_context.clone();
             }
@@ -3665,6 +4328,7 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
                 sender,
             );
         }
+        decoder.flush_pending_hp_reconciliation(include_incoming, characters, sender);
     }
     Ok(())
 }
@@ -3742,6 +4406,7 @@ pub fn import_pcapng(
                 );
             }
             decoder.apply_runtime_mapping_events(runtime_mapping.pop_all(), &sender);
+            decoder.flush_pending_hp_reconciliation(include_incoming, &characters, &sender);
             if packet_count > 0 && supported_count == 0 {
                 return Err("pcapng contains no supported Ethernet packets".to_owned());
             }
@@ -4180,18 +4845,18 @@ mod tests {
     }
 
     #[test]
-    fn gameplay_effect_can_correct_low_hp_incoming_direction() {
+    fn gameplay_effect_records_outgoing_candidate_but_waits_for_hp_confirmation() {
         let mut hit = test_hit(1.0, 29104.0, 25681.0);
-        hit.direction = "incoming".to_owned();
+        hit.direction = "unknown".to_owned();
         hit.char_source = "packet".to_owned();
         hit.gameplay_effect_name = Some("GE_Player_Haniel_QTE_Damage".to_owned());
         refine_hit_direction_after_effect(&mut hit, PacketDirection::ClientToServer);
 
-        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.direction, "unknown");
         assert!(
             hit.target_context
                 .iter()
-                .any(|entry| { entry == "direction_corrected=c2s_player_effect_low_hp_target" })
+                .any(|entry| entry == "direction_candidate=c2s_player_or_reaction_effect")
         );
     }
 
@@ -4203,6 +4868,295 @@ mod tests {
         assert!(scan.contains_any_fast_hint());
         assert!(scan.decode_text().contains("/Game/Monster/Boss"));
         assert_eq!(scan.shifted.len(), 8);
+    }
+
+    fn current_hp_update(hint: [u8; 16], hp: f32, byte_offset: usize) -> ParsedCurrentHpUpdate {
+        ParsedCurrentHpUpdate {
+            target_hint: hint,
+            current_hp: hp,
+            byte_offset,
+            bit_shift: 0,
+        }
+    }
+
+    fn boss_hp_update(handle: [u8; 16], hp: f32, byte_offset: usize) -> ParsedBossHpUpdate {
+        ParsedBossHpUpdate {
+            target_handle: handle,
+            current_hp: hp,
+            byte_offset,
+            bit_shift: 0,
+        }
+    }
+
+    fn current_hp_hint(token_bytes: [u8; 4]) -> [u8; 16] {
+        let mut hint = [0_u8; 16];
+        hint[0] = token_bytes[0];
+        hint[7] = token_bytes[1];
+        hint[9] = token_bytes[2];
+        hint[10] = token_bytes[3];
+        hint
+    }
+
+    #[test]
+    fn current_hp_drop_generates_incoming_hit() {
+        let mut tracker = PlayerHpTracker::default();
+        let characters = HashMap::from([(
+            1001,
+            CharacterInfo {
+                name_zh: "测试角色".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: None,
+            },
+        )]);
+        let hint = current_hp_hint([1, 2, 3, 4]);
+
+        assert!(
+            tracker
+                .observe_updates(
+                    1.0,
+                    &[current_hp_update(hint, 10_000.0, 10)],
+                    Some(1001),
+                    None,
+                    &characters,
+                )
+                .is_empty()
+        );
+        let hits = tracker.observe_updates(
+            1.5,
+            &[current_hp_update(hint, 8_750.0, 20)],
+            Some(1001),
+            None,
+            &characters,
+        );
+
+        assert_eq!(hits.len(), 1);
+        let hit = &hits[0];
+        assert_eq!(hit.direction, "incoming");
+        assert_eq!(hit.damage, 1250.0);
+        assert_eq!(hit.char_id, 1001);
+        assert_eq!(hit.char_name, "测试角色");
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "incoming_source=current_hp_delta" })
+        );
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| entry == "char_resolution=active_player")
+        );
+    }
+
+    #[test]
+    fn current_hp_token_unstable_uses_active_player_fallback() {
+        let mut tracker = PlayerHpTracker::default();
+        let characters = HashMap::new();
+        let first_hint = current_hp_hint([1, 2, 3, 4]);
+        let second_hint = current_hp_hint([5, 6, 7, 8]);
+
+        tracker.observe_updates(
+            1.0,
+            &[current_hp_update(first_hint, 10_000.0, 10)],
+            Some(1001),
+            None,
+            &characters,
+        );
+        let hits = tracker.observe_updates(
+            2.0,
+            &[current_hp_update(second_hint, 9_000.0, 20)],
+            Some(1001),
+            None,
+            &characters,
+        );
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "incoming");
+        assert!(
+            hits[0]
+                .target_context
+                .iter()
+                .any(|entry| { entry == "current_hp_stream=active_player_fallback" })
+        );
+    }
+
+    #[test]
+    fn c2s_damage_confirmed_incoming_by_following_current_hp() {
+        let mut decoder = PacketDecoder::default();
+        let mut hit = test_hit(10.000, 21_598.0, 20_779.0);
+        hit.damage = 819.0;
+        hit.char_id = 1004;
+        hit.direction = "unknown".to_owned();
+        hit.char_source = "packet".to_owned();
+        hit.target_context = vec![
+            "direction_candidate=c2s_packet_character".to_owned(),
+            "direction_pending=c2s_hp_reconciliation".to_owned(),
+        ];
+
+        let ready = decoder.reconcile_hp_confirmations(10.000, vec![hit], &[], &[], &[]);
+        assert!(ready.is_empty());
+
+        let ready = decoder.reconcile_hp_confirmations(
+            10.121,
+            Vec::new(),
+            &[current_hp_update(
+                current_hp_hint([1, 2, 3, 4]),
+                20_779.0,
+                1747,
+            )],
+            &[],
+            &[],
+        );
+
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].direction, "incoming");
+        assert_eq!(ready[0].damage, 819.0);
+        assert!(
+            ready[0]
+                .target_context
+                .iter()
+                .any(|entry| { entry == "direction_confirmed=current_hp_after_match" })
+        );
+    }
+
+    #[test]
+    fn c2s_damage_confirmed_outgoing_by_following_boss_hp_not_placeholder() {
+        let mut decoder = PacketDecoder::default();
+        let handle = [
+            0x21, 0xf0, 0x4e, 0x92, 0x89, 0x95, 0x33, 0x4f, 0x8c, 0x0b, 0xbc, 0xaa, 0x0e, 0xe1,
+            0x6f, 0xe7,
+        ];
+        let mut hit = test_hit(20.000, 1_940_137.0, 1_939_334.0);
+        hit.damage = 803.0;
+        hit.direction = "unknown".to_owned();
+        hit.char_source = "packet".to_owned();
+        hit.target_context = vec![
+            "direction_candidate=c2s_packet_character".to_owned(),
+            "direction_pending=c2s_hp_reconciliation".to_owned(),
+            "hit_target_vector_token=boss-vector".to_owned(),
+            "hit_target_xyz=0.000,0.000,0.000".to_owned(),
+        ];
+
+        assert!(
+            decoder
+                .reconcile_hp_confirmations(20.000, vec![hit], &[], &[], &[])
+                .is_empty()
+        );
+        let update = boss_hp_update(handle, 1_939_334.0, 1552);
+        decoder.apply_hp_updates_to_state(20.080, &[], std::slice::from_ref(&update));
+        let ready = decoder.reconcile_hp_confirmations(20.080, Vec::new(), &[], &[update], &[]);
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].direction, "outgoing");
+        assert!(
+            ready[0]
+                .target_context
+                .iter()
+                .any(|entry| { entry == "direction_confirmed=boss_hp_after_match" })
+        );
+        assert!(
+            ready[0]
+                .target_context
+                .iter()
+                .any(|entry| { entry == "boss_hp_guid=21f04e928995334f8c0bbcaa0ee16fe7" })
+        );
+
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        let characters = HashMap::new();
+        decoder.finalize_and_emit_hits(
+            ready,
+            TrackPacketContext::default(),
+            &[],
+            true,
+            true,
+            true,
+            false,
+            &characters,
+            &sender,
+        );
+        let emitted = receiver
+            .try_iter()
+            .find_map(|event| match event {
+                EngineEvent::Hit(hit) => Some(hit),
+                _ => None,
+            })
+            .expect("emitted hit");
+        assert_eq!(emitted.direction, "outgoing");
+        assert!(
+            emitted
+                .target_context
+                .iter()
+                .any(|entry| entry == "boss_hp_guid=21f04e928995334f8c0bbcaa0ee16fe7")
+        );
+        assert!(
+            !emitted
+                .target_context
+                .iter()
+                .any(|entry| entry == "target_name_resolution=runtime_placeholder")
+        );
+    }
+
+    #[test]
+    fn c2s_damage_confirmed_outgoing_by_sdk_target_stream_with_class_hint() {
+        let mut hit = test_hit(30.000, 46_347.0, 43_155.0);
+        hit.direction = "unknown".to_owned();
+        hit.target_context = vec!["direction_pending=c2s_hp_reconciliation".to_owned()];
+        let stream = TargetStreamObservation {
+            stream_id: "target_stream:5b41c437d248b54e8959424b7501eae4:slot:1:gen:1".to_owned(),
+            base_handle: "5b41c437d248b54e8959424b7501eae4".to_owned(),
+            slot: Some(1),
+            suffix_hex: Some("01000000".to_owned()),
+        };
+        let sdk = SdkTargetHpConfirmation {
+            current_hp: 43_155.0,
+            stream,
+            class_hint: Some("mon_01_BP".to_owned()),
+            class_hint_name: Some("低语种".to_owned()),
+            class_hint_confidence: Some(TargetConfidence::Probable),
+        };
+
+        assert!(apply_hp_confirmation_to_hit(&mut hit, &[], &[], &[sdk]).is_some());
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.target_name.as_deref(), Some("低语种"));
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "hp_timeline_match=sdk_target_after_match" })
+        );
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| entry.starts_with("target_stream=target_stream:"))
+        );
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| entry == "target_name_resolution=class_hint_stream_order")
+        );
+    }
+
+    #[test]
+    fn low_hp_c2s_without_current_hp_match_does_not_become_incoming() {
+        let mut decoder = PacketDecoder::default();
+        let mut hit = test_hit(40.000, 29_104.0, 25_681.0);
+        hit.direction = "unknown".to_owned();
+        hit.target_context = vec!["direction_pending=c2s_hp_reconciliation".to_owned()];
+
+        assert!(
+            decoder
+                .reconcile_hp_confirmations(40.000, vec![hit], &[], &[], &[])
+                .is_empty()
+        );
+        let ready = decoder.reconcile_hp_confirmations(40.500, Vec::new(), &[], &[], &[]);
+
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].direction, "unknown");
+        assert!(
+            !ready[0]
+                .target_context
+                .iter()
+                .any(|entry| entry == "direction_confirmed=current_hp_after_match")
+        );
     }
 
     #[test]
@@ -4335,9 +5289,11 @@ mod tests {
                 low_hp_outgoing += 1;
             }
             if hit.target_context.iter().any(|entry| {
-                entry == "direction_inferred=c2s_packet_character"
+                entry == "direction_candidate=c2s_packet_character"
+                    || entry == "direction_candidate=c2s_session_character"
+                    || entry.starts_with("direction_confirmed=")
+                    || entry.starts_with("direction_unresolved=")
                     || entry == "direction_low_hp_target_not_incoming"
-                    || entry.starts_with("direction_corrected=")
             }) {
                 direction_evidence += 1;
             }

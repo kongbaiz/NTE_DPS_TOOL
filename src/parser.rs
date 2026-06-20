@@ -978,11 +978,13 @@ fn infer_damage_direction(
     match packet_direction {
         PacketDirection::ClientToServer => {
             if resolved_packet_char_id.is_some() {
-                target_context.push("direction_inferred=c2s_packet_character".to_owned());
-                "outgoing"
+                target_context.push("direction_candidate=c2s_packet_character".to_owned());
+                target_context.push("direction_pending=c2s_hp_reconciliation".to_owned());
+                "unknown"
             } else if fallback_char_id.is_some() {
-                target_context.push("direction_inferred=c2s_session_character".to_owned());
-                "outgoing"
+                target_context.push("direction_candidate=c2s_session_character".to_owned());
+                target_context.push("direction_pending=c2s_hp_reconciliation".to_owned());
+                "unknown"
             } else {
                 target_context.push("direction_unresolved=c2s_no_character".to_owned());
                 "unknown"
@@ -1042,7 +1044,7 @@ mod tests {
     }
 
     #[test]
-    fn low_hp_c2s_player_damage_is_outgoing() {
+    fn low_hp_c2s_player_damage_waits_for_hp_reconciliation() {
         let characters = test_characters();
         let evidence = vec![(1020, 0, 0)];
         let hits = parse_damage_payload(
@@ -1057,12 +1059,12 @@ mod tests {
             },
         );
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].direction, "outgoing");
+        assert_eq!(hits[0].direction, "unknown");
         assert!(
             hits[0]
                 .target_context
                 .iter()
-                .any(|entry| entry == "direction_low_hp_target_not_incoming")
+                .any(|entry| entry == "direction_pending=c2s_hp_reconciliation")
         );
     }
 

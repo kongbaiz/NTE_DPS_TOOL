@@ -101,6 +101,23 @@
 
 `target_name` 会被 UI 和导出 JSON 视为对用户有直接解释力的字段。possible/unknown 只代表候选证据存在，不能证明本次攻击命中了该对象。低置信时只写入 `target_context`，保留 score、reason、path、GUID 等证据，避免把启发式结果伪装成确定敌人名称。
 
+## Runtime Handle / Target Stream
+
+- 16-byte handle 只作为 `base_handle` 记录生命周期和 HP 证据，不再等价于单只怪物实例 ID。
+- SDK target-data 的 0x28 token 会拆成 `base_handle + slot/suffix`，形成 `target_stream:<base_handle>:slot:<slot>:gen:<generation>`。
+- 同一 `base_handle + slot` 即使 raw token prefix 改变，只要 HP timeline 连续，仍归入同一 target stream。
+- slot 死亡后再次出现 live HP 时递增 generation，避免复用 slot 改写旧目标。
+- `mon_` / `boss_` / Monster path 只作为 class hint；只有 target stream 附近窗口内 class hint 唯一时，才以 `target_name_resolution=class_hint_stream_order` 投影到 hit。
+- 多个不同 class hint 冲突时只写 `class_hint_candidates=...`，不强行命名。
+- AdvVision 目标名优先来自 `TargetDescriptions`，例如 `AdvVision_Mammon_3 -> 击败「玛门」·难度3 -> 玛门`，不使用 VisionName 作为敌人名。
+
+方向确认优先级：
+
+1. `target_hp_after` 匹配后续 S2C CurrentHP：`incoming`，写 `direction_confirmed=current_hp_after_match`。
+2. `target_hp_after` 匹配后续 S2C BossHP / SDK target HP：`outgoing`，写 `hp_timeline_match=boss_hp_after_match` 或 `sdk_target_after_match`。
+3. 玩家/反应 GameplayEffect 只作为候选；无 CurrentHP 反证且 reconciliation 超时后才降级为 outgoing。
+4. C2S/S2C 和 `target_max_hp` 不能单独决定角色受击或敌人身份。
+
 ## 参考资料
 
 本阶段联网查阅过以下资料，均只作为结构设计参考；NTE 实际协议格式仍以本仓库抓包证据为准。

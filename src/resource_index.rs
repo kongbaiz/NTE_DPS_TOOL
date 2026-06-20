@@ -38,6 +38,11 @@ const LACRIMOSA_COLLECTION_TABLE_FILES: [&str; 2] = [
     "data/DataTable/LacrimosaCollection/DT_LacrimosaCollectionData.json",
     "NTE_Assets/DataTable/LacrimosaCollection/DT_LacrimosaCollectionData.json",
 ];
+const ADV_VISION_TABLE_FILES: [&str; 3] = [
+    "data/DataTable/Vision/DT_AdvVision.json",
+    "res/data/DataTable/Vision/DT_AdvVision.json",
+    "NTE_Assets/DataTable/Vision/DT_AdvVision.json",
+];
 
 const PRIORITY_OVERRIDE: u8 = 250;
 const PRIORITY_ABYSS_STAGE: u8 = 230;
@@ -144,6 +149,12 @@ impl ResourceIndex {
         }
         if loaded_lacrimosa == 0 {
             missing_groups.push("DT_LacrimosaCollectionData");
+        }
+        for relative in ADV_VISION_TABLE_FILES {
+            let Some(path) = find_data_file(Path::new(relative)) else {
+                continue;
+            };
+            index.load_advvision_file_with_warnings(&path, warnings);
         }
         if let Some(path) = find_data_file(Path::new(WOODEN_DAMAGE_DESCRIPTIONS_PATH)) {
             index.load_wooden_damage_descriptions_with_warnings(&path, warnings);
@@ -426,6 +437,27 @@ impl ResourceIndex {
         }
     }
 
+    fn load_advvision_file_with_warnings(&mut self, path: &Path, warnings: &mut Vec<String>) {
+        let Some(rows) = read_data_table_rows(path, warnings) else {
+            return;
+        };
+        for (advvision_id, row) in rows {
+            let scene_data_ids = keyed_string_map(row.get("SceneDataIds"));
+            let target_descriptions = keyed_localized_text_map(row.get("TargetDescriptions"));
+            for (key, scene_id) in scene_data_ids {
+                let Some(description) = target_descriptions.get(&key) else {
+                    continue;
+                };
+                let Some(name) = target_name_from_advvision_description(description) else {
+                    continue;
+                };
+                self.insert_monster_id(&advvision_id, &name, PRIORITY_STATIC_TEXT);
+                self.insert_monster_id(&scene_id, &name, PRIORITY_STATIC_TEXT);
+                self.insert_canonical_target_alias(&scene_id, &advvision_id);
+            }
+        }
+    }
+
     fn insert(&mut self, path: String, name: String, priority: u8) {
         let aliases = lookup_keys_for_path(&path);
         let name = name.trim();
@@ -561,6 +593,41 @@ fn nested_asset_path(row: &Value, fields: &[&str]) -> Option<String> {
         value = value.get(*field)?;
     }
     value.as_str().and_then(non_empty_text)
+}
+
+fn keyed_string_map(value: Option<&Value>) -> HashMap<String, String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            Some((
+                entry.get("Key")?.as_str()?.to_owned(),
+                entry.get("Value")?.as_str()?.to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn keyed_localized_text_map(value: Option<&Value>) -> HashMap<String, String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            Some((
+                entry.get("Key")?.as_str()?.to_owned(),
+                localized_text(entry.get("Value"))?,
+            ))
+        })
+        .collect()
+}
+
+fn target_name_from_advvision_description(description: &str) -> Option<String> {
+    let start = description.find('「')?;
+    let after_start = start + '「'.len_utf8();
+    let end = description[after_start..].find('」')?;
+    non_empty_text(&description[after_start..after_start + end])
 }
 
 fn manual_drop_key_counts(rows: &[ManualMonsterRow]) -> HashMap<String, usize> {
@@ -1015,6 +1082,32 @@ mod tests {
                 .resolved_name_for_path("mon_35_BP_Red_World")
                 .as_deref(),
             Some("罐头锡兵")
+        );
+        assert_eq!(
+            index.resolved_name_for_path("mon_029").as_deref(),
+            Some("唱片机附电灵")
+        );
+        assert_eq!(
+            index.resolved_name_for_path("mon_029_BP").as_deref(),
+            Some("唱片机附电灵")
+        );
+        assert_eq!(
+            index
+                .resolved_name_for_path("mon_029_BP_World_Perform")
+                .as_deref(),
+            Some("唱片机附电灵")
+        );
+    }
+
+    #[test]
+    fn advvision_scene_alias_resolves_target_description_name() {
+        let index = ResourceIndex::load_default();
+
+        assert_eq!(
+            index
+                .resolved_name_for_path("AdvVision_Mammon_3")
+                .as_deref(),
+            Some("玛门")
         );
     }
 }

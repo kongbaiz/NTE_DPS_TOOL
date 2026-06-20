@@ -431,7 +431,12 @@ fn candidate_can_display_target_name(
             .iter()
             .any(|reason| reason == "runtime_placeholder_hit_vector")
         {
-            return candidates.len() == 1 || !has_named_direct_hp_conflict(candidate, candidates);
+            return !candidates.iter().any(|other| {
+                other.handle_kind != ObjectHandleKind::RuntimeInstance
+                    && (candidate_has_direct_hp_evidence(other)
+                        || other.target_name.is_some()
+                        || other.confidence == TargetConfidence::Confirmed)
+            });
         }
         return candidate
             .reasons
@@ -1018,6 +1023,79 @@ mod tests {
         TargetResolver.apply_to_hit_with_summary(&mut hit, &store, &instances, &[], &resources);
 
         assert_eq!(hit.target_name, None);
+    }
+
+    #[test]
+    fn placeholder_candidate_cannot_override_direct_hp_named_candidate() {
+        let resources = resources_with_targets();
+        let mut store = ObjectStateStore::default();
+        observe_direct_hp(
+            &mut store,
+            &resources,
+            [1; 16],
+            "/Game/Monster/Boss_001_BP.Boss_001_BP_C",
+            10_000.0,
+            9_000.0,
+        );
+        let mut instances = TargetInstanceStore::default();
+        let mut placeholder_seed = test_hit(1.0, 10_000.0, 9_000.0, 1000.0);
+        placeholder_seed.target_max_hp = 10_000.0;
+        placeholder_seed
+            .target_context
+            .push("hit_target_vector_token=placeholder-a".to_owned());
+        placeholder_seed
+            .target_context
+            .push("hit_target_xyz=0.000,0.000,0.000".to_owned());
+        instances
+            .observe_hit_vector_hit(&mut placeholder_seed)
+            .expect("placeholder instance");
+
+        let mut hit = test_hit(1.1, 10_000.0, 9_000.0, 1000.0);
+        hit.target_context
+            .push("hit_target_vector_token=placeholder-a".to_owned());
+        hit.target_context
+            .push("hit_target_xyz=0.000,0.000,0.000".to_owned());
+        TargetResolver.apply_to_hit_with_summary(&mut hit, &store, &instances, &[], &resources);
+
+        assert_eq!(hit.target_name.as_deref(), Some("Target A"));
+        assert!(
+            !hit.target_context
+                .iter()
+                .any(|entry| entry == "target_name_resolution=runtime_placeholder")
+        );
+    }
+
+    #[test]
+    fn placeholder_candidate_can_display_when_no_strong_candidate_exists() {
+        let resources = resources_with_targets();
+        let store = ObjectStateStore::default();
+        let mut instances = TargetInstanceStore::default();
+        let mut placeholder_seed = test_hit(1.0, 10_000.0, 9_000.0, 1000.0);
+        placeholder_seed.target_max_hp = 10_000.0;
+        placeholder_seed
+            .target_context
+            .push("hit_target_vector_token=placeholder-only".to_owned());
+        placeholder_seed
+            .target_context
+            .push("hit_target_xyz=0.000,0.000,0.000".to_owned());
+        instances
+            .observe_hit_vector_hit(&mut placeholder_seed)
+            .expect("placeholder instance");
+
+        let mut hit = test_hit(1.1, 9_000.0, 8_000.0, 1000.0);
+        hit.target_max_hp = 10_000.0;
+        hit.target_context
+            .push("hit_target_vector_token=placeholder-only".to_owned());
+        hit.target_context
+            .push("hit_target_xyz=0.000,0.000,0.000".to_owned());
+        TargetResolver.apply_to_hit_with_summary(&mut hit, &store, &instances, &[], &resources);
+
+        assert_eq!(hit.target_name.as_deref(), Some("未知目标#1"));
+        assert!(
+            hit.target_context
+                .iter()
+                .any(|entry| { entry == "target_name_resolution=runtime_placeholder" })
+        );
     }
 
     #[test]

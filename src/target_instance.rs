@@ -16,6 +16,7 @@ const HP_MATCH_TOLERANCE_RATIO: f64 = 0.002;
 const HIT_VECTOR_INSTANCE_WINDOW_SECONDS: f64 = 20.0;
 const HIT_VECTOR_INSTANCE_DISTANCE: f64 = 300.0;
 const UNKNOWN_RUNTIME_TARGET_PATH: &str = "runtime://unknown_target";
+const MAX_HIT_VECTOR_PLACEHOLDER_HP: f64 = 500_000.0;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum TargetAliasKind {
@@ -278,7 +279,12 @@ impl TargetInstanceStore {
     }
 
     pub fn observe_hit_vector_hit(&mut self, hit: &mut Hit) -> Option<String> {
-        if hit.direction == "incoming" || hit.target_name.is_some() {
+        if hit.direction != "outgoing"
+            || hit.target_name.is_some()
+            || hit.target_id.is_some()
+            || hit.target_max_hp > MAX_HIT_VECTOR_PLACEHOLDER_HP
+            || has_strong_target_context(&hit.target_context)
+        {
             return None;
         }
         let token = target_context_value(&hit.target_context, "hit_target_vector_token")?;
@@ -779,6 +785,19 @@ fn placeholder_hp_matches(instance: &RuntimeTargetInstance, hit: &Hit) -> bool {
     instance.hp_history.is_empty()
 }
 
+fn has_strong_target_context(context: &[String]) -> bool {
+    context.iter().any(|entry| {
+        entry.starts_with("boss_hp_guid=")
+            || entry.starts_with("target_handle_candidate=AttributeGuid:")
+            || entry == "target_name_resolution=table_resolved"
+            || entry.contains("direct_hp")
+            || entry.contains("boss_hp_delta_match")
+            || entry.contains("net_target_hp_delta_match")
+            || entry.contains("hp_guid_timeline_match")
+            || entry.contains("net_target_hp_timeline_match")
+    })
+}
+
 fn push_unique_context(context: &mut Vec<String>, value: String) {
     if !context.iter().any(|entry| entry == &value) {
         context.push(value);
@@ -960,6 +979,38 @@ mod tests {
         assert_eq!(result, None);
         assert_eq!(hit.target_id.as_deref(), Some("monster:boss_13#1"));
         assert_eq!(hit.target_name.as_deref(), Some("斑蝶"));
+        assert!(
+            !hit.target_context
+                .iter()
+                .any(|entry| entry.starts_with("runtime_target_instance="))
+        );
+    }
+
+    #[test]
+    fn hit_vector_placeholder_requires_unresolved_outgoing_low_hp() {
+        let mut store = TargetInstanceStore::default();
+        let mut incoming = vector_hit(1.0, 10_000.0, 9_000.0, 10_000.0, [0.0, 0.0, 0.0]);
+        incoming.direction = "incoming".to_owned();
+        assert_eq!(store.observe_hit_vector_hit(&mut incoming), None);
+
+        let mut high_hp = vector_hit(2.0, 900_000.0, 800_000.0, 900_000.0, [0.0, 0.0, 0.0]);
+        assert_eq!(store.observe_hit_vector_hit(&mut high_hp), None);
+
+        let mut resolved = vector_hit(3.0, 10_000.0, 9_000.0, 10_000.0, [0.0, 0.0, 0.0]);
+        resolved.target_id = Some("AttributeGuid:abc".to_owned());
+        assert_eq!(store.observe_hit_vector_hit(&mut resolved), None);
+    }
+
+    #[test]
+    fn hit_vector_placeholder_rejects_strong_target_context() {
+        let mut store = TargetInstanceStore::default();
+        let mut hit = vector_hit(1.0, 10_000.0, 9_000.0, 10_000.0, [0.0, 0.0, 0.0]);
+        hit.target_context
+            .push("boss_hp_guid=00112233445566778899aabbccddeeff".to_owned());
+        hit.target_context
+            .push("reason=hp_guid_timeline_match:test".to_owned());
+
+        assert_eq!(store.observe_hit_vector_hit(&mut hit), None);
         assert!(
             !hit.target_context
                 .iter()
