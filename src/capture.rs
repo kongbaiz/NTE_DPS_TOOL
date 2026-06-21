@@ -869,11 +869,13 @@ const FUWEN_ENTERING_ID_OFFSET: usize = 53;
 const FUWEN_PREVIOUS_ID_SHIFT: u8 = 2;
 const FUWEN_PREVIOUS_ID_OFFSET: usize = 66;
 const MIN_FOLLOW_UP_RESIDUAL_DAMAGE: f64 = 1.0;
+const RECENT_CONFIRMED_HIT_WINDOW_SECONDS: f64 = 0.75;
+const UNTYPED_SHADOW_HIT_WINDOW_SECONDS: f64 = 0.05;
 
 fn hit_can_trigger_fuwen_follow_up(hit: &Hit) -> bool {
     match hit.attack_type.as_deref() {
         Some("创生") | Some("创生花") | Some("覆纹") | Some("延滞") | Some("黯星")
-        | Some("浊燃") | Some("盈蓄") | Some("失谐") => false,
+        | Some("浊燃") | Some("浸染") | Some("盈蓄") | Some("失谐") => false,
         Some(attack_type) if attack_type.starts_with("环合·") => attack_type == "环合·覆纹",
         _ => true,
     }
@@ -1063,6 +1065,7 @@ struct PacketDecoder {
     follow_up_damage: FollowUpDamageTracker,
     character_declarations: HashMap<u32, f64>,
     pending_ambiguous_hits: Vec<Hit>,
+    recent_confirmed_hits: Vec<Hit>,
     resource_warnings: Vec<String>,
 }
 
@@ -1102,6 +1105,7 @@ impl Default for PacketDecoder {
             follow_up_damage: FollowUpDamageTracker::default(),
             character_declarations: HashMap::new(),
             pending_ambiguous_hits: Vec::new(),
+            recent_confirmed_hits: Vec::new(),
             resource_warnings,
         }
     }
@@ -1174,6 +1178,9 @@ impl PacketDecoder {
     ) -> PreparedHits {
         let mut prepared = PreparedHits::default();
         for mut hit in hits {
+            self.recent_confirmed_hits.retain(|confirmed| {
+                hit.timestamp - confirmed.timestamp <= RECENT_CONFIRMED_HIT_WINDOW_SECONDS
+            });
             if !include_incoming && hit.direction == "incoming" {
                 prepared.filtered_incoming += 1;
                 continue;
@@ -1182,12 +1189,19 @@ impl PacketDecoder {
                 hit.direction = "outgoing".to_owned();
                 hit.char_source = "gameplay_effect".to_owned();
             }
+            if is_recent_confirmed_duplicate(&hit, &self.recent_confirmed_hits) {
+                prepared.suppressed_ambiguous += 1;
+                continue;
+            }
             if is_ambiguous_session_hit(&hit, declared_ids) {
                 self.pending_ambiguous_hits.push(hit);
                 prepared.deferred_ambiguous += 1;
                 continue;
             }
             prepared.suppressed_ambiguous += self.suppress_matching_ambiguous_hits(&hit);
+            if is_confirmed_packet_hit(&hit) {
+                self.recent_confirmed_hits.push(hit.clone());
+            }
             prepared.emit.push(hit);
         }
         prepared
@@ -1248,6 +1262,17 @@ fn same_damage_event(left: &Hit, right: &Hit) -> bool {
         && nearly_same(left.target_hp_before, right.target_hp_before)
         && nearly_same(left.target_hp_after, right.target_hp_after)
         && nearly_same(left.target_max_hp, right.target_max_hp)
+}
+
+fn is_recent_confirmed_duplicate(hit: &Hit, confirmed_hits: &[Hit]) -> bool {
+    confirmed_hits.iter().any(|confirmed| {
+        let timestamp_delta = (hit.timestamp - confirmed.timestamp).abs();
+        hit.gameplay_effect_index.is_none()
+            && confirmed.gameplay_effect_index.is_some()
+            && timestamp_delta <= UNTYPED_SHADOW_HIT_WINDOW_SECONDS
+            && hit.char_id == confirmed.char_id
+            && nearly_same(hit.damage, confirmed.damage)
+    })
 }
 
 fn nearly_same(left: f64, right: f64) -> bool {
@@ -1368,11 +1393,18 @@ fn enrich_hit_with_gameplay_effect(
     } else {
         hit.attack_type = Some(classify_attack_type(None, effect_name, None));
     }
+    if is_player_outgoing_damage_effect(effect_name) {
+        hit.direction = "outgoing".to_owned();
+    }
     if is_vehicle_physical_damage_effect(effect_name) {
         hit.direction = "outgoing".to_owned();
         hit.damage_attribute = Some("物理".to_owned());
         hit.attack_type = Some("载具伤害".to_owned());
     }
+}
+
+fn is_player_outgoing_damage_effect(effect_name: &str) -> bool {
+    effect_name.starts_with("GE_Player_") && effect_name.contains("_Damage")
 }
 
 fn is_vehicle_physical_damage_effect(effect_name: &str) -> bool {
@@ -2599,6 +2631,29 @@ mod tests {
     }
 
     #[test]
+    fn player_damage_effect_is_outgoing_even_when_record_looks_incoming() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 2031,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(2031, "GE_Player_Hathor_QTE1_Damage".to_owned())]);
+        let mut hit = targetless_hit();
+        hit.direction = "incoming".to_owned();
+
+        enrich_hit_with_gameplay_effect(
+            &mut hit,
+            &effects,
+            &names,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("环合"));
+    }
+
+    #[test]
     fn local_ip_hint_controls_import_direction_inference() {
         let local_ip = Ipv4Addr::new(10, 0, 0, 2);
         let remote_ip = Ipv4Addr::new(10, 0, 0, 3);
@@ -2850,6 +2905,30 @@ mod tests {
         assert_eq!(prepared.suppressed_ambiguous, 1);
         assert_eq!(prepared.emit[0].char_id, 1051);
         assert!(decoder.pending_ambiguous_hits.is_empty());
+    }
+
+    #[test]
+    fn confirmed_packet_hit_suppresses_recent_duplicate_records() {
+        let mut decoder = PacketDecoder::default();
+        let characters = duplicate_test_characters();
+        let confirmed = duplicate_test_hit(10.0, "packet", "outgoing");
+        let mut duplicate = confirmed.clone();
+        duplicate.gameplay_effect_index = None;
+        duplicate.gameplay_effect_name = None;
+        duplicate.attack_type = None;
+        duplicate.target_hp_before += 2_000.0;
+        duplicate.target_hp_after += 2_000.0;
+
+        let prepared = decoder.prepare_hits_for_emission(
+            vec![confirmed, duplicate],
+            &[1051],
+            true,
+            &characters,
+        );
+
+        assert_eq!(prepared.emit.len(), 1);
+        assert_eq!(prepared.suppressed_ambiguous, 1);
+        assert_eq!(prepared.emit[0].attack_type.as_deref(), Some("创生花"));
     }
 
     #[test]

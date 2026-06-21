@@ -4309,7 +4309,7 @@ struct SkillDamageSummary {
 fn is_qte_follow_up_damage_type(attack_type: &str) -> bool {
     matches!(
         attack_type,
-        "创生花" | "覆纹" | "延滞" | "黯星" | "浊燃" | "盈蓄" | "失谐"
+        "创生花" | "覆纹" | "延滞" | "黯星" | "浊燃" | "浸染" | "盈蓄" | "失谐"
     )
 }
 
@@ -4357,6 +4357,7 @@ fn reaction_text_key_from_trigger_attack_type(attack_type: &str) -> Option<u8> {
         "覆纹" => Some(2),
         "黯星" => Some(3),
         "浊燃" | "灼燃" => Some(4),
+        "浸染" => Some(5),
         "延滞" => Some(6),
         "盈蓄" => Some(7),
         "失谐" => Some(8),
@@ -5027,6 +5028,9 @@ fn damage_digit_key_for_hit<'a>(
     hit: &'a crate::model::Hit,
     characters: &'a HashMap<u32, CharacterInfo>,
 ) -> Option<&'a str> {
+    if hit.direction == "incoming" {
+        return Some("物理");
+    }
     let source_attribute = hit.damage_attribute.as_deref().or_else(|| {
         characters
             .get(&hit.char_id)
@@ -5084,6 +5088,11 @@ fn mixed_damage_digit_key(attack_type: &str, source_attribute: &str) -> Option<&
             "咒" => Some("Zhouan_Z"),
             _ => None,
         },
+        "浸染" | "魂相" => match source_attribute {
+            "魂" => Some("Hunxiang_H"),
+            "相" => Some("Hunxiang_X"),
+            _ => None,
+        },
         "盈蓄" => match source_attribute {
             "光" => Some("Guangling_G"),
             "灵" => Some("Guangling_L"),
@@ -5094,11 +5103,6 @@ fn mixed_damage_digit_key(attack_type: &str, source_attribute: &str) -> Option<&
             "暗" => Some("Anhun_A"),
             "魂" => Some("Anhun_H"),
             "咒" => Some("Zhouan_Z"),
-            _ => None,
-        },
-        "魂相" => match source_attribute {
-            "魂" => Some("Hunxiang_H"),
-            "相" => Some("Hunxiang_X"),
             _ => None,
         },
         _ => None,
@@ -6957,6 +6961,10 @@ mod tests {
             Some(4)
         );
         assert_eq!(
+            reaction_text_key_from_trigger_attack_type("环合·浸染"),
+            Some(5)
+        );
+        assert_eq!(
             reaction_text_key_from_trigger_attack_type("环合·延滞"),
             Some(6)
         );
@@ -7105,6 +7113,12 @@ mod tests {
         hit.damage_attribute = Some("物理".to_owned());
         assert_eq!(damage_digit_key_for_hit(&hit, &characters), Some("物理"));
 
+        hit.direction = "incoming".to_owned();
+        hit.attack_type = Some("覆纹".to_owned());
+        hit.damage_attribute = Some("咒".to_owned());
+        assert_eq!(damage_digit_key_for_hit(&hit, &characters), Some("物理"));
+
+        hit.direction = "outgoing".to_owned();
         hit.follow_up_attack_type = Some("覆纹".to_owned());
         hit.follow_up_damage_attribute = Some("咒".to_owned());
         assert_eq!(follow_up_damage_digit_key_for_hit(&hit), Some("lingzhou_Z"));

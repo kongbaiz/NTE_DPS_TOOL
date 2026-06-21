@@ -246,6 +246,9 @@ pub fn classify_attack_type(
     if effect_name.contains("Reaction_5") || effect_name.contains("Reaction5_") {
         return "浊燃".to_owned();
     }
+    if effect_name.contains("Reaction_6") || effect_name.contains("Reaction6_") {
+        return "浸染".to_owned();
+    }
     if effect_name.contains("Reaction_7") || effect_name.contains("Reaction7_") {
         return "盈蓄".to_owned();
     }
@@ -315,6 +318,8 @@ pub fn qte_reaction_type(
         Some("黯星")
     } else if has_pair("暗", "咒") {
         Some("浊燃")
+    } else if has_pair("魂", "相") {
+        Some("浸染")
     } else {
         None
     }
@@ -955,6 +960,10 @@ mod character_tests {
             "失谐"
         );
         assert_eq!(classify_attack_type(None, "GE_Reaction_7", None,), "盈蓄");
+        assert_eq!(
+            classify_attack_type(None, "GE_Reaction6_5Point_Damage", None,),
+            "浸染"
+        );
     }
 
     #[test]
@@ -967,6 +976,7 @@ mod character_tests {
 
         assert_eq!(qte_reaction_type("暗", "咒"), Some("浊燃"));
         assert_eq!(qte_reaction_type("暗", "魂"), Some("黯星"));
+        assert_eq!(qte_reaction_type("魂", "相"), Some("浸染"));
     }
 
     #[test]
