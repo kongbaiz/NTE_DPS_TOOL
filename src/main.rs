@@ -1,6 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![cfg_attr(feature = "no_debug", allow(dead_code))]
 
+mod abyss_data;
 mod app;
 mod capture;
 mod config;

@@ -268,8 +268,8 @@ pub enum AbyssHalf {
 impl AbyssHalf {
     pub fn label(self) -> &'static str {
         match self {
-            Self::First => "上半",
-            Self::Second => "下半",
+            Self::First => "上行线",
+            Self::Second => "下行线",
         }
     }
 }
@@ -899,8 +899,8 @@ mod tests {
 
     #[test]
     fn abyss_half_labels_are_utf8_chinese() {
-        assert_eq!(AbyssHalf::First.label(), "上半");
-        assert_eq!(AbyssHalf::Second.label(), "下半");
+        assert_eq!(AbyssHalf::First.label(), "上行线");
+        assert_eq!(AbyssHalf::Second.label(), "下行线");
     }
 
     #[test]

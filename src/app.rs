@@ -32,6 +32,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SetLayeredWindowAttributes, SetWindowLongPtrW, WS_EX_LAYERED,
 };
 
+use crate::abyss_data::{AbyssFloor, AbyssMonsterDataset, AbyssMonsterEntry};
 use crate::capture::{
     CaptureDevice, CaptureHandle, RawCaptureBuffer, import_capture_json, import_pcapng,
     list_devices, start_capture,
@@ -184,6 +185,7 @@ const ATTRIBUTE_ICON_PATHS: [(&str, &str); 6] = [
     ("相", "res/images/attributes/UI_avatarbg_Icon_02.png"),
 ];
 const DAMAGE_DIGIT_IMAGE_DIR: &str = "res/images/font/tiaozi1";
+const MONSTER_IMAGE_DIR: &str = "res/images/monsters";
 const REACTION_TEXT_IMAGE_COUNT: u8 = 8;
 const DAMAGE_DIGIT_TEXTURE_SETS: [(&str, &str); 20] = [
     ("灵", "ling"),
@@ -510,15 +512,84 @@ impl EncryptedIniEditorState {
     }
 }
 
+#[derive(Default)]
+struct AbyssOverviewState {
+    dataset: Option<AbyssMonsterDataset>,
+    load_error: Option<String>,
+    selected_season: Option<u32>,
+    selected_floor: Option<u32>,
+    selected_monster_pack_id: Option<String>,
+    expanded_season: Option<u32>,
+    search: String,
+}
+
+impl AbyssOverviewState {
+    fn load() -> Self {
+        match AbyssMonsterDataset::load() {
+            Ok(dataset) => {
+                let first = dataset.first_floor_key();
+                Self {
+                    dataset: Some(dataset),
+                    load_error: None,
+                    selected_season: first.map(|(season, _)| season),
+                    selected_floor: first.map(|(_, floor)| floor),
+                    selected_monster_pack_id: None,
+                    expanded_season: first.map(|(season, _)| season),
+                    search: String::new(),
+                }
+            }
+            Err(error) => Self {
+                load_error: Some(error.to_string()),
+                ..Default::default()
+            },
+        }
+    }
+
+    fn reload(&mut self) {
+        let search = self.search.clone();
+        *self = Self::load();
+        self.search = search;
+    }
+
+    fn ensure_selection(&mut self) {
+        let Some(dataset) = &self.dataset else {
+            return;
+        };
+        let valid = self
+            .selected_season
+            .zip(self.selected_floor)
+            .is_some_and(|(season, floor)| dataset.floor(season, floor).is_some());
+        if !valid && let Some((season, floor)) = dataset.first_floor_key() {
+            self.selected_season = Some(season);
+            self.selected_floor = Some(floor);
+        }
+        if self
+            .expanded_season
+            .is_none_or(|season| dataset.season(season).is_none())
+        {
+            self.expanded_season = self.selected_season;
+        }
+        if let Some(pack_id) = &self.selected_monster_pack_id
+            && dataset.monster(pack_id).is_none()
+        {
+            self.selected_monster_pack_id = None;
+        }
+    }
+}
+
 pub struct DpsApp {
     characters: Arc<HashMap<u32, CharacterInfo>>,
     avatar_textures: HashMap<String, egui::TextureHandle>,
     attribute_textures: HashMap<String, egui::TextureHandle>,
+    monster_textures: HashMap<String, egui::TextureHandle>,
     damage_digit_textures: HashMap<String, Vec<egui::TextureHandle>>,
     reaction_textures: HashMap<u8, Vec<egui::TextureHandle>>,
     state: CombatState,
     selected_abyss_half: AbyssHalf,
     abyss_compact_mode: bool,
+    abyss_overview: AbyssOverviewState,
+    abyss_overview_open: bool,
+    abyss_overview_corner_applied: bool,
     hit_detail_char_id: Option<u32>,
     hit_detail_filter: HitDetailFilter,
     hit_detail_skill_filter: String,
@@ -603,6 +674,8 @@ impl DpsApp {
         let attribute_textures = load_attribute_icons(&cc.egui_ctx, &data_root);
         let damage_digit_textures = load_damage_digit_textures(&cc.egui_ctx, &data_root);
         let reaction_textures = load_reaction_text_textures(&cc.egui_ctx, &data_root);
+        let abyss_overview = AbyssOverviewState::load();
+        let monster_textures = load_monster_textures(&cc.egui_ctx, &data_root, &abyss_overview);
         let character_editor =
             CharacterEditorState::load(&characters_path).unwrap_or_else(|error| {
                 CharacterEditorState {
@@ -648,11 +721,15 @@ impl DpsApp {
             characters: Arc::new(characters),
             avatar_textures,
             attribute_textures,
+            monster_textures,
             damage_digit_textures,
             reaction_textures,
             state: CombatState::default(),
             selected_abyss_half: AbyssHalf::First,
             abyss_compact_mode: false,
+            abyss_overview,
+            abyss_overview_open: false,
+            abyss_overview_corner_applied: false,
             hit_detail_char_id: None,
             hit_detail_filter: HitDetailFilter::All,
             hit_detail_skill_filter: String::new(),
@@ -2041,6 +2118,10 @@ impl DpsApp {
             if self.state.abyss.is_active() && ui.button("折叠").clicked() {
                 self.abyss_compact_mode = true;
             }
+            if ui.button("深渊数值").clicked() {
+                self.abyss_overview_open = true;
+                self.abyss_overview.ensure_selection();
+            }
             ui.separator();
             let status_color = status_color(&self.status, self.paused, self.dark_mode);
             let status = if self.paused {
@@ -2821,6 +2902,293 @@ impl DpsApp {
         if close_requested {
             self.team_hit_detail_open = false;
             self.team_hit_detail_corner_applied = false;
+        }
+    }
+
+    fn abyss_overview_panel(&mut self, ctx: &egui::Context) {
+        let close_requested = ctx.show_viewport_immediate(
+            abyss_overview_viewport_id(),
+            egui::ViewportBuilder::default()
+                .with_title("深渊怪物数值")
+                .with_inner_size([1040.0, 720.0])
+                .with_min_inner_size([820.0, 560.0])
+                .with_window_level(egui::WindowLevel::AlwaysOnTop)
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_resizable(true),
+            |ctx, _class| {
+                if !self.abyss_overview_corner_applied {
+                    apply_rounding_to_process_windows();
+                    self.abyss_overview_corner_applied = true;
+                }
+                let mut close_clicked = false;
+                egui::TopBottomPanel::top("abyss_overview_title_bar")
+                    .exact_height(34.0)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(ctx.style().visuals.panel_fill)
+                            .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
+                            .inner_margin(egui::Margin::symmetric(10, 3)),
+                    )
+                    .show(ctx, |ui| {
+                        close_clicked = secondary_title_bar(ui, "深渊怪物数值");
+                    });
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .fill(shadcn_background(self.dark_mode))
+                            .inner_margin(egui::Margin::same(10)),
+                    )
+                    .show(ctx, |ui| {
+                        self.abyss_overview_contents(ui);
+                    });
+                close_clicked || ctx.input(|input| input.viewport().close_requested())
+            },
+        );
+        if close_requested {
+            self.abyss_overview_open = false;
+            self.abyss_overview_corner_applied = false;
+        }
+    }
+
+    fn abyss_overview_contents(&mut self, ui: &mut egui::Ui) {
+        self.abyss_overview.ensure_selection();
+        let Some(dataset) = self.abyss_overview.dataset.as_ref() else {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), ui.available_height()),
+                egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                |ui| {
+                    ui.label(
+                        RichText::new("深渊怪物数值表未加载")
+                            .size(18.0)
+                            .strong()
+                            .color(semantic_danger(self.dark_mode)),
+                    );
+                    if let Some(error) = &self.abyss_overview.load_error {
+                        ui.add_space(6.0);
+                        ui.label(RichText::new(error).color(ui.visuals().weak_text_color()));
+                    }
+                    ui.add_space(10.0);
+                    if ui.button("重新加载").clicked() {
+                        self.abyss_overview.reload();
+                    }
+                },
+            );
+            return;
+        };
+        let season_count = dataset.seasons.len();
+        let season_nav = dataset
+            .seasons
+            .iter()
+            .map(|season| {
+                (
+                    season.season,
+                    season
+                        .floors
+                        .iter()
+                        .map(|floor| (floor.floor, floor.monsters.len()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let floor_count = season_nav
+            .iter()
+            .map(|(_, floors)| floors.len())
+            .sum::<usize>();
+        let selected_floor = self
+            .abyss_overview
+            .selected_season
+            .zip(self.abyss_overview.selected_floor)
+            .and_then(|(season, floor)| dataset.floor(season, floor).cloned());
+        let selected_monster = self
+            .abyss_overview
+            .selected_monster_pack_id
+            .as_deref()
+            .and_then(|pack_id| dataset.monster(pack_id))
+            .cloned();
+        let total_monsters = dataset
+            .seasons
+            .iter()
+            .flat_map(|season| season.floors.iter())
+            .map(|floor| floor.monsters.len())
+            .sum::<usize>();
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "{} 个赛季 · {} 层 · {} 条深渊怪物数值",
+                    season_count, floor_count, total_monsters
+                ))
+                .size(12.0)
+                .strong()
+                .color(shadcn_foreground(self.dark_mode)),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("重新加载").clicked() {
+                    self.abyss_overview.reload();
+                }
+            });
+        });
+        ui.add_space(8.0);
+
+        let available = ui.available_size();
+        let (main_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
+        let nav_width = 170.0_f32.min((main_rect.width() * 0.26).max(140.0));
+        let gap = 12.0;
+        let nav_rect =
+            egui::Rect::from_min_size(main_rect.min, egui::vec2(nav_width, main_rect.height()));
+        let separator_x = nav_rect.right() + gap * 0.5;
+        ui.painter().vline(
+            separator_x,
+            main_rect.y_range(),
+            Stroke::new(1.0, shadcn_border(self.dark_mode)),
+        );
+        let content_rect = egui::Rect::from_min_max(
+            egui::pos2(nav_rect.right() + gap, main_rect.top()),
+            main_rect.right_bottom(),
+        );
+
+        let mut nav_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(nav_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        nav_ui.set_clip_rect(nav_rect);
+        draw_abyss_floor_nav(
+            &mut nav_ui,
+            &season_nav,
+            &mut self.abyss_overview.selected_season,
+            &mut self.abyss_overview.selected_floor,
+            &mut self.abyss_overview.selected_monster_pack_id,
+            &mut self.abyss_overview.expanded_season,
+        );
+
+        let mut content_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(content_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        content_ui.set_clip_rect(content_rect);
+        let Some(floor) = selected_floor else {
+            content_ui.label(
+                RichText::new("请选择深渊层级").color(content_ui.visuals().weak_text_color()),
+            );
+            return;
+        };
+        self.abyss_floor_contents(&mut content_ui, &floor, selected_monster.as_ref());
+    }
+
+    fn abyss_floor_contents(
+        &mut self,
+        ui: &mut egui::Ui,
+        floor: &AbyssFloor,
+        selected_monster: Option<&AbyssMonsterEntry>,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("赛季 {} · 第 {} 层", floor.season, floor.floor))
+                    .size(16.0)
+                    .strong()
+                    .color(shadcn_foreground(self.dark_mode)),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.abyss_overview.search)
+                        .hint_text("搜索怪物 / ID")
+                        .desired_width(190.0),
+                );
+            });
+        });
+        ui.add_space(4.0);
+        let query = self.abyss_overview.search.trim().to_ascii_lowercase();
+        let monsters = floor
+            .monsters
+            .iter()
+            .filter(|monster| {
+                query.is_empty()
+                    || monster.name.to_ascii_lowercase().contains(&query)
+                    || monster.pack_id.to_ascii_lowercase().contains(&query)
+                    || monster.monster_id.to_ascii_lowercase().contains(&query)
+            })
+            .collect::<Vec<_>>();
+        if monsters.is_empty() {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 92.0),
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.label(RichText::new("没有匹配的怪物").color(ui.visuals().weak_text_color()));
+                },
+            );
+        } else {
+            let mut upper_line = Vec::new();
+            let mut lower_line = Vec::new();
+            let mut unassigned = Vec::new();
+            for monster in monsters {
+                match monster.half {
+                    Some(0) => upper_line.push(monster),
+                    Some(1) => lower_line.push(monster),
+                    _ => unassigned.push(monster),
+                }
+            }
+            let selected_pack_id = self.abyss_overview.selected_monster_pack_id.clone();
+            if !upper_line.is_empty() || !lower_line.is_empty() {
+                draw_abyss_line_section(
+                    ui,
+                    "上行线",
+                    &upper_line,
+                    selected_pack_id.as_deref(),
+                    &mut self.abyss_overview.selected_monster_pack_id,
+                    &self.monster_textures,
+                    self.dark_mode,
+                );
+                ui.add_space(6.0);
+                draw_abyss_line_section(
+                    ui,
+                    "下行线",
+                    &lower_line,
+                    selected_pack_id.as_deref(),
+                    &mut self.abyss_overview.selected_monster_pack_id,
+                    &self.monster_textures,
+                    self.dark_mode,
+                );
+            }
+            if !unassigned.is_empty() {
+                if !upper_line.is_empty() || !lower_line.is_empty() {
+                    ui.add_space(6.0);
+                }
+                draw_abyss_line_section(
+                    ui,
+                    "整层配置",
+                    &unassigned,
+                    selected_pack_id.as_deref(),
+                    &mut self.abyss_overview.selected_monster_pack_id,
+                    &self.monster_textures,
+                    self.dark_mode,
+                );
+            }
+        }
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(6.0);
+        if let Some(monster) = selected_monster {
+            draw_abyss_monster_detail(
+                ui,
+                monster,
+                monster_texture(&self.monster_textures, &monster.monster_id),
+                self.dark_mode,
+                ui.available_height(),
+            );
+        } else {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), ui.available_height()),
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.label(
+                        RichText::new("点击怪物卡片查看全部数值字段")
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                },
+            );
         }
     }
 
@@ -3927,6 +4295,9 @@ impl eframe::App for DpsApp {
         if self.team_hit_detail_open {
             self.team_hit_detail_panel(ctx);
         }
+        if self.abyss_overview_open {
+            self.abyss_overview_panel(ctx);
+        }
         if ctx.input(|input| !input.raw.hovered_files.is_empty()) {
             egui::Area::new(egui::Id::new("pcapng_drop_overlay"))
                 .order(egui::Order::Foreground)
@@ -4056,6 +4427,627 @@ fn team_hit_detail_viewport_id() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("nte_team_hit_detail_viewport")
 }
 
+fn abyss_overview_viewport_id() -> egui::ViewportId {
+    egui::ViewportId::from_hash_of("nte_abyss_overview_viewport")
+}
+
+fn draw_abyss_floor_nav(
+    ui: &mut egui::Ui,
+    season_nav: &[(u32, Vec<(u32, usize)>)],
+    selected_season: &mut Option<u32>,
+    selected_floor: &mut Option<u32>,
+    selected_monster_pack_id: &mut Option<String>,
+    expanded_season: &mut Option<u32>,
+) {
+    ui.label(
+        RichText::new("层级")
+            .strong()
+            .color(ui.visuals().weak_text_color()),
+    );
+    ui.add_space(4.0);
+    egui::ScrollArea::vertical()
+        .id_salt("abyss_all_season_floor_nav")
+        .auto_shrink([false, false])
+        .max_height(ui.available_height())
+        .show(ui, |ui| {
+            for (season, floors) in season_nav {
+                let expanded = *expanded_season == Some(*season);
+                let selected_in_season = *selected_season == Some(*season);
+                let season_label = format!(
+                    "{} 赛季 {season}  ·  {} 层",
+                    if expanded { "▼" } else { "▶" },
+                    floors.len()
+                );
+                if ui
+                    .add_sized(
+                        egui::vec2(ui.available_width(), 28.0),
+                        egui::Button::selectable(selected_in_season || expanded, season_label),
+                    )
+                    .clicked()
+                {
+                    *expanded_season = if expanded { None } else { Some(*season) };
+                }
+                ui.add_space(3.0);
+                if expanded {
+                    ui.indent(("abyss_season_floors", season), |ui| {
+                        for (floor, monster_count) in floors {
+                            let selected = *selected_season == Some(*season)
+                                && *selected_floor == Some(*floor);
+                            let label = format!("{floor:>2} 层  ·  {monster_count} 怪");
+                            if ui
+                                .add_sized(
+                                    egui::vec2(ui.available_width(), 24.0),
+                                    egui::Button::selectable(selected, label),
+                                )
+                                .clicked()
+                            {
+                                *selected_season = Some(*season);
+                                *selected_floor = Some(*floor);
+                                *selected_monster_pack_id = None;
+                                *expanded_season = Some(*season);
+                            }
+                        }
+                    });
+                    ui.add_space(5.0);
+                }
+                ui.add_space(4.0);
+            }
+        });
+}
+
+fn draw_abyss_line_section(
+    ui: &mut egui::Ui,
+    title: &str,
+    monsters: &[&AbyssMonsterEntry],
+    selected_pack_id: Option<&str>,
+    selected_target: &mut Option<String>,
+    monster_textures: &HashMap<String, egui::TextureHandle>,
+    dark_mode: bool,
+) {
+    const SLOT_COUNT: usize = 6;
+    const GAP: f32 = 6.0;
+    egui::Frame::new()
+        .fill(shadcn_card(dark_mode))
+        .stroke(Stroke::new(1.0, shadcn_border(dark_mode)))
+        .corner_radius(7)
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(title)
+                        .size(13.0)
+                        .strong()
+                        .color(shadcn_foreground(dark_mode)),
+                );
+                ui.label(
+                    RichText::new(format!("{} 个敌人", monsters.len()))
+                        .size(11.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            });
+            ui.add_space(5.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = GAP;
+                let slot_width = ((ui.available_width() - GAP * (SLOT_COUNT as f32 - 1.0))
+                    / SLOT_COUNT as f32)
+                    .max(44.0);
+                for index in 0..SLOT_COUNT {
+                    if index == SLOT_COUNT - 1 && monsters.len() > SLOT_COUNT {
+                        draw_abyss_more_chip(ui, monsters.len() - index, slot_width, dark_mode);
+                    } else if let Some(monster) = monsters.get(index) {
+                        let selected = selected_pack_id == Some(monster.pack_id.as_str());
+                        if draw_abyss_monster_chip(
+                            ui,
+                            monster,
+                            selected,
+                            slot_width,
+                            monster_texture(monster_textures, &monster.monster_id),
+                            dark_mode,
+                        )
+                        .clicked()
+                        {
+                            *selected_target = Some(monster.pack_id.clone());
+                        }
+                    } else {
+                        draw_abyss_empty_chip(ui, slot_width, dark_mode);
+                    }
+                }
+            });
+        });
+}
+
+fn draw_abyss_monster_chip(
+    ui: &mut egui::Ui,
+    monster: &AbyssMonsterEntry,
+    selected: bool,
+    width: f32,
+    texture: Option<&egui::TextureHandle>,
+    dark_mode: bool,
+) -> egui::Response {
+    let size = egui::vec2(width, 34.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    draw_abyss_chip_frame(ui, rect, selected, dark_mode);
+
+    let painter = ui.painter();
+    let portrait_rect = egui::Rect::from_center_size(
+        rect.left_center() + egui::vec2(17.0, 0.0),
+        egui::vec2(24.0, 24.0),
+    );
+    draw_monster_portrait(ui, portrait_rect, monster, texture, 6.0, 11.0, dark_mode);
+    let text_rect = egui::Rect::from_min_max(
+        rect.left_top() + egui::vec2(36.0, 4.0),
+        rect.right_bottom() - egui::vec2(6.0, 4.0),
+    );
+    painter.with_clip_rect(text_rect).text(
+        text_rect.left_top(),
+        egui::Align2::LEFT_TOP,
+        &monster.name,
+        egui::FontId::proportional(11.0),
+        shadcn_foreground(dark_mode),
+    );
+    painter.text(
+        text_rect.left_bottom(),
+        egui::Align2::LEFT_BOTTOM,
+        format!(
+            "{}  HP {}",
+            monster_wave_label(monster),
+            format_stat_value(monster.stats.hp_max_base)
+        ),
+        egui::FontId::monospace(9.0),
+        ui.visuals().weak_text_color(),
+    );
+
+    response.on_hover_text(format!(
+        "{}\n{}\n{}",
+        monster.name,
+        monster.pack_id,
+        monster_line_label(monster)
+    ))
+}
+
+fn draw_abyss_empty_chip(ui: &mut egui::Ui, width: f32, dark_mode: bool) {
+    let size = egui::vec2(width, 34.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    draw_abyss_chip_frame(ui, rect, false, dark_mode);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "-",
+        egui::FontId::proportional(12.0),
+        ui.visuals().weak_text_color().gamma_multiply(0.45),
+    );
+}
+
+fn draw_abyss_more_chip(ui: &mut egui::Ui, count: usize, width: f32, dark_mode: bool) {
+    let size = egui::vec2(width, 34.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    draw_abyss_chip_frame(ui, rect, false, dark_mode);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("+{count}"),
+        egui::FontId::proportional(12.0),
+        ui.visuals().weak_text_color(),
+    );
+    response.on_hover_text(format!("还有 {count} 个敌人未显示"));
+}
+
+fn draw_monster_portrait(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    monster: &AbyssMonsterEntry,
+    texture: Option<&egui::TextureHandle>,
+    corner_radius: f32,
+    fallback_text_size: f32,
+    dark_mode: bool,
+) {
+    let painter = ui.painter();
+    if let Some(texture) = texture {
+        painter.rect_filled(rect, corner_radius, shadcn_background(dark_mode));
+        let image_rect = contain_rect(rect.shrink(1.0), texture.size_vec2());
+        painter.image(
+            texture.id(),
+            image_rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        painter.rect_stroke(
+            rect,
+            corner_radius,
+            Stroke::new(1.0, shadcn_border(dark_mode)),
+            egui::StrokeKind::Inside,
+        );
+        return;
+    }
+
+    let icon_color = monster_color(&monster.monster_id, dark_mode);
+    painter.rect_filled(rect, corner_radius, icon_color);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        monster_icon_text(monster),
+        egui::FontId::proportional(fallback_text_size),
+        contrast_text(icon_color),
+    );
+}
+
+fn contain_rect(bounds: egui::Rect, image_size: egui::Vec2) -> egui::Rect {
+    if image_size.x <= 0.0 || image_size.y <= 0.0 {
+        return bounds;
+    }
+    let scale = (bounds.width() / image_size.x).min(bounds.height() / image_size.y);
+    egui::Rect::from_center_size(bounds.center(), image_size * scale)
+}
+
+fn draw_abyss_chip_frame(ui: &mut egui::Ui, rect: egui::Rect, selected: bool, dark_mode: bool) {
+    let fill = if selected {
+        shadcn_muted(dark_mode)
+    } else {
+        shadcn_background(dark_mode)
+    };
+    ui.painter().rect_filled(rect, 7.0, fill);
+    ui.painter().rect_stroke(
+        rect,
+        7.0,
+        Stroke::new(
+            if selected { 1.5 } else { 1.0 },
+            if selected {
+                theme_accent(dark_mode)
+            } else {
+                shadcn_border(dark_mode)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+}
+
+fn draw_abyss_monster_detail(
+    ui: &mut egui::Ui,
+    monster: &AbyssMonsterEntry,
+    texture: Option<&egui::TextureHandle>,
+    dark_mode: bool,
+    height: f32,
+) {
+    egui::Frame::new()
+        .fill(shadcn_card(dark_mode))
+        .stroke(Stroke::new(1.0, shadcn_border(dark_mode)))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::same(12))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.set_min_height(height.max(180.0));
+            ui.horizontal(|ui| {
+                let icon_size = egui::vec2(56.0, 56.0);
+                let (icon_rect, _) = ui.allocate_exact_size(icon_size, egui::Sense::hover());
+                draw_monster_portrait(ui, icon_rect, monster, texture, 10.0, 20.0, dark_mode);
+                ui.vertical(|ui| {
+                    ui.add_sized(
+                        egui::vec2(ui.available_width(), 24.0),
+                        egui::Label::new(
+                            RichText::new(&monster.name)
+                                .size(18.0)
+                                .strong()
+                                .color(shadcn_foreground(dark_mode)),
+                        )
+                        .truncate(),
+                    );
+                    ui.add_sized(
+                        egui::vec2(ui.available_width(), 18.0),
+                        egui::Label::new(
+                            RichText::new(format!(
+                                "{} · {}",
+                                monster_line_label(monster),
+                                monster.pack_id
+                            ))
+                            .size(11.0)
+                            .color(ui.visuals().weak_text_color()),
+                        )
+                        .truncate(),
+                    );
+                });
+            });
+            ui.add_space(10.0);
+            ui.label(
+                RichText::new("全部数值字段")
+                    .strong()
+                    .color(shadcn_foreground(dark_mode)),
+            );
+            let grid_height = (height - 92.0).max(120.0);
+            egui::ScrollArea::vertical()
+                .id_salt(("abyss_raw_props", monster.pack_id.as_str()))
+                .auto_shrink([false, false])
+                .max_height(grid_height)
+                .show(ui, |ui| {
+                    const SCROLLBAR_GUTTER: f32 = 24.0;
+                    let mut viewport_clip = ui.clip_rect();
+                    viewport_clip.max.x =
+                        (viewport_clip.max.x - SCROLLBAR_GUTTER).max(viewport_clip.min.x);
+                    let row_width = (ui.available_width() - SCROLLBAR_GUTTER).max(0.0);
+                    let row_height = 21.0;
+                    let pair_gap = 22.0;
+                    let pair_width = ((row_width - pair_gap) * 0.5).max(0.0);
+                    let value_width = 96.0_f32.min(pair_width * 0.36).max(42.0);
+                    let label_width = (pair_width - value_width).max(40.0);
+                    for (index, chunk) in monster.stats.raw_props.chunks(2).enumerate() {
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(row_width, row_height),
+                            egui::Sense::hover(),
+                        );
+                        if index % 2 == 1 {
+                            ui.painter().with_clip_rect(viewport_clip).rect_filled(
+                                rect,
+                                3.0,
+                                shadcn_muted(dark_mode),
+                            );
+                        }
+                        let mut row_ui = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect.shrink2(egui::vec2(2.0, 1.0)))
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        );
+                        row_ui.set_clip_rect(rect.intersect(viewport_clip));
+                        for pair_index in 0..2 {
+                            if pair_index > 0 {
+                                row_ui.add_space(pair_gap);
+                            }
+                            if let Some((key, value)) = chunk.get(pair_index) {
+                                abyss_stat_pair_sized(
+                                    &mut row_ui,
+                                    key,
+                                    &format_stat_value(*value),
+                                    dark_mode,
+                                    label_width,
+                                    value_width,
+                                );
+                            } else {
+                                row_ui.add_space(label_width + value_width);
+                            }
+                        }
+                    }
+                });
+        });
+}
+
+fn abyss_stat_pair_sized(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &str,
+    dark_mode: bool,
+    label_width: f32,
+    value_width: f32,
+) {
+    ui.add_sized(
+        egui::vec2(label_width, 18.0),
+        egui::Label::new(
+            RichText::new(label)
+                .size(11.0)
+                .color(ui.visuals().weak_text_color()),
+        )
+        .truncate(),
+    );
+    ui.add_sized(
+        egui::vec2(value_width, 18.0),
+        egui::Label::new(
+            RichText::new(value)
+                .size(11.0)
+                .color(shadcn_foreground(dark_mode)),
+        )
+        .truncate()
+        .halign(egui::Align::RIGHT),
+    );
+}
+
+fn monster_texture<'a>(
+    textures: &'a HashMap<String, egui::TextureHandle>,
+    monster_id: &str,
+) -> Option<&'a egui::TextureHandle> {
+    monster_image_keys(monster_id)
+        .into_iter()
+        .find_map(|key| textures.get(&key))
+}
+
+fn monster_image_keys(value: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let base = canonical_monster_image_key(value);
+    push_unique_key(&mut keys, base.clone());
+    push_trimmed_monster_keys(&mut keys, &base);
+    keys
+}
+
+fn monster_image_resource_keys(value: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let raw = value
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    push_unique_key(&mut keys, raw);
+    push_unique_key(&mut keys, canonical_monster_image_key(value));
+    keys
+}
+
+fn monster_image_stem_candidates(monster_id: &str) -> Vec<String> {
+    let mut stems = Vec::new();
+    for key in raw_case_monster_image_stems(monster_id) {
+        push_unique_key(&mut stems, key);
+    }
+    for key in raw_monster_image_keys(monster_id) {
+        push_unique_key(&mut stems, key.clone());
+        push_unique_key(&mut stems, titlecase_boss_key(&key));
+    }
+    for key in monster_image_keys(monster_id) {
+        push_unique_key(&mut stems, key.clone());
+        push_unique_key(&mut stems, titlecase_boss_key(&key));
+    }
+    stems
+}
+
+fn raw_case_monster_image_stems(value: &str) -> Vec<String> {
+    let mut stems = Vec::new();
+    let base = value
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(value)
+        .to_owned();
+    push_unique_key(&mut stems, base.clone());
+    push_trimmed_monster_stems(&mut stems, &base);
+    stems
+}
+
+fn raw_monster_image_keys(value: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let base = value
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    push_unique_key(&mut keys, base.clone());
+    push_trimmed_monster_keys(&mut keys, &base);
+    keys
+}
+
+fn push_trimmed_monster_stems(stems: &mut Vec<String>, stem: &str) {
+    let suffixes = ["_Abyss", "_abyss", "_BP", "_bp", "_BF", "_bf", "_B", "_b"];
+    let mut current = stem.to_owned();
+    loop {
+        let Some(next) = suffixes
+            .iter()
+            .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
+        else {
+            break;
+        };
+        push_unique_key(stems, next.clone());
+        current = next;
+    }
+
+    for marker in ["_summon", "_Summon", "_double_", "_Double_"] {
+        if let Some((base, _)) = current.split_once(marker) {
+            push_unique_key(stems, base.to_owned());
+        }
+    }
+}
+
+fn titlecase_boss_key(key: &str) -> String {
+    key.strip_prefix("boss_")
+        .map(|suffix| format!("Boss_{suffix}"))
+        .unwrap_or_else(|| key.to_owned())
+}
+
+fn push_trimmed_monster_keys(keys: &mut Vec<String>, key: &str) {
+    let suffixes = ["_abyss", "_bp", "_bf", "_b"];
+    let mut current = key.to_owned();
+    loop {
+        let Some(next) = suffixes
+            .iter()
+            .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
+        else {
+            break;
+        };
+        push_unique_key(keys, next.clone());
+        current = next;
+    }
+
+    if let Some(without_blue) = current.strip_suffix("_blue") {
+        push_unique_key(keys, without_blue.to_owned());
+    }
+    if let Some(without_red) = current.strip_suffix("_red") {
+        push_unique_key(keys, without_red.to_owned());
+    }
+    if let Some((base, _)) = current.split_once("_summon") {
+        push_unique_key(keys, base.to_owned());
+    }
+    if let Some((base, _)) = current.split_once("_double_") {
+        push_unique_key(keys, base.to_owned());
+    }
+    if let Some((base, suffix)) = current.rsplit_once('_')
+        && suffix.chars().all(|character| character.is_ascii_digit())
+        && base.contains('_')
+    {
+        push_unique_key(keys, base.to_owned());
+    }
+}
+
+fn push_unique_key(keys: &mut Vec<String>, key: String) {
+    if !keys.iter().any(|existing| existing == &key) {
+        keys.push(key);
+    }
+}
+
+fn canonical_monster_image_key(value: &str) -> String {
+    let without_extension = value
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    without_extension
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<u32>()
+                .map(|number| number.to_string())
+                .unwrap_or_else(|_| part.to_owned())
+        })
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn monster_icon_text(monster: &AbyssMonsterEntry) -> String {
+    monster
+        .name
+        .chars()
+        .find(|character| !character.is_whitespace())
+        .unwrap_or('?')
+        .to_string()
+}
+
+fn monster_color(monster_id: &str, dark_mode: bool) -> Color32 {
+    const PALETTE: [Color32; 8] = [
+        Color32::from_rgb(66, 153, 225),
+        Color32::from_rgb(236, 115, 87),
+        Color32::from_rgb(89, 184, 143),
+        Color32::from_rgb(183, 125, 220),
+        Color32::from_rgb(222, 173, 84),
+        Color32::from_rgb(75, 174, 187),
+        Color32::from_rgb(214, 98, 136),
+        Color32::from_rgb(125, 148, 226),
+    ];
+    let hash = monster_id.bytes().fold(0usize, |accumulator, byte| {
+        accumulator.wrapping_mul(31).wrapping_add(byte as usize)
+    });
+    readable_accent(PALETTE[hash % PALETTE.len()], dark_mode)
+}
+
+fn monster_line_label(monster: &AbyssMonsterEntry) -> String {
+    let half = monster.half.map(|value| match value {
+        0 => "上行线".to_owned(),
+        1 => "下行线".to_owned(),
+        other => format!("线路 {other}"),
+    });
+    let wave = monster.wave.map(|value| format!("第 {value} 波"));
+    match (half, wave) {
+        (Some(half), Some(wave)) => format!("{half} · {wave}"),
+        (Some(half), None) => half,
+        (None, Some(wave)) => wave,
+        (None, None) => "整层配置".to_owned(),
+    }
+}
+
+fn monster_wave_label(monster: &AbyssMonsterEntry) -> String {
+    monster
+        .wave
+        .map(|wave| format!("W{wave}"))
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+fn format_stat_value(value: f64) -> String {
+    if value.abs() >= 1000.0 || value.fract().abs() < f64::EPSILON {
+        format_number(value)
+    } else {
+        format!("{value:.2}")
+    }
+}
+
 include!(concat!(env!("OUT_DIR"), "/embedded_resources.rs"));
 
 fn load_attribute_icons(
@@ -4069,6 +5061,42 @@ fn load_attribute_icons(
                 .map(|texture| (attribute.to_owned(), texture))
         })
         .collect()
+}
+
+fn load_monster_textures(
+    ctx: &egui::Context,
+    root: &std::path::Path,
+    abyss_overview: &AbyssOverviewState,
+) -> HashMap<String, egui::TextureHandle> {
+    let mut textures = HashMap::new();
+    let Some(dataset) = &abyss_overview.dataset else {
+        return textures;
+    };
+
+    for monster_id in dataset
+        .seasons
+        .iter()
+        .flat_map(|season| season.floors.iter())
+        .flat_map(|floor| floor.monsters.iter())
+        .map(|monster| monster.monster_id.as_str())
+    {
+        for stem in monster_image_stem_candidates(monster_id) {
+            let resource_keys = monster_image_resource_keys(&stem);
+            if resource_keys.iter().any(|key| textures.contains_key(key)) {
+                break;
+            }
+            let resource_path = format!("{MONSTER_IMAGE_DIR}/{stem}.png");
+            let Some(texture) = load_image_texture(ctx, root, &resource_path, "monster") else {
+                continue;
+            };
+            for key in resource_keys {
+                textures.entry(key).or_insert_with(|| texture.clone());
+            }
+            break;
+        }
+    }
+
+    textures
 }
 
 fn load_damage_digit_textures(

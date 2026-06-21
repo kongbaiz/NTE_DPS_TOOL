@@ -8,7 +8,7 @@ Rust + egui 实现的 NTE 实时 DPS 工具。工具通过 Npcap 抓取本机 UD
 - 按角色展示伤害、占比、命中数、DPS、受击统计和技能分类。
 - 保留目标 HP 数值字段：`target_hp_before`、`target_hp_after`、`target_max_hp`、`target_hp_percent`。
 - 解析并展示 GameplayEffect 映射、技能分类、`ability_name`、`damage_name`、`attack_type`。
-- 深渊上半/下半独立统计，保留重开、进入半场、通关和离开事件状态。
+- 深渊上行线/下行线独立统计，保留重开、进入线路、通关和离开事件状态。
 - 将 `GA_CardTrigger_*` / `GE_AbyssCard_*_Damage` 这类异境补给站可选场地 Buff 伤害归类为 `深渊场地Buff`，避免混入角色技能或创生花。
 - 实时保存完整 Ethernet 帧到 `logs/nte_raw_*.pcapng`。
 - 支持导出解析后的 JSON，支持导入 JSON 和 PCAPNG 进行 Debug 回放。
