@@ -107,6 +107,8 @@ fn allow_drop_message(hwnd: HWND, message: u32) {
 }
 
 #[cfg(windows)]
+// SAFETY: Windows calls this subclass procedure with the SetWindowSubclass ABI.
+// sender_pointer is the boxed Sender pointer provided during subclass installation.
 unsafe extern "system" fn drop_subclass_proc(
     hwnd: HWND,
     message: u32,
@@ -117,12 +119,17 @@ unsafe extern "system" fn drop_subclass_proc(
 ) -> LRESULT {
     if message == WM_DROPFILES {
         let drop_handle = wparam as HDROP;
+        // SAFETY: sender_pointer was created from the boxed Sender during subclass installation
+        // and remains alive until the subclass is removed in Drop.
         let sender = unsafe { &*(sender_pointer as *const Sender<PathBuf>) };
+        // SAFETY: drop_handle is the HDROP supplied by WM_DROPFILES; null buffer queries count.
         let file_count = unsafe { DragQueryFileW(drop_handle, u32::MAX, std::ptr::null_mut(), 0) };
         for index in 0..file_count {
+            // SAFETY: drop_handle is valid for this callback; null buffer queries UTF-16 length.
             let length =
                 unsafe { DragQueryFileW(drop_handle, index, std::ptr::null_mut(), 0) } as usize;
             let mut buffer = vec![0_u16; length + 1];
+            // SAFETY: buffer is writable and sized to include the terminating NUL.
             let written = unsafe {
                 DragQueryFileW(drop_handle, index, buffer.as_mut_ptr(), buffer.len() as u32)
             } as usize;
@@ -131,9 +138,11 @@ unsafe extern "system" fn drop_subclass_proc(
                 let _ = sender.send(path);
             }
         }
+        // SAFETY: Completes ownership of the HDROP received in WM_DROPFILES.
         unsafe { DragFinish(drop_handle) };
         return 0;
     }
+    // SAFETY: Messages not handled here are forwarded with the original callback parameters.
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
 }
 

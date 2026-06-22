@@ -615,10 +615,10 @@ impl CombatState {
 
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
-    Hit(Hit),
+    Hit(Box<Hit>),
     HitFollowUp(HitFollowUp),
     HitDamageCorrection(HitDamageCorrection),
-    Packet(PacketDebug),
+    Packet(Box<PacketDebug>),
     Abyss(AbyssEvent),
     Status(String),
     Warning(String),
