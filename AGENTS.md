@@ -10,8 +10,9 @@
 
 ## 不可破坏的约束
 
-- 不提交 `target/`、`logs/`、`data/`、`NTE_Assets/`、`tools/external/`、C# `bin/obj`、`.env`、AES key、`*.usmap`、完整解包数据或抓包样本。
-- 不把 AES key、授权资源路径、完整载荷、PCAP 内容、用户本机路径写入日志、报告或提交说明。
+- 不提交 `target/`、`logs/`、`data/`、`NTE_Assets/`、`tools/external/`、C# `bin/obj`、`.env`、资源导出 AES key、`*.usmap`、完整解包数据或抓包样本。
+- 不把资源导出 AES key、授权资源路径、完整载荷、PCAP 内容、用户本机路径写入日志、报告或提交说明。
+- `src/encrypted_ini.rs` 中用于 NTE 加密 INI 读写的固定 key 属于长期稳定的协议兼容常量，可保留；不得把资源解包/导出 AES key 或用户授权 key 写入源码。
 - 不绕过现有 debug 回放链路：实时抓包、JSON 导出导入、PCAPNG 导入必须尽量复用同一稳定解析流程。
 - 不在 `master` 主线重新启用敌方目标识别显示；相关研究只应在 `research/scene-target-identification` 或明确授权的分支进行。
 - 不无理由提高 Rust 最低版本、.NET 目标版本、Python 版本或升级 `egui/eframe` 主版本。
@@ -26,6 +27,10 @@
 - `src/model.rs`：领域模型、序列化结构、战斗聚合和深渊状态。不得加入 UI 或 Win32 API。
 - `src/network.rs`：Windows 进程和 TCP 连接检测，仅用于定位 `HTGame.exe` 的本机 IP 与网卡。
 - `src/config.rs`：UI 配置加载、保存、迁移与净化。新增字段必须有默认值和兼容旧 JSON 的行为。
+- `src/character_editor.rs`：角色表 Debug 编辑器的数据状态、JSON 字段读写和表单校验。不得依赖 egui。
+- `src/encrypted_ini.rs`：NTE 加密 INI 的解析、搜索、加解密和记录复用。不得依赖 UI，不得用于资源解包。
+- `src/io_util.rs`：原子写文件等通用 I/O 辅助。不得依赖 UI。
+- `src/window_attributes.rs`：Win32 窗口圆角、透明度和进程窗口属性处理。平台相关 `unsafe` 必须有 `SAFETY:` 注释。
 - `build.rs`：资源内嵌和 Windows 图标。输出必须确定，新增资源路径需保持大小写和分隔符稳定。
 - `res/`：稳定运行资源。手工字段优先保留，批量生成必须说明来源。
 - `tools/`：离线资源维护工具。不得成为主程序运行时依赖。
@@ -110,14 +115,14 @@ dotnet build tools/cue4parse_probe/Cue4ParseProbe.csproj
 - 遵循 PEP 8 基本风格：4 空格缩进，标准库/第三方/本地导入分组，函数和变量使用 `snake_case`。
 - CLI 使用 `argparse`，错误信息必须能指导下一步操作。
 - 文件路径使用 `pathlib.Path`；输出默认写入 `target/` 或用户显式指定目录。
-- JSON 输出使用稳定结构和缩进；不得把 AES key、完整本机路径或敏感载荷写入报告。
+- JSON 输出使用稳定结构和缩进；不得把资源导出 AES key、完整本机路径或敏感载荷写入报告。
 
 ## C# probe 规范
 
 - `tools/cue4parse_probe` 使用 `net10.0`，`ImplicitUsings` 与 `Nullable` 保持启用。
 - Probe 只负责资源定位、解密授权输入、CUE4Parse 导出和报告生成；不要加入主程序业务逻辑。
 - 命名遵循 .NET 常规：类型/属性/方法 `PascalCase`，局部变量和参数 `camelCase`。
-- AES key 只能从环境变量或显式 key 文件读取；不得打印、落盘或进入异常详情。
+- 资源导出 AES key 只能从环境变量或显式 key 文件读取；不得打印、落盘或进入异常详情。
 
 ## 依赖策略
 
