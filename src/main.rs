@@ -4,13 +4,17 @@
 mod abyss_data;
 mod app;
 mod capture;
+mod character_editor;
 mod config;
+mod encrypted_ini;
 mod file_drop;
 mod hotkey;
+mod io_util;
 mod model;
 mod network;
 mod parser;
 mod protocol;
+mod window_attributes;
 
 use anyhow::Result;
 use app::DpsApp;

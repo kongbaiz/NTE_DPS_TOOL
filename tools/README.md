@@ -32,7 +32,7 @@ python tools/export_nte_res.py `
 - `reactions`
 - `all`
 
-默认输出到仓库内 `res/`，原始导出和报告写入 `target/nte-direct-export`。如果不想使用环境变量，也可以用 `--aes-key-file <path>` 指定只包含 AES key 的文件。
+默认输出到仓库内 `res/`，原始导出和报告写入 `target/nte-direct-export`。如果不想使用环境变量，也可以用 `--aes-key-file <path>` 指定只包含资源导出 AES key 的文件。
 
 ## 从已解包资源生成 res
 
@@ -77,4 +77,4 @@ python tools/analyze_nte_ini.py "<ini文件或目录>" --output target/ini-analy
 
 ## 提交规则
 
-可以提交手工维护的脚本和稳定 `res/` 资源。不要提交 `target/`、`logs/`、`NTE_Assets/`、第三方工具目录、C# `bin/obj`、AES key、usmap 或完整解包数据。
+可以提交手工维护的脚本和稳定 `res/` 资源。不要提交 `target/`、`logs/`、`NTE_Assets/`、第三方工具目录、C# `bin/obj`、资源导出 AES key、usmap 或完整解包数据。主程序内置的加密 INI 协议 key 不用于资源导出。

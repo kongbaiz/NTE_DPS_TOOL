@@ -11,6 +11,7 @@ const MONSTER_PACK_DATA_PATH: &str = "res/data/abyss/DT_MonsterPackData.json";
 const LEGACY_ABYSS_MONSTER_STATIC_PATH: &str =
     "NTE_Assets/DataTable/Monster/DT_MonsterStaticData_Abyss.json";
 const LEGACY_MONSTER_PACK_DATA_PATH: &str = "NTE_Assets/DataTable/PackData/DT_MonsterPackData.json";
+type AbyssPackIdParts = (u32, u32, Option<u32>, Option<u32>, String);
 
 #[derive(Clone, Debug, Default)]
 pub struct AbyssMonsterDataset {
@@ -238,7 +239,7 @@ fn normalize_monster_numeric_key(value: &str) -> String {
         .join("_")
 }
 
-fn parse_abyss_pack_id(pack_id: &str) -> Option<(u32, u32, Option<u32>, Option<u32>, String)> {
+fn parse_abyss_pack_id(pack_id: &str) -> Option<AbyssPackIdParts> {
     let parts = pack_id.split('_').collect::<Vec<_>>();
     if parts.len() < 4 || parts.first().copied() != Some("Abyss") {
         return None;
