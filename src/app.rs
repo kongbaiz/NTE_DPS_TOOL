@@ -1,8 +1,6 @@
 use std::collections::{HashMap, VecDeque};
-use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
-use std::fs::File;
-use std::io::{BufWriter, Write as IoWrite};
+use std::io::Write as IoWrite;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -12,41 +10,36 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
-use aes::Aes256;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, Local};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui::{self, Color32, RichText, Stroke};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use windows_sys::Win32::Foundation::{HWND, LPARAM};
-use windows_sys::Win32::Graphics::Dwm::{
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
-};
-#[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::{
-    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, HWND_NOTOPMOST,
-    HWND_TOPMOST, IsWindowVisible, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED,
-};
 
 use crate::abyss_data::{AbyssFloor, AbyssMonsterDataset, AbyssMonsterEntry};
 use crate::capture::{
     CaptureDevice, CaptureHandle, RawCaptureBuffer, import_capture_json, import_pcapng,
     list_devices, start_capture,
 };
+use crate::character_editor::{
+    CHARACTER_ATTRIBUTES, CharacterEditForm, CharacterEditorState, json_string_field,
+};
 use crate::config::{self, UiConfig};
+use crate::encrypted_ini::{
+    EncryptedIniKey, EncryptedIniRecord, encrypt_encrypted_ini_records,
+    encrypted_ini_search_matches, encrypted_ini_text_fingerprint, parse_encrypted_ini_text,
+};
 use crate::file_drop::NativeFileDrop;
 use crate::hotkey::{HotkeyEvent, HotkeyHandle};
+use crate::io_util::{atomic_write_file, atomic_write_text};
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, CharacterStats, CombatState, EngineEvent,
     HitDirectionSummary, PartyCombatState, summarize_hit_directions,
 };
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, find_data_file, load_characters};
+use crate::window_attributes::{
+    apply_rounding_to_process_windows, apply_window_attributes, clear_process_windows_topmost,
+    restore_visible_process_windows_topmost, set_window_topmost,
+};
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
 const MAX_UI_EVENTS_WHILE_SCROLLING: usize = 256;
@@ -165,19 +158,6 @@ struct SkillSummaryCache {
     dirty_since: Option<Instant>,
 }
 
-#[derive(Clone, Default)]
-struct CharacterEditForm {
-    id: String,
-    name_zh: String,
-    name_en: String,
-    codename: String,
-    attribute: String,
-    verified: bool,
-    color: String,
-    avatar: String,
-}
-
-const CHARACTER_ATTRIBUTES: [&str; 6] = ["灵", "咒", "光", "魂", "暗", "相"];
 const ATTRIBUTE_ICON_PATHS: [(&str, &str); 6] = [
     ("灵", "res/images/attributes/UI_avatarbg_Icon_01.png"),
     ("咒", "res/images/attributes/UI_avatarbg_Icon_06.png"),
@@ -212,215 +192,6 @@ const DAMAGE_DIGIT_TEXTURE_SETS: [(&str, &str); 20] = [
     ("lingzhou_Z", "lingzhou_Z"),
 ];
 
-struct CharacterEditorState {
-    document: serde_json::Value,
-    selected_id: Option<String>,
-    form: CharacterEditForm,
-    search: String,
-    new_id: String,
-    dirty: bool,
-    message: String,
-    cancel_selection: Option<String>,
-}
-
-impl CharacterEditorState {
-    fn load(path: &std::path::Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
-        let document: serde_json::Value =
-            serde_json::from_str(&text).map_err(|error| format!("角色表 JSON 无效: {error}"))?;
-        if !document
-            .get("characters")
-            .is_some_and(serde_json::Value::is_object)
-        {
-            return Err("characters.json 缺少 characters 对象".to_owned());
-        }
-        Ok(Self {
-            document,
-            selected_id: None,
-            form: CharacterEditForm::default(),
-            search: String::new(),
-            new_id: String::new(),
-            dirty: false,
-            message: String::new(),
-            cancel_selection: None,
-        })
-    }
-
-    fn character_ids(&self) -> Vec<String> {
-        let mut ids = self
-            .document
-            .get("characters")
-            .and_then(serde_json::Value::as_object)
-            .map(|characters| characters.keys().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        ids.sort_by_key(|id| id.parse::<u32>().unwrap_or(u32::MAX));
-        ids
-    }
-
-    fn select(&mut self, id: &str) {
-        let Some(row) = self
-            .document
-            .get("characters")
-            .and_then(serde_json::Value::as_object)
-            .and_then(|characters| characters.get(id))
-            .and_then(serde_json::Value::as_object)
-        else {
-            return;
-        };
-        self.selected_id = Some(id.to_owned());
-        self.form = CharacterEditForm {
-            id: id.to_owned(),
-            name_zh: json_string_field(row, "name_zh"),
-            name_en: json_string_field(row, "name_en"),
-            codename: json_string_field(row, "codename"),
-            attribute: json_string_field(row, "attribute"),
-            verified: row
-                .get("verified")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
-            color: json_string_field(row, "color"),
-            avatar: json_string_field(row, "avatar"),
-        };
-        self.dirty = false;
-        self.message.clear();
-        self.cancel_selection = None;
-    }
-
-    fn start_new(&mut self) -> Result<(), String> {
-        let id = self.new_id.trim();
-        let parsed = id
-            .parse::<u32>()
-            .map_err(|_| "角色 ID 必须是正整数".to_owned())?;
-        if parsed == 0 {
-            return Err("角色 ID 必须大于 0".to_owned());
-        }
-        let id = parsed.to_string();
-        if self
-            .document
-            .get("characters")
-            .and_then(serde_json::Value::as_object)
-            .is_some_and(|characters| characters.contains_key(&id))
-        {
-            self.select(&id);
-            return Err(format!("ID {id} 已存在，已切换到现有记录"));
-        }
-        self.cancel_selection = self.selected_id.clone();
-        self.selected_id = None;
-        self.form = CharacterEditForm {
-            id,
-            ..Default::default()
-        };
-        self.new_id.clear();
-        self.dirty = true;
-        self.message = "正在新增角色，填写后保存".to_owned();
-        Ok(())
-    }
-
-    fn apply_form(&mut self) -> Result<String, String> {
-        let id = self
-            .form
-            .id
-            .trim()
-            .parse::<u32>()
-            .map_err(|_| "角色 ID 必须是正整数".to_owned())?
-            .to_string();
-        if self.form.name_zh.trim().is_empty() && self.form.name_en.trim().is_empty() {
-            return Err("中文名和英文名至少填写一项".to_owned());
-        }
-        let color = self.form.color.trim();
-        if !color.is_empty() && parse_hex_color(color).is_none() {
-            return Err("颜色必须是 #RRGGBB 格式".to_owned());
-        }
-        let attribute = self.form.attribute.trim();
-        if !attribute.is_empty() && !CHARACTER_ATTRIBUTES.contains(&attribute) {
-            return Err(format!(
-                "角色属性必须是：{}",
-                CHARACTER_ATTRIBUTES.join("、")
-            ));
-        }
-        if let Some(selected_id) = &self.selected_id
-            && selected_id != &id
-        {
-            return Err("现有角色 ID 不允许直接修改，请新增记录".to_owned());
-        }
-        let characters = self
-            .document
-            .get_mut("characters")
-            .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| "characters.json 缺少 characters 对象".to_owned())?;
-        let row = characters
-            .entry(id.clone())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        let row = row
-            .as_object_mut()
-            .ok_or_else(|| format!("ID {id} 的数据不是 JSON 对象"))?;
-        set_json_string(row, "name_zh", self.form.name_zh.trim());
-        set_json_string(row, "name_en", self.form.name_en.trim());
-        set_json_string(row, "codename", self.form.codename.trim());
-        set_optional_json_string(row, "attribute", attribute);
-        row.insert(
-            "verified".to_owned(),
-            serde_json::Value::Bool(self.form.verified),
-        );
-        set_optional_json_string(row, "color", color);
-        set_optional_json_string(row, "avatar", self.form.avatar.trim());
-        self.selected_id = Some(id.clone());
-        self.form.id = id.clone();
-        self.dirty = false;
-        self.cancel_selection = None;
-        Ok(id)
-    }
-
-    fn cancel_edit(&mut self) {
-        if let Some(id) = self
-            .cancel_selection
-            .take()
-            .or_else(|| self.selected_id.clone())
-        {
-            self.select(&id);
-        } else {
-            self.form = CharacterEditForm::default();
-            self.dirty = false;
-            self.message.clear();
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-enum EncryptedIniKey {
-    #[default]
-    Global,
-    China,
-}
-
-impl EncryptedIniKey {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Global => "global",
-            Self::China => "china",
-        }
-    }
-
-    fn key(self) -> &'static [u8; 32] {
-        match self {
-            Self::Global => b"UVbP6pjjw5KZhvddie3tfhg1pVkkveY8",
-            Self::China => b"1zh6IOlIohrR88UNPjiLisrkWACUQYuz",
-        }
-    }
-
-    fn all() -> [Self; 2] {
-        [Self::Global, Self::China]
-    }
-}
-
-#[derive(Default)]
-struct EncryptedIniRecord {
-    encrypted_line: String,
-    payload_parts: Vec<String>,
-    visible_parts: Vec<String>,
-}
-
 #[derive(Default)]
 struct EncryptedIniLayoutCache {
     key: Option<EncryptedIniLayoutCacheKey>,
@@ -442,6 +213,15 @@ struct EncryptedIniLayoutCacheKey {
     current_match_byte: Option<usize>,
     dark_mode: bool,
     text_color: Color32,
+}
+
+struct EncryptedIniLayoutRequest<'a> {
+    text: &'a str,
+    query: &'a str,
+    matches: &'a [usize],
+    current_match_byte: Option<usize>,
+    wrap_width: f32,
+    dark_mode: bool,
 }
 
 #[derive(Default)]
@@ -1273,7 +1053,7 @@ impl DpsApp {
         restore_visible_process_windows_topmost();
         if !self.always_on_top {
             if let Some(hwnd) = self.corner_applied_hwnd {
-                set_window_topmost(hwnd as HWND, false);
+                set_window_topmost(hwnd, false);
             }
         }
         self.opacity_reapply_frames = 2;
@@ -1389,12 +1169,12 @@ impl DpsApp {
 
     fn apply_engine_event(&mut self, event: EngineEvent) {
         match event {
-            EngineEvent::Hit(hit) => self.state.push_hit(hit),
+            EngineEvent::Hit(hit) => self.state.push_hit(*hit),
             EngineEvent::HitFollowUp(follow_up) => self.state.apply_follow_up(follow_up),
             EngineEvent::HitDamageCorrection(correction) => {
                 self.state.apply_damage_correction(correction)
             }
-            EngineEvent::Packet(packet) => self.state.push_packet(packet),
+            EngineEvent::Packet(packet) => self.state.push_packet(*packet),
             EngineEvent::Abyss(event) => {
                 self.character_hit_cache = HitDetailCache::default();
                 self.team_hit_cache = HitDetailCache::default();
@@ -2768,10 +2548,12 @@ impl DpsApp {
                         hit,
                         max_damage,
                         color,
-                        avatar_texture,
-                        damage_digits,
-                        follow_up_digits,
-                        &self.reaction_textures,
+                        TeamHitRowAssets {
+                            avatar_texture,
+                            damage_digits,
+                            follow_up_damage_digits: follow_up_digits,
+                            reaction_textures: &self.reaction_textures,
+                        },
                     );
                 }
             });
@@ -3695,12 +3477,14 @@ impl DpsApp {
         let mut layouter = |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, wrap_width: f32| {
             encrypted_ini_layout_galley(
                 ui,
-                buffer.as_str(),
-                search,
-                matches,
-                current_match_byte,
-                wrap_width,
-                dark_mode,
+                EncryptedIniLayoutRequest {
+                    text: buffer.as_str(),
+                    query: search,
+                    matches,
+                    current_match_byte,
+                    wrap_width,
+                    dark_mode,
+                },
                 layout_cache,
             )
         };
@@ -3779,14 +3563,21 @@ impl DpsApp {
             self.encrypted_ini_editor.message = "内容未修改，已保留原始密文文件".to_owned();
             return;
         }
-        let encrypted = encrypt_encrypted_ini_records(
+        let encrypted = match encrypt_encrypted_ini_records(
             &self.encrypted_ini_editor.plaintext,
             self.encrypted_ini_editor.key,
             self.encrypted_ini_editor.original_key,
             &self.encrypted_ini_editor.records,
             &self.encrypted_ini_editor.line_ending,
             self.encrypted_ini_editor.final_newline,
-        );
+        ) {
+            Ok(encrypted) => encrypted,
+            Err(error) => {
+                self.encrypted_ini_editor.message = format!("生成密文失败: {error}");
+                self.last_error = Some(self.encrypted_ini_editor.message.clone());
+                return;
+            }
+        };
         if let Err(error) = atomic_write_text(&path, &encrypted) {
             self.encrypted_ini_editor.message = format!("保存 {} 失败: {error}", path.display());
             self.last_error = Some(self.encrypted_ini_editor.message.clone());
@@ -4963,13 +4754,10 @@ fn raw_monster_image_keys(value: &str) -> Vec<String> {
 fn push_trimmed_monster_stems(stems: &mut Vec<String>, stem: &str) {
     let suffixes = ["_Abyss", "_abyss", "_BP", "_bp", "_BF", "_bf", "_B", "_b"];
     let mut current = stem.to_owned();
-    loop {
-        let Some(next) = suffixes
-            .iter()
-            .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
-        else {
-            break;
-        };
+    while let Some(next) = suffixes
+        .iter()
+        .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
+    {
         push_unique_key(stems, next.clone());
         current = next;
     }
@@ -4990,13 +4778,10 @@ fn titlecase_boss_key(key: &str) -> String {
 fn push_trimmed_monster_keys(keys: &mut Vec<String>, key: &str) {
     let suffixes = ["_abyss", "_bp", "_bf", "_b"];
     let mut current = key.to_owned();
-    loop {
-        let Some(next) = suffixes
-            .iter()
-            .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
-        else {
-            break;
-        };
+    while let Some(next) = suffixes
+        .iter()
+        .find_map(|suffix| current.strip_suffix(suffix).map(str::to_owned))
+    {
         push_unique_key(keys, next.clone());
         current = next;
     }
@@ -5335,168 +5120,6 @@ fn configure_style(ctx: &egui::Context, dark_mode: bool) {
     ctx.set_style(style);
 }
 
-fn apply_window_attributes(
-    frame: &eframe::Frame,
-    opacity: f32,
-    force_opacity: bool,
-    applied_opacity: &mut Option<f32>,
-    corner_applied_hwnd: &mut Option<isize>,
-) {
-    let opacity = opacity.clamp(0.35, 1.0);
-    let Ok(window_handle) = frame.window_handle() else {
-        return;
-    };
-    let RawWindowHandle::Win32(window_handle) = window_handle.as_raw() else {
-        return;
-    };
-    let hwnd = window_handle.hwnd.get() as HWND;
-    let hwnd_key = hwnd as isize;
-    unsafe {
-        if *corner_applied_hwnd != Some(hwnd_key) {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                std::ptr::from_ref(&DWMWCP_ROUND).cast(),
-                std::mem::size_of_val(&DWMWCP_ROUND) as u32,
-            );
-            *corner_applied_hwnd = Some(hwnd_key);
-        }
-        if force_opacity
-            || !applied_opacity.is_some_and(|current| (current - opacity).abs() < f32::EPSILON)
-        {
-            let extended_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, extended_style | WS_EX_LAYERED as isize);
-            if SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0).round() as u8, LWA_ALPHA) != 0
-            {
-                *applied_opacity = Some(opacity);
-            }
-        }
-    }
-}
-
-fn apply_rounding_to_process_windows() {
-    unsafe extern "system" fn apply_rounding(hwnd: HWND, process_id: LPARAM) -> i32 {
-        let mut window_process_id = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, &mut window_process_id);
-        }
-        if window_process_id != process_id as u32 {
-            return 1;
-        }
-        unsafe {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                std::ptr::from_ref(&DWMWCP_ROUND).cast(),
-                std::mem::size_of_val(&DWMWCP_ROUND) as u32,
-            );
-        }
-        1
-    }
-
-    unsafe {
-        EnumWindows(Some(apply_rounding), std::process::id() as LPARAM);
-    }
-}
-
-fn clear_process_windows_topmost(visible_only: bool) {
-    unsafe extern "system" fn clear_topmost(hwnd: HWND, request: LPARAM) -> i32 {
-        let request = unsafe { &*(request as *const TopmostWindowRequest) };
-        let mut window_process_id = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, &mut window_process_id);
-        }
-        if window_process_id != request.process_id
-            || (request.visible_only && unsafe { IsWindowVisible(hwnd) } == 0)
-        {
-            return 1;
-        }
-        unsafe {
-            SetWindowPos(
-                hwnd,
-                HWND_NOTOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
-        }
-        1
-    }
-
-    let request = TopmostWindowRequest {
-        process_id: std::process::id(),
-        visible_only,
-    };
-    unsafe {
-        EnumWindows(
-            Some(clear_topmost),
-            std::ptr::from_ref(&request).addr() as LPARAM,
-        );
-    }
-}
-
-fn restore_visible_process_windows_topmost() {
-    unsafe extern "system" fn restore_topmost(hwnd: HWND, request: LPARAM) -> i32 {
-        let request = unsafe { &*(request as *const TopmostWindowRequest) };
-        let mut window_process_id = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, &mut window_process_id);
-        }
-        if window_process_id != request.process_id || unsafe { IsWindowVisible(hwnd) } == 0 {
-            return 1;
-        }
-        unsafe {
-            SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
-        }
-        1
-    }
-
-    let request = TopmostWindowRequest {
-        process_id: std::process::id(),
-        visible_only: true,
-    };
-    unsafe {
-        EnumWindows(
-            Some(restore_topmost),
-            std::ptr::from_ref(&request).addr() as LPARAM,
-        );
-    }
-}
-
-fn set_window_topmost(hwnd: HWND, topmost: bool) {
-    let insert_after = if topmost {
-        HWND_TOPMOST
-    } else {
-        HWND_NOTOPMOST
-    };
-    unsafe {
-        SetWindowPos(
-            hwnd,
-            insert_after,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-        );
-    }
-}
-
-struct TopmostWindowRequest {
-    process_id: u32,
-    visible_only: bool,
-}
-
 #[derive(Clone)]
 struct SkillDamageSummary {
     name: String,
@@ -5687,6 +5310,7 @@ fn hit_detail_filter_available(
     }
 }
 
+#[cfg(test)]
 fn qte_type_filter_label(summary: &QteTypeFilterSummary, total_damage: f64) -> String {
     let share = if total_damage > 0.0 {
         summary.damage / total_damage * 100.0
@@ -6099,6 +5723,13 @@ struct TeamHitLayout {
     damage_x: f32,
     hp_x: f32,
     separators: [f32; 4],
+}
+
+struct TeamHitRowAssets<'a> {
+    avatar_texture: Option<&'a egui::TextureHandle>,
+    damage_digits: Option<&'a [egui::TextureHandle]>,
+    follow_up_damage_digits: Option<&'a [egui::TextureHandle]>,
+    reaction_textures: &'a HashMap<u8, Vec<egui::TextureHandle>>,
 }
 
 impl TeamHitLayout {
@@ -6626,7 +6257,7 @@ fn draw_reaction_text_images(
     textures: &[egui::TextureHandle],
 ) {
     let gap = 2.0;
-    let mut height = rect.height().min(19.0).max(1.0);
+    let mut height = rect.height().clamp(1.0, 19.0);
     let mut widths = textures
         .iter()
         .map(|texture| {
@@ -6669,10 +6300,7 @@ fn draw_team_hit_row(
     hit: &crate::model::Hit,
     max_damage: f64,
     character_color: Color32,
-    avatar_texture: Option<&egui::TextureHandle>,
-    damage_digits: Option<&[egui::TextureHandle]>,
-    follow_up_damage_digits: Option<&[egui::TextureHandle]>,
-    reaction_textures: &HashMap<u8, Vec<egui::TextureHandle>>,
+    assets: TeamHitRowAssets<'_>,
 ) {
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(layout.row_width, DETAIL_HIT_ROW_HEIGHT),
@@ -6730,7 +6358,7 @@ fn draw_team_hit_row(
             Color32::from_rgb(225, 227, 232)
         },
     );
-    if let Some(texture) = avatar_texture {
+    if let Some(texture) = assets.avatar_texture {
         ui.put(
             avatar_rect,
             egui::Image::new((texture.id(), avatar_rect.size())).corner_radius(7),
@@ -6763,7 +6391,7 @@ fn draw_team_hit_row(
         egui::vec2(layout.type_width - 20.0, 24.0),
     );
     painter.rect_filled(badge_rect, 10.0, type_color);
-    draw_hit_type_badge_content(ui, badge_rect, hit, type_color, reaction_textures);
+    draw_hit_type_badge_content(ui, badge_rect, hit, type_color, assets.reaction_textures);
     let follow_up_color = if incoming {
         semantic_danger(ui.visuals().dark_mode)
     } else {
@@ -6777,7 +6405,7 @@ fn draw_team_hit_row(
         ui,
         damage_cell_rect,
         hit.damage,
-        damage_digits,
+        assets.damage_digits,
         follow_up_color,
     );
     draw_follow_up_damage_badge(
@@ -6785,7 +6413,7 @@ fn draw_team_hit_row(
         damage_cell_rect,
         base_damage_rect,
         hit,
-        follow_up_damage_digits,
+        assets.follow_up_damage_digits,
         follow_up_color,
     );
 
@@ -7078,90 +6706,6 @@ impl<W: IoWrite> std::fmt::Write for IoFmtWriter<'_, W> {
     }
 }
 
-fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
-    atomic_write_file(path, |writer| {
-        writer
-            .write_all(text.as_bytes())
-            .map_err(|error| error.to_string())
-    })
-}
-
-fn atomic_write_file<F>(path: &Path, write: F) -> Result<(), String>
-where
-    F: FnOnce(&mut BufWriter<File>) -> Result<(), String>,
-{
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    let temp_path = temporary_write_path(path);
-    let result = (|| {
-        let file = File::create(&temp_path)
-            .map_err(|error| format!("创建临时文件 {} 失败: {error}", temp_path.display()))?;
-        let mut writer = BufWriter::new(file);
-        write(&mut writer)?;
-        writer.flush().map_err(|error| error.to_string())?;
-        writer
-            .get_ref()
-            .sync_all()
-            .map_err(|error| error.to_string())?;
-        drop(writer);
-        replace_file(&temp_path, path)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temp_path);
-    }
-    result
-}
-
-fn temporary_write_path(path: &Path) -> PathBuf {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut name = OsString::from(".");
-    name.push(path.file_name().unwrap_or_else(|| OsStr::new("nte-write")));
-    name.push(format!(
-        ".{}.{}.tmp",
-        std::process::id(),
-        Local::now().format("%Y%m%d%H%M%S%3f")
-    ));
-    parent.join(name)
-}
-
-#[cfg(windows)]
-fn replace_file(temp_path: &Path, path: &Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-
-    let temp_wide = temp_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let path_wide = path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let result = unsafe {
-        MoveFileExW(
-            temp_wide.as_ptr(),
-            path_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if result == 0 {
-        Err(format!(
-            "替换 {} 失败: {}",
-            path.display(),
-            std::io::Error::last_os_error()
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(windows))]
-fn replace_file(temp_path: &Path, path: &Path) -> Result<(), String> {
-    std::fs::rename(temp_path, path)
-        .map_err(|error| format!("替换 {} 失败: {error}", path.display()))
-}
 fn default_export_filename() -> String {
     format!("nte_capture_{}.json", Local::now().format("%Y%m%d_%H%M%S"))
 }
@@ -7206,29 +6750,6 @@ fn json_string(value: &str) -> String {
     escaped
 }
 
-fn json_string_field(row: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
-    row.get(key)
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default()
-        .to_owned()
-}
-
-fn set_json_string(row: &mut serde_json::Map<String, serde_json::Value>, key: &str, value: &str) {
-    row.insert(key.to_owned(), serde_json::Value::String(value.to_owned()));
-}
-
-fn set_optional_json_string(
-    row: &mut serde_json::Map<String, serde_json::Value>,
-    key: &str,
-    value: &str,
-) {
-    if value.is_empty() {
-        row.remove(key);
-    } else {
-        set_json_string(row, key, value);
-    }
-}
-
 fn character_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, dirty: &mut bool) {
     ui.label(label);
     if ui
@@ -7238,35 +6759,6 @@ fn character_text_field(ui: &mut egui::Ui, label: &str, value: &mut String, dirt
         *dirty = true;
     }
     ui.end_row();
-}
-
-fn encrypted_ini_search_matches(text: &str, query: &str) -> Vec<usize> {
-    let query = query.trim();
-    if query.is_empty() {
-        return Vec::new();
-    }
-    if query.is_ascii() {
-        let query = query.as_bytes();
-        let text_bytes = text.as_bytes();
-        if query.len() > text_bytes.len() {
-            return Vec::new();
-        }
-        return text_bytes
-            .windows(query.len())
-            .enumerate()
-            .filter_map(|(index, window)| {
-                (text.is_char_boundary(index) && window.eq_ignore_ascii_case(query))
-                    .then_some(index)
-            })
-            .collect();
-    }
-
-    let lower_text = text.to_lowercase();
-    let lower_query = query.to_lowercase();
-    lower_text
-        .match_indices(&lower_query)
-        .filter_map(|(index, _)| text.is_char_boundary(index).then_some(index))
-        .collect()
 }
 
 fn next_search_match(current: Option<usize>, len: usize) -> Option<usize> {
@@ -7329,28 +6821,25 @@ fn encrypted_ini_match_byte_range(
 
 fn encrypted_ini_layout_galley(
     ui: &egui::Ui,
-    text: &str,
-    query: &str,
-    matches: &[usize],
-    current_match_byte: Option<usize>,
-    wrap_width: f32,
-    dark_mode: bool,
+    request: EncryptedIniLayoutRequest<'_>,
     cache: &mut EncryptedIniLayoutCache,
 ) -> Arc<egui::Galley> {
     let text_color = ui.visuals().widgets.inactive.text_color();
-    let query = query.trim();
-    let highlight_query = if query.is_empty() || matches.is_empty() {
+    let query = request.query.trim();
+    let highlight_query = if query.is_empty() || request.matches.is_empty() {
         ""
     } else {
         query
     };
-    let current_match_byte = current_match_byte.filter(|_| !highlight_query.is_empty());
+    let current_match_byte = request
+        .current_match_byte
+        .filter(|_| !highlight_query.is_empty());
     let key = EncryptedIniLayoutCacheKey {
-        text_len: text.len(),
-        text_hash: encrypted_ini_text_fingerprint(text),
+        text_len: request.text.len(),
+        text_hash: encrypted_ini_text_fingerprint(request.text),
         query: highlight_query.to_owned(),
         current_match_byte,
-        dark_mode,
+        dark_mode: request.dark_mode,
         text_color,
     };
     if cache.key.as_ref() == Some(&key)
@@ -7361,26 +6850,17 @@ fn encrypted_ini_layout_galley(
 
     let layout_job = encrypted_ini_layout_job(
         ui,
-        text,
+        request.text,
         highlight_query,
-        matches,
+        request.matches,
         current_match_byte,
-        wrap_width,
-        dark_mode,
+        request.wrap_width,
+        request.dark_mode,
     );
     let galley = ui.fonts(|fonts| fonts.layout_job(layout_job));
     cache.key = Some(key);
     cache.galley = Some(Arc::clone(&galley));
     galley
-}
-
-fn encrypted_ini_text_fingerprint(text: &str) -> u64 {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in text.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
 }
 
 fn encrypted_ini_layout_job(
@@ -7471,211 +6951,6 @@ fn line_column_for_byte(text: &str, byte_index: usize) -> (usize, usize) {
         .count()
         + 1;
     (line, column)
-}
-
-fn parse_encrypted_ini_text(
-    text: &str,
-) -> Result<
-    (
-        EncryptedIniKey,
-        String,
-        Vec<EncryptedIniRecord>,
-        String,
-        bool,
-    ),
-    String,
-> {
-    let mut active_key = EncryptedIniKey::Global;
-    let mut output = Vec::new();
-    let mut records = Vec::new();
-    let line_ending = if text.contains("\r\n") {
-        "\r\n".to_owned()
-    } else {
-        "\n".to_owned()
-    };
-    let final_newline = text.ends_with('\n') || text.ends_with('\r');
-    for original in text.trim_start_matches('\u{feff}').lines() {
-        let line = original.trim();
-        if line.is_empty() {
-            records.push(EncryptedIniRecord {
-                encrypted_line: original.to_owned(),
-                payload_parts: Vec::new(),
-                visible_parts: Vec::new(),
-            });
-            continue;
-        }
-        if let Some((key, decrypted)) = decrypt_encrypted_ini_line(line)? {
-            active_key = key;
-            let payload_parts = decrypted
-                .split("|SPLIT|")
-                .map(str::to_owned)
-                .collect::<Vec<_>>();
-            let visible_parts = payload_parts
-                .iter()
-                .filter(|part| !part.is_empty())
-                .cloned()
-                .collect::<Vec<_>>();
-            output.extend(visible_parts.iter().cloned());
-            records.push(EncryptedIniRecord {
-                encrypted_line: original.to_owned(),
-                payload_parts,
-                visible_parts,
-            });
-        } else {
-            output.push(original.to_owned());
-            records.push(EncryptedIniRecord {
-                encrypted_line: original.to_owned(),
-                payload_parts: vec![original.to_owned()],
-                visible_parts: vec![original.to_owned()],
-            });
-        }
-    }
-    Ok((
-        active_key,
-        output.join("\n"),
-        records,
-        line_ending,
-        final_newline,
-    ))
-}
-
-#[cfg(test)]
-fn decrypt_encrypted_ini_text(text: &str) -> Result<(EncryptedIniKey, String, usize), String> {
-    let (key, plaintext, records, _, _) = parse_encrypted_ini_text(text)?;
-    Ok((key, plaintext, records.len()))
-}
-
-fn decrypt_encrypted_ini_line(line: &str) -> Result<Option<(EncryptedIniKey, String)>, String> {
-    let Ok(encrypted) = BASE64.decode(line) else {
-        return Ok(None);
-    };
-    if encrypted.is_empty() || encrypted.len() % 16 != 0 {
-        return Ok(None);
-    }
-    for key in EncryptedIniKey::all() {
-        let decrypted = decrypt_aes256_ecb(&encrypted, key.key())?;
-        let Ok(unpadded) = pkcs7_unpad(&decrypted) else {
-            continue;
-        };
-        let Ok(text) = String::from_utf8(unpadded.to_vec()) else {
-            continue;
-        };
-        return Ok(Some((key, text)));
-    }
-    Ok(None)
-}
-
-#[cfg(test)]
-fn encrypt_encrypted_ini_text(text: &str, key: EncryptedIniKey) -> String {
-    let mut output = String::new();
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let encrypted = encrypt_aes256_ecb(&pkcs7_pad(line.as_bytes()), key.key());
-        output.push_str(&BASE64.encode(encrypted));
-        output.push('\n');
-    }
-    output
-}
-
-fn encrypt_encrypted_ini_records(
-    text: &str,
-    key: EncryptedIniKey,
-    original_key: EncryptedIniKey,
-    records: &[EncryptedIniRecord],
-    line_ending: &str,
-    final_newline: bool,
-) -> String {
-    let mut output_lines = Vec::new();
-    let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
-    let mut line_index = 0;
-    for record in records {
-        let visible_count = record.visible_parts.len();
-        if visible_count == 0 {
-            output_lines.push(record.encrypted_line.clone());
-            continue;
-        }
-        if line_index + visible_count > lines.len() {
-            break;
-        }
-        let current_parts = &lines[line_index..line_index + visible_count];
-        if key == original_key && current_parts == record.visible_parts.as_slice() {
-            output_lines.push(record.encrypted_line.clone());
-        } else {
-            let mut payload_parts = record.payload_parts.clone();
-            let mut current_index = 0;
-            for part in &mut payload_parts {
-                if !part.is_empty() {
-                    *part = current_parts[current_index].clone();
-                    current_index += 1;
-                }
-            }
-            let payload = payload_parts.join("|SPLIT|");
-            let encrypted = encrypt_aes256_ecb(&pkcs7_pad(payload.as_bytes()), key.key());
-            let encrypted_line = BASE64.encode(encrypted);
-            output_lines.push(encrypted_line);
-        }
-        line_index += visible_count;
-    }
-    for line in lines
-        .iter()
-        .skip(line_index)
-        .filter(|line| !line.trim().is_empty())
-    {
-        let encrypted = encrypt_aes256_ecb(&pkcs7_pad(line.as_bytes()), key.key());
-        let encrypted_line = BASE64.encode(encrypted);
-        output_lines.push(encrypted_line);
-    }
-    let mut output = output_lines.join(line_ending);
-    if final_newline {
-        output.push_str(line_ending);
-    }
-    output
-}
-
-fn decrypt_aes256_ecb(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
-    if data.len() % 16 != 0 {
-        return Err("AES 密文长度不是 16 字节块的整数倍".to_owned());
-    }
-    let cipher = Aes256::new_from_slice(key).map_err(|error| error.to_string())?;
-    let mut output = data.to_vec();
-    for block in output.chunks_exact_mut(16) {
-        cipher.decrypt_block(block.into());
-    }
-    Ok(output)
-}
-
-fn encrypt_aes256_ecb(data: &[u8], key: &[u8; 32]) -> Vec<u8> {
-    debug_assert_eq!(data.len() % 16, 0);
-    let cipher = Aes256::new_from_slice(key).expect("static AES-256 key must be valid");
-    let mut output = data.to_vec();
-    for block in output.chunks_exact_mut(16) {
-        cipher.encrypt_block(block.into());
-    }
-    output
-}
-
-fn pkcs7_pad(data: &[u8]) -> Vec<u8> {
-    let padding = 16 - data.len() % 16;
-    let mut output = Vec::with_capacity(data.len() + padding);
-    output.extend_from_slice(data);
-    output.extend(std::iter::repeat_n(padding as u8, padding));
-    output
-}
-
-fn pkcs7_unpad(data: &[u8]) -> Result<&[u8], String> {
-    let Some(&padding) = data.last() else {
-        return Err("空数据无法移除 PKCS#7 padding".to_owned());
-    };
-    let padding = usize::from(padding);
-    if padding == 0 || padding > 16 || padding > data.len() {
-        return Err("PKCS#7 padding 无效".to_owned());
-    }
-    if !data[data.len() - padding..]
-        .iter()
-        .all(|byte| usize::from(*byte) == padding)
-    {
-        return Err("PKCS#7 padding 不一致".to_owned());
-    }
-    Ok(&data[..data.len() - padding])
 }
 
 fn write_abyss_half_json<W: std::fmt::Write + ?Sized>(
@@ -8058,19 +7333,22 @@ fn data_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        BASE64, DpsApp, EncryptedIniKey, HitDetailFilter, QteTypeFilterSummary, UiConfigSavePlan,
-        adjusted_cached_index, cached_hit_row, compare_cached_team_hits, damage_digit_key_for_hit,
-        damage_digit_resource_path, damage_number_digits_text, decrypt_encrypted_ini_text,
-        encrypt_aes256_ecb, encrypt_encrypted_ini_records, encrypt_encrypted_ini_text,
-        encrypted_ini_search_matches, encrypted_ini_text_fingerprint,
-        follow_up_damage_digit_key_for_hit, hit_detail_filter_available, hit_type_label,
-        is_party_member_row, parse_encrypted_ini_text, pkcs7_pad, qte_type_filter_label,
+        DpsApp, HitDetailFilter, QteTypeFilterSummary, UiConfigSavePlan, adjusted_cached_index,
+        cached_hit_row, compare_cached_team_hits, damage_digit_key_for_hit,
+        damage_digit_resource_path, damage_number_digits_text, follow_up_damage_digit_key_for_hit,
+        hit_detail_filter_available, hit_type_label, is_party_member_row, qte_type_filter_label,
         reaction_text_key_for_hit, reaction_text_key_from_trigger_attack_type, resolve_cached_hit,
         summarize_qte_type_filters,
     };
     use crate::config::UiConfig;
+    use crate::encrypted_ini::{
+        EncryptedIniKey, decrypt_encrypted_ini_text, encrypt_aes256_ecb,
+        encrypt_encrypted_ini_records, encrypt_encrypted_ini_text, encrypted_ini_search_matches,
+        encrypted_ini_text_fingerprint, parse_encrypted_ini_text, pkcs7_pad,
+    };
     use crate::model::{CharacterInfo, CharacterStats, Hit};
     use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as BASE64;
     use std::collections::{HashMap, VecDeque};
     use std::time::{Duration, Instant};
 
@@ -8376,7 +7654,8 @@ mod tests {
     #[test]
     fn encrypted_ini_round_trips_with_china_key() {
         let plaintext = "[Core.System]\nGameName=NTE\nEndpoint=https://example.invalid";
-        let encrypted = encrypt_encrypted_ini_text(plaintext, EncryptedIniKey::China);
+        let encrypted = encrypt_encrypted_ini_text(plaintext, EncryptedIniKey::China)
+            .expect("fixture should encrypt");
         assert!(encrypted.lines().all(|line| BASE64.decode(line).is_ok()));
 
         let (key, decrypted, encrypted_lines) =
@@ -8388,14 +7667,20 @@ mod tests {
 
     #[test]
     fn encrypted_ini_save_preserves_unchanged_records() {
-        let first = BASE64.encode(encrypt_aes256_ecb(
-            &pkcs7_pad(b"[Setting]|SPLIT||SPLIT|Sound_MainVolumn=70|SPLIT|"),
-            EncryptedIniKey::China.key(),
-        ));
-        let second = BASE64.encode(encrypt_aes256_ecb(
-            &pkcs7_pad(b"FightDefaultArmLengthScale=0"),
-            EncryptedIniKey::China.key(),
-        ));
+        let first = BASE64.encode(
+            encrypt_aes256_ecb(
+                &pkcs7_pad(b"[Setting]|SPLIT||SPLIT|Sound_MainVolumn=70|SPLIT|"),
+                EncryptedIniKey::China.key(),
+            )
+            .expect("fixture should encrypt"),
+        );
+        let second = BASE64.encode(
+            encrypt_aes256_ecb(
+                &pkcs7_pad(b"FightDefaultArmLengthScale=0"),
+                EncryptedIniKey::China.key(),
+            )
+            .expect("fixture should encrypt"),
+        );
         let encrypted = format!("{first}\n{second}\n");
         let (key, plaintext, records, line_ending, final_newline) =
             parse_encrypted_ini_text(&encrypted).expect("fixture should decrypt");
@@ -8415,7 +7700,8 @@ mod tests {
             &records,
             &line_ending,
             final_newline,
-        );
+        )
+        .expect("fixture should encrypt");
         let saved_lines = saved.lines().collect::<Vec<_>>();
         assert_eq!(saved_lines[0], first);
         assert_ne!(saved_lines[1], second);
@@ -8427,7 +7713,8 @@ mod tests {
             &records,
             &line_ending,
             final_newline,
-        );
+        )
+        .expect("fixture should encrypt");
         assert_eq!(restored, encrypted);
     }
 
@@ -8437,10 +7724,13 @@ mod tests {
         let changed_line = "FightDefaultArmLengthScale=1";
         let original = format!(
             "{}\n",
-            BASE64.encode(encrypt_aes256_ecb(
-                &pkcs7_pad(original_payload.as_bytes()),
-                EncryptedIniKey::China.key(),
-            ))
+            BASE64.encode(
+                encrypt_aes256_ecb(
+                    &pkcs7_pad(original_payload.as_bytes()),
+                    EncryptedIniKey::China.key(),
+                )
+                .expect("fixture should encrypt"),
+            )
         );
         let (key, _, records, line_ending, final_newline) =
             parse_encrypted_ini_text(&original).expect("fixture should decrypt");
@@ -8452,7 +7742,8 @@ mod tests {
             &records,
             &line_ending,
             final_newline,
-        );
+        )
+        .expect("fixture should encrypt");
         assert_ne!(changed, original);
         let (reloaded_key, _, reloaded_records, reloaded_line_ending, reloaded_final_newline) =
             parse_encrypted_ini_text(&changed).expect("changed fixture should decrypt");
@@ -8463,20 +7754,27 @@ mod tests {
             &reloaded_records,
             &reloaded_line_ending,
             reloaded_final_newline,
-        );
+        )
+        .expect("fixture should encrypt");
         assert_eq!(restored, original);
     }
 
     #[test]
     fn encrypted_ini_save_preserves_crlf_and_missing_final_newline() {
-        let first = BASE64.encode(encrypt_aes256_ecb(
-            &pkcs7_pad(b"[Setting]|SPLIT|Sound_MainVolumn=70"),
-            EncryptedIniKey::China.key(),
-        ));
-        let second = BASE64.encode(encrypt_aes256_ecb(
-            &pkcs7_pad(b"FightDefaultArmLengthScale=0"),
-            EncryptedIniKey::China.key(),
-        ));
+        let first = BASE64.encode(
+            encrypt_aes256_ecb(
+                &pkcs7_pad(b"[Setting]|SPLIT|Sound_MainVolumn=70"),
+                EncryptedIniKey::China.key(),
+            )
+            .expect("fixture should encrypt"),
+        );
+        let second = BASE64.encode(
+            encrypt_aes256_ecb(
+                &pkcs7_pad(b"FightDefaultArmLengthScale=0"),
+                EncryptedIniKey::China.key(),
+            )
+            .expect("fixture should encrypt"),
+        );
         let encrypted = format!("{first}\r\n{second}");
         let (key, plaintext, records, line_ending, final_newline) =
             parse_encrypted_ini_text(&encrypted).expect("fixture should decrypt");
@@ -8490,7 +7788,8 @@ mod tests {
             &records,
             &line_ending,
             final_newline,
-        );
+        )
+        .expect("fixture should encrypt");
         assert_eq!(saved, encrypted);
         assert!(!saved.ends_with('\n'));
         assert!(saved.contains("\r\n"));

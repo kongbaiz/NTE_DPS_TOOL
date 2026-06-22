@@ -857,7 +857,7 @@ fn send_packet_events(sender: &Sender<EngineEvent>, packet: PacketDebug) {
     for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
         let _ = sender.send(EngineEvent::Abyss(event));
     }
-    let _ = sender.send(EngineEvent::Packet(packet));
+    let _ = sender.send(EngineEvent::Packet(Box::new(packet)));
 }
 
 const MAX_PENDING_FOLLOW_UP_HITS: usize = 256;
@@ -1292,7 +1292,7 @@ impl PacketDecoder {
             if self.use_server_damage_calibration {
                 self.server_damage_calibration.observe_hit(&hit);
             }
-            let _ = sender.send(EngineEvent::Hit(hit));
+            let _ = sender.send(EngineEvent::Hit(Box::new(hit)));
         }
     }
 
@@ -2367,13 +2367,13 @@ fn send_export_packet(packet: ExportPacket, sender: &Sender<EngineEvent>) -> Res
             .map_err(|error| error.to_string())?;
     }
     sender
-        .send(EngineEvent::Packet(packet))
+        .send(EngineEvent::Packet(Box::new(packet)))
         .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
 fn export_hit_event(hit: ExportHit) -> EngineEvent {
-    EngineEvent::Hit(Hit {
+    EngineEvent::Hit(Box::new(Hit {
         timestamp: hit.timestamp_unix,
         char_id: hit.char_id,
         char_name: hit.char_name,
@@ -2409,7 +2409,7 @@ fn export_hit_event(hit: ExportHit) -> EngineEvent {
         follow_up_damage_name: hit.follow_up_damage_name,
         follow_up_attack_type: hit.follow_up_attack_type,
         follow_up_damage_attribute: hit.follow_up_damage_attribute,
-    })
+    }))
 }
 
 fn parse_capture_export(text: &str) -> Result<CaptureExport, String> {
