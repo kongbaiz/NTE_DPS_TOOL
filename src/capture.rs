@@ -883,6 +883,9 @@ const FUWEN_ENTERING_ID_OFFSET: usize = 53;
 const FUWEN_PREVIOUS_ID_SHIFT: u8 = 2;
 const FUWEN_PREVIOUS_ID_OFFSET: usize = 66;
 const MIN_FOLLOW_UP_RESIDUAL_DAMAGE: f64 = 1.0;
+/// How far back to look for the real owner of an attribute-locked reaction whose
+/// damage packet carried no caster. Matches the 3s window used by the 环合 retag.
+const REACTION_REATTRIBUTION_WINDOW_SECONDS: f64 = 3.0;
 const RECENT_CONFIRMED_HIT_WINDOW_SECONDS: f64 = 0.75;
 const UNTYPED_SHADOW_HIT_WINDOW_SECONDS: f64 = 0.05;
 const BOSS_HP_SYNC_WINDOW_SECONDS: f64 = 1.0;
@@ -1640,6 +1643,77 @@ fn resolve_damage_name(
     (names.len() == 1).then(|| names.remove(0))
 }
 
+/// The two character attributes whose 环合 produces a given reaction *burst*
+/// (`Buff_Reaction_*`, classified by [`classify_attack_type`]). Only reactions
+/// that are attribute-locked and whose damage packets carry no caster need this;
+/// returns `None` for everything else. Mirrors the pairings in `qte_reaction_type`.
+fn reaction_owner_attributes(attack_type: &str) -> Option<[&'static str; 2]> {
+    match attack_type {
+        // 黯星 = 暗 + 魂. See `qte_reaction_type("暗", "魂")`.
+        "黯星" => Some(["暗", "魂"]),
+        _ => None,
+    }
+}
+
+/// Re-home a reaction burst that was credited to a character who can't produce it.
+///
+/// Reactions like `黯星` carry no caster in their damage record, so
+/// [`parse_damage_payload`] attributes them to whatever single character the
+/// packet happened to declare. When the game bundles such a tick into an
+/// unrelated character's replication packet (e.g. a 咒 character who is merely
+/// on-field), the credit lands on someone whose attribute can't generate the
+/// reaction. Detect that and move it to the most recently declared character
+/// whose attribute *can* — i.e. the on-field reaction participant.
+///
+/// No-op when the reaction isn't attribute-locked, when the current owner is
+/// already plausible, or when no recent valid owner is on record.
+fn reattribute_orphan_reaction(
+    hit: &mut Hit,
+    character_declarations: &HashMap<u32, f64>,
+    timestamp: f64,
+    characters: &HashMap<u32, CharacterInfo>,
+) {
+    let Some(valid_attributes) = hit.attack_type.as_deref().and_then(reaction_owner_attributes)
+    else {
+        return;
+    };
+    let attribute_of = |character_id: &u32| {
+        characters
+            .get(character_id)
+            .and_then(|character| character.attribute.as_deref())
+    };
+    if attribute_of(&hit.char_id).is_some_and(|attribute| valid_attributes.contains(&attribute)) {
+        return; // already credited to a character that can produce this reaction
+    }
+    let Some(new_char_id) = character_declarations
+        .iter()
+        .filter(|(character_id, declared_at)| {
+            timestamp - **declared_at <= REACTION_REATTRIBUTION_WINDOW_SECONDS
+                && attribute_of(character_id)
+                    .is_some_and(|attribute| valid_attributes.contains(&attribute))
+        })
+        .max_by(|left, right| left.1.total_cmp(right.1))
+        .map(|(character_id, _)| *character_id)
+    else {
+        return; // no on-field 暗/魂 character to credit — leave attribution as-is
+    };
+    if new_char_id == hit.char_id {
+        return;
+    }
+    let character = characters.get(&new_char_id);
+    hit.char_id = new_char_id;
+    hit.char_known = character.is_some();
+    hit.char_name = character
+        .map(|row| {
+            if row.name_zh.is_empty() {
+                row.name_en.clone()
+            } else {
+                row.name_zh.clone()
+            }
+        })
+        .unwrap_or_else(|| format!("未知角色({new_char_id})"));
+}
+
 impl PacketDecoder {
     fn process_ethernet_frame(
         &mut self,
@@ -1727,6 +1801,12 @@ impl PacketDecoder {
                     hit.attack_type = Some(format!("环合·{reaction_type}"));
                 }
             }
+            reattribute_orphan_reaction(
+                hit,
+                &self.character_declarations,
+                timestamp,
+                characters,
+            );
             self.follow_up_damage.observe_fuwen_trigger_hit(hit);
         }
         let prepared_hits =
@@ -2601,6 +2681,58 @@ mod tests {
             .expect("visible fuwen trigger should be enough to open follow-up tracking");
         assert_eq!(follow_up.damage, 250.0);
         assert_eq!(follow_up.damage_attribute.as_deref(), Some("咒"));
+    }
+
+    fn character_with_attribute(name_zh: &str, attribute: &str) -> CharacterInfo {
+        CharacterInfo {
+            name_zh: name_zh.to_owned(),
+            name_en: String::new(),
+            color: None,
+            avatar: None,
+            attribute: Some(attribute.to_owned()),
+        }
+    }
+
+    #[test]
+    fn orphan_dark_star_reaction_is_rehomed_to_dark_or_soul_owner() {
+        let characters = HashMap::from([
+            (1003, character_with_attribute("早雾", "咒")),
+            (1004, character_with_attribute("安魂曲", "暗")),
+            (1020, character_with_attribute("哈尼娅", "魂")),
+        ]);
+        // 暗 (安魂曲) is the most recently declared reaction participant.
+        let declarations = HashMap::from([(1004_u32, 10.0_f64), (1020_u32, 8.0_f64)]);
+
+        // 黯星 burst mis-credited to 早雾 (咒) because the packet declared 早雾.
+        let mut orphan = targetless_hit();
+        orphan.char_id = 1003;
+        orphan.char_name = "早雾".to_owned();
+        orphan.attack_type = Some("黯星".to_owned());
+        reattribute_orphan_reaction(&mut orphan, &declarations, 10.001, &characters);
+        assert_eq!(orphan.char_id, 1004);
+        assert_eq!(orphan.char_name, "安魂曲");
+        assert!(orphan.char_known);
+
+        // Already on a 暗 character: untouched.
+        let mut already_ok = targetless_hit();
+        already_ok.char_id = 1004;
+        already_ok.attack_type = Some("黯星".to_owned());
+        reattribute_orphan_reaction(&mut already_ok, &declarations, 10.001, &characters);
+        assert_eq!(already_ok.char_id, 1004);
+
+        // No recent 暗/魂 declaration in window: left as-is rather than guessed.
+        let mut stale = targetless_hit();
+        stale.char_id = 1003;
+        stale.attack_type = Some("黯星".to_owned());
+        reattribute_orphan_reaction(&mut stale, &declarations, 99.0, &characters);
+        assert_eq!(stale.char_id, 1003);
+
+        // A non-attribute-locked reaction is never rehomed.
+        let mut other = targetless_hit();
+        other.char_id = 1003;
+        other.attack_type = Some("普攻".to_owned());
+        reattribute_orphan_reaction(&mut other, &declarations, 10.001, &characters);
+        assert_eq!(other.char_id, 1003);
     }
 
     #[test]

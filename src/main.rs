@@ -30,6 +30,7 @@ fn main() -> Result<()> {
             .with_inner_size([520.0, 420.0])
             .with_min_inner_size([460.0, 390.0])
             .with_decorations(false)
+            .with_resizable(true)
             .with_transparent(true)
             .with_icon(Arc::new(app_icon()))
             .with_window_level(if ui_config.always_on_top {

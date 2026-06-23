@@ -2751,6 +2751,7 @@ impl DpsApp {
                         ui.separator();
                         self.team_hits(ui, self.team_hit_detail_filter.clone());
                     });
+                window_resize_handles(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
@@ -2797,6 +2798,7 @@ impl DpsApp {
                     .show(ctx, |ui| {
                         self.abyss_overview_contents(ui);
                     });
+                window_resize_handles(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
@@ -3323,6 +3325,7 @@ impl DpsApp {
                             &skill_filter,
                         );
                     });
+                window_resize_handles(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
@@ -3369,6 +3372,7 @@ impl DpsApp {
                     .show(ctx, |ui| {
                         self.debug_contents(ui);
                     });
+                window_resize_handles(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
@@ -4150,6 +4154,8 @@ impl eframe::App for DpsApp {
                 }
             });
 
+        window_resize_handles(ctx);
+
         #[cfg(not(feature = "no_debug"))]
         if self.debug_open {
             self.debug_panel(ctx);
@@ -4256,6 +4262,71 @@ fn install_fonts(ctx: &egui::Context) {
             .insert(0, "system-cjk".to_owned());
     }
     ctx.set_fonts(fonts);
+}
+
+/// Width (logical points) of the invisible grab zone along each window edge.
+const WINDOW_RESIZE_BORDER: f32 = 6.0;
+/// Side of the corner grab zones — a bit larger than the edges so the diagonal
+/// resize handles are easy to hit.
+const WINDOW_RESIZE_CORNER: f32 = 14.0;
+
+/// Lets a decoration-less viewport be resized by dragging its edges/corners.
+/// The native title bars are off (`with_decorations(false)`), which also strips
+/// the OS resize borders, so we recreate them with `ViewportCommand::BeginResize`.
+///
+/// It lays down **no** interactable overlay — an earlier version put
+/// `Order::Foreground` areas on every edge, which swallowed clicks on widgets
+/// near a border (the close button, edge controls, scrollbars). Instead it
+/// hit-tests the pointer against thin edge bands and only acts on a fresh press.
+///
+/// The **top** edge is deliberately skipped: the custom title bar (and its
+/// minimize/close buttons + drag-to-move zone) lives there, so a top resize band
+/// would fight those widgets. The left/right/bottom edges sit entirely over the
+/// panels' frame margins, where there are no widgets — so a press there is
+/// unambiguous and nothing else is ever blocked.
+///
+/// Call once per frame for each viewport.
+fn window_resize_handles(ctx: &egui::Context) {
+    use egui::{CursorIcon, ResizeDirection, ViewportCommand};
+
+    // A maximized window has no movable border; don't fight the OS. Likewise,
+    // don't start a new resize while a drag (resize or move) is already going.
+    if ctx.input(|input| input.viewport().maximized.unwrap_or(false)) || ctx.is_using_pointer() {
+        return;
+    }
+    let Some(pos) = ctx.pointer_latest_pos() else {
+        return;
+    };
+    let rect = ctx.screen_rect();
+    if !rect.contains(pos) {
+        return;
+    }
+    let b = WINDOW_RESIZE_BORDER;
+    let c = WINDOW_RESIZE_CORNER;
+    let (west, east) = (pos.x <= rect.left() + b, pos.x >= rect.right() - b);
+    let south = pos.y >= rect.bottom() - b;
+    // Corner squares are a touch larger so the diagonal grab is easy to hit.
+    let (west_c, east_c) = (pos.x <= rect.left() + c, pos.x >= rect.right() - c);
+    let south_c = pos.y >= rect.bottom() - c;
+
+    let (direction, cursor) = if south_c && west_c {
+        (ResizeDirection::SouthWest, CursorIcon::ResizeNeSw)
+    } else if south_c && east_c {
+        (ResizeDirection::SouthEast, CursorIcon::ResizeNwSe)
+    } else if west {
+        (ResizeDirection::West, CursorIcon::ResizeWest)
+    } else if east {
+        (ResizeDirection::East, CursorIcon::ResizeEast)
+    } else if south {
+        (ResizeDirection::South, CursorIcon::ResizeSouth)
+    } else {
+        return; // interior or top edge — leave the pointer alone
+    };
+
+    ctx.set_cursor_icon(cursor);
+    if ctx.input(|input| input.pointer.primary_pressed()) {
+        ctx.send_viewport_cmd(ViewportCommand::BeginResize(direction));
+    }
 }
 
 fn secondary_title_bar(ui: &mut egui::Ui, title: &str) -> bool {
@@ -4527,11 +4598,13 @@ fn draw_monster_portrait(
     if let Some(texture) = texture {
         painter.rect_filled(rect, corner_radius, shadcn_background(dark_mode));
         let image_rect = contain_rect(rect.shrink(1.0), texture.size_vec2());
-        painter.image(
-            texture.id(),
-            image_rect,
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-            Color32::WHITE,
+        // Paint the portrait as a rounded textured rect so the (usually square)
+        // source art is clipped to the corner radius instead of poking out past
+        // the rounded border — `painter.image` only draws a sharp-cornered quad.
+        let uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0));
+        painter.add(
+            egui::epaint::RectShape::filled(image_rect, corner_radius, Color32::WHITE)
+                .with_texture(texture.id(), uv),
         );
         painter.rect_stroke(
             rect,
@@ -4649,10 +4722,15 @@ fn draw_abyss_monster_detail(
                     let row_width = (ui.available_width() - SCROLLBAR_GUTTER).max(0.0);
                     let row_height = 21.0;
                     let pair_gap = 22.0;
-                    let pair_width = ((row_width - pair_gap) * 0.5).max(0.0);
-                    let value_width = 96.0_f32.min(pair_width * 0.36).max(42.0);
-                    let label_width = (pair_width - value_width).max(40.0);
-                    for (index, chunk) in monster.stats.raw_props.chunks(2).enumerate() {
+                    // Pack more columns into wider windows so values don't drift far
+                    // from their labels. ~250pt per pair reads comfortably; clamp to
+                    // 2–4 so it stays sensible at any size the user drags to.
+                    let columns = ((row_width / 250.0).floor() as usize).clamp(2, 4);
+                    let pair_width =
+                        ((row_width - pair_gap * (columns as f32 - 1.0)) / columns as f32).max(0.0);
+                    let value_width = 96.0_f32.min(pair_width * 0.34).max(42.0);
+                    let label_width = (pair_width - value_width - 8.0).max(40.0);
+                    for (index, chunk) in monster.stats.raw_props.chunks(columns).enumerate() {
                         let (rect, _) = ui.allocate_exact_size(
                             egui::vec2(row_width, row_height),
                             egui::Sense::hover(),
@@ -4670,7 +4748,7 @@ fn draw_abyss_monster_detail(
                                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
                         );
                         row_ui.set_clip_rect(rect.intersect(viewport_clip));
-                        for pair_index in 0..2 {
+                        for pair_index in 0..columns {
                             if pair_index > 0 {
                                 row_ui.add_space(pair_gap);
                             }
@@ -5063,10 +5141,22 @@ fn load_image_texture(
     let image = image::load_from_memory(bytes).ok()?.to_rgba8();
     let size = [image.width() as usize, image.height() as usize];
     let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+    // Source art (e.g. 256px avatars) is drawn much smaller (~32px), an 8x
+    // minification. Plain bilinear sampling has no mip chain, so it only reads a
+    // 2x2 texel neighborhood and aliases hard edges into the jagged look seen on
+    // screen. Trilinear filtering with generated mipmaps samples a pre-averaged
+    // level, keeping shrunken images crisp and smooth. The glow backend (enabled
+    // here) honors `mipmap_mode`.
+    let texture_options = egui::TextureOptions {
+        magnification: egui::TextureFilter::Linear,
+        minification: egui::TextureFilter::Linear,
+        wrap_mode: egui::TextureWrapMode::ClampToEdge,
+        mipmap_mode: Some(egui::TextureFilter::Linear),
+    };
     Some(ctx.load_texture(
         format!("{texture_namespace}:{resource_path}"),
         color_image,
-        egui::TextureOptions::LINEAR,
+        texture_options,
     ))
 }
 
