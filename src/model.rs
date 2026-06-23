@@ -11,6 +11,46 @@ const MAX_COMBAT_HITS: usize = 50_000;
 /// keeping memory bounded by `MAX_COMBAT_HITS`.
 const COMBAT_HITS_RETAIN: usize = 46_000;
 
+/// Compact, exportable team DPS snapshot used to predict abyss clear time.
+/// Deliberately holds no packets or per-hit data — only the latest total DPS and
+/// up to 4 members — so the exported file stays tiny.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TeamDps {
+    pub dps: f64,
+    #[serde(default)]
+    pub members: Vec<TeamDpsMember>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TeamDpsMember {
+    pub id: u32,
+    pub dps: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+/// On-disk "team DPS data" file: a single team and/or the abyss upper/lower
+/// teams. Every field is optional so the same format covers single-team and
+/// dual-team (abyss) exports. Serialized compactly (no pretty-printing).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TeamDpsExport {
+    #[serde(default = "team_dps_export_version")]
+    pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single: Option<TeamDps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upper: Option<TeamDps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lower: Option<TeamDps>,
+}
+
+pub const TEAM_DPS_EXPORT_VERSION: u32 = 1;
+pub const TEAM_DPS_MAX_MEMBERS: usize = 4;
+
+fn team_dps_export_version() -> u32 {
+    TEAM_DPS_EXPORT_VERSION
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterInfo {
     #[serde(default)]
@@ -686,6 +726,40 @@ fn hit_matches_damage_correction_source(hit: &Hit, correction: &HitDamageCorrect
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn team_dps_export_is_compact_and_roundtrips() {
+        let export = TeamDpsExport {
+            version: TEAM_DPS_EXPORT_VERSION,
+            single: None,
+            upper: Some(TeamDps {
+                dps: 31535.0,
+                members: vec![TeamDpsMember {
+                    id: 1010,
+                    dps: 23700.0,
+                    name: "娜娜莉".to_owned(),
+                }],
+            }),
+            lower: None,
+        };
+        let json = serde_json::to_string(&export).unwrap();
+        // Compact (no pretty newlines) and absent teams are omitted to stay small.
+        assert!(!json.contains('\n'));
+        assert!(!json.contains("single"));
+        assert!(!json.contains("lower"));
+
+        let parsed: TeamDpsExport = serde_json::from_str(&json).unwrap();
+        assert!(parsed.single.is_none());
+        assert_eq!(parsed.upper.as_ref().unwrap().members[0].id, 1010);
+        assert_eq!(parsed.upper.as_ref().unwrap().members.len(), 1);
+    }
+
+    #[test]
+    fn team_dps_export_version_defaults_when_missing() {
+        let parsed: TeamDpsExport = serde_json::from_str(r#"{"single":{"dps":100.0}}"#).unwrap();
+        assert_eq!(parsed.version, TEAM_DPS_EXPORT_VERSION);
+        assert_eq!(parsed.single.unwrap().dps, 100.0);
+    }
 
     fn test_hit(timestamp: f64, char_id: u32, direction: &str, damage: f64) -> Hit {
         Hit {

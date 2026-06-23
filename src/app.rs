@@ -32,7 +32,8 @@ use crate::hotkey::{HotkeyEvent, HotkeyHandle};
 use crate::io_util::{atomic_write_file, atomic_write_text};
 use crate::model::{
     AbyssEvent, AbyssHalf, CharacterInfo, CharacterStats, CombatState, EngineEvent,
-    HitDirectionSummary, PartyCombatState, summarize_hit_directions,
+    HitDirectionSummary, PartyCombatState, TEAM_DPS_EXPORT_VERSION, TEAM_DPS_MAX_MEMBERS, TeamDps,
+    TeamDpsExport, TeamDpsMember, summarize_hit_directions,
 };
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, find_data_file, load_characters};
@@ -311,15 +312,6 @@ impl EncryptedIniEditorState {
     }
 }
 
-/// A captured team used to predict abyss clear time. `dps` is the team's total
-/// DPS at snapshot; `members` are the contributing character ids (highest damage
-/// first) for drawing avatars. In-memory only — not persisted across launches.
-#[derive(Clone, Default)]
-struct PredictionTeam {
-    dps: f64,
-    members: Vec<u32>,
-}
-
 #[derive(Default)]
 struct AbyssOverviewState {
     dataset: Option<AbyssMonsterDataset>,
@@ -332,8 +324,8 @@ struct AbyssOverviewState {
     search: String,
     // Teams assigned to the upper (上行线) and lower (下行线) lines. Predicted
     // clear time for a line = that line's total HP / team.dps.
-    upper_team: Option<PredictionTeam>,
-    lower_team: Option<PredictionTeam>,
+    upper_team: Option<TeamDps>,
+    lower_team: Option<TeamDps>,
 }
 
 fn load_abyss_stat_display_names() -> HashMap<String, String> {
@@ -2002,11 +1994,18 @@ impl DpsApp {
                 self.reset_combat_session();
             }
             if ui
-                .button("导入 PCAPNG")
-                .on_hover_text("管理员模式下请使用此按钮或 Ctrl+O")
+                .button("导入 DPS 数据")
+                .on_hover_text("导入队伍 DPS 数据（json），用于深渊通关预测")
                 .clicked()
             {
-                self.request_debug_import(ui.ctx(), DebugImportKind::Pcapng);
+                self.import_team_dps();
+            }
+            if ui
+                .button("导出队伍数据")
+                .on_hover_text("导出当前队伍与深渊上下队伍的 DPS（json，不含封包）")
+                .clicked()
+            {
+                self.export_team_dps();
             }
             if ui
                 .selectable_label(self.paused, if self.paused { "继续" } else { "暂停" })
@@ -2992,22 +2991,31 @@ impl DpsApp {
     /// Snapshot the current combat session into a prediction team. Returns `None`
     /// when there is no measured output yet (DPS is zero), so callers can keep the
     /// "import data first" prompt.
-    fn snapshot_current_team(&self) -> Option<PredictionTeam> {
+    fn snapshot_current_team(&self) -> Option<TeamDps> {
         let dps = self.state.dps();
         if dps <= 0.0 {
             return None;
         }
-        let mut members: Vec<(u32, f64)> = self
+        // A single capture can contain both abyss teams; keep only the top
+        // TEAM_DPS_MAX_MEMBERS contributors so one slot is never overfilled.
+        let mut members: Vec<&CharacterStats> = self
             .state
             .stats
-            .iter()
-            .filter(|(char_id, stats)| **char_id != 0 && **char_id < 900_000 && stats.damage > 0.0)
-            .map(|(char_id, stats)| (*char_id, stats.damage))
+            .values()
+            .filter(|stats| stats.char_id != 0 && stats.char_id < 900_000 && stats.damage > 0.0)
             .collect();
-        members.sort_by(|left, right| right.1.total_cmp(&left.1));
-        Some(PredictionTeam {
+        members.sort_by(|left, right| right.damage.total_cmp(&left.damage));
+        members.truncate(TEAM_DPS_MAX_MEMBERS);
+        Some(TeamDps {
             dps,
-            members: members.into_iter().map(|(char_id, _)| char_id).collect(),
+            members: members
+                .into_iter()
+                .map(|stats| TeamDpsMember {
+                    id: stats.char_id,
+                    dps: stats.dps(),
+                    name: stats.name.clone(),
+                })
+                .collect(),
         })
     }
 
@@ -3016,11 +3024,100 @@ impl DpsApp {
             LinePredictionAction::None => return,
             LinePredictionAction::ImportCurrent => self.snapshot_current_team(),
             LinePredictionAction::Clear => None,
+            LinePredictionAction::ImportFile => match self.pick_and_load_team_dps() {
+                // For one line, prefer that line's team from the file, then the
+                // matching upper/lower, then the single team.
+                Some(export) => {
+                    let preferred = if upper { export.upper } else { export.lower };
+                    let team = preferred.or(export.single);
+                    if team.is_none() {
+                        self.last_error = Some("DPS 数据文件里没有可用于该行的队伍".to_owned());
+                        return;
+                    }
+                    team
+                }
+                None => return,
+            },
         };
         if upper {
             self.abyss_overview.upper_team = team;
         } else {
             self.abyss_overview.lower_team = team;
+        }
+    }
+
+    /// Open a file dialog and parse a team DPS data file. Returns `None` when the
+    /// user cancels; sets `last_error` on a read/parse failure.
+    fn pick_and_load_team_dps(&mut self) -> Option<TeamDpsExport> {
+        let path = rfd::FileDialog::new()
+            .add_filter("NTE 队伍数据", &["json"])
+            .pick_file()?;
+        match std::fs::read_to_string(&path)
+            .map_err(|error| error.to_string())
+            .and_then(|text| {
+                serde_json::from_str::<TeamDpsExport>(&text).map_err(|error| error.to_string())
+            }) {
+            Ok(export) => Some(export),
+            Err(error) => {
+                self.last_error = Some(format!("导入 DPS 数据失败：{error}"));
+                None
+            }
+        }
+    }
+
+    /// Main-window "导入 DPS 数据": load a team DPS file into the abyss prediction.
+    /// A dual file fills 上行线/下行线 separately; a single-team file fills both.
+    fn import_team_dps(&mut self) {
+        let Some(export) = self.pick_and_load_team_dps() else {
+            return;
+        };
+        let upper = export.upper.clone().or_else(|| export.single.clone());
+        let lower = export.lower.clone().or_else(|| export.single.clone());
+        if upper.is_none() && lower.is_none() {
+            self.last_error = Some("DPS 数据文件里没有队伍数据".to_owned());
+            return;
+        }
+        if upper.is_some() {
+            self.abyss_overview.upper_team = upper;
+        }
+        if lower.is_some() {
+            self.abyss_overview.lower_team = lower;
+        }
+        self.status = "已导入 DPS 队伍数据".to_owned();
+    }
+
+    /// Main-window "导出队伍数据": write a compact JSON with whatever teams exist
+    /// (current session as `single`, plus the abyss upper/lower if set). No
+    /// packets or per-hit data, latest DPS only, serialized without indentation.
+    fn export_team_dps(&mut self) {
+        let single = self.snapshot_current_team();
+        let upper = self.abyss_overview.upper_team.clone();
+        let lower = self.abyss_overview.lower_team.clone();
+        if single.is_none() && upper.is_none() && lower.is_none() {
+            self.last_error = Some("没有可导出的队伍数据，请先抓包或设置深渊队伍".to_owned());
+            return;
+        }
+        let export = TeamDpsExport {
+            version: TEAM_DPS_EXPORT_VERSION,
+            single,
+            upper,
+            lower,
+        };
+        let Ok(json) = serde_json::to_string(&export) else {
+            self.last_error = Some("序列化队伍数据失败".to_owned());
+            return;
+        };
+        let default_name = format!("nte_team_dps_{}.json", Local::now().format("%Y%m%d_%H%M%S"));
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("NTE 队伍数据", &["json"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return;
+        };
+        match atomic_write_text(&path, &json) {
+            Ok(()) => self.status = "已导出队伍数据".to_owned(),
+            Err(error) => self.last_error = Some(format!("导出队伍数据失败：{error}")),
         }
     }
 
@@ -3046,7 +3143,7 @@ impl DpsApp {
                 let has_team = self.abyss_overview.upper_team.is_some()
                     || self.abyss_overview.lower_team.is_some();
                 if ui
-                    .add_enabled(has_team, egui::Button::new("⇅ 交换上下队伍"))
+                    .add_enabled(has_team, egui::Button::new("交换上下队伍"))
                     .on_hover_text("交换上行线与下行线的预测队伍")
                     .clicked()
                 {
@@ -4582,12 +4679,13 @@ fn draw_abyss_floor_nav(
 enum LinePredictionAction {
     None,
     ImportCurrent,
+    ImportFile,
     Clear,
 }
 
 /// Inputs for the per-line clear-time prediction shown in a line section header.
 struct LinePredictionView<'a> {
-    team: Option<&'a PredictionTeam>,
+    team: Option<&'a TeamDps>,
     line_hp: f64,
     can_import: bool,
     avatar_textures: &'a HashMap<String, egui::TextureHandle>,
@@ -4601,7 +4699,7 @@ fn abyss_line_hp_total(monsters: &[&AbyssMonsterEntry]) -> f64 {
         .sum()
 }
 
-fn predicted_clear_seconds(line_hp: f64, team: &PredictionTeam) -> Option<f64> {
+fn predicted_clear_seconds(line_hp: f64, team: &TeamDps) -> Option<f64> {
     (team.dps > 0.0 && line_hp > 0.0).then(|| line_hp / team.dps)
 }
 
@@ -4667,10 +4765,10 @@ fn draw_line_prediction_header(
     let mut action = LinePredictionAction::None;
     ui.add_space(10.0);
     if let Some(team) = view.team {
-        for char_id in team.members.iter().take(6) {
+        for member in team.members.iter().take(TEAM_DPS_MAX_MEMBERS) {
             draw_team_avatar(
                 ui,
-                *char_id,
+                member.id,
                 22.0,
                 view.avatar_textures,
                 view.characters,
@@ -4694,26 +4792,37 @@ fn draw_line_prediction_header(
                 .color(ui.visuals().weak_text_color()),
         );
         if ui
-            .add(egui::Button::new("✕").frame(false).small())
+            .add(egui::Button::new("清除").small())
             .on_hover_text("清除该行预测队伍")
             .clicked()
         {
             action = LinePredictionAction::Clear;
         }
-    } else if view.can_import {
-        if ui
-            .add(egui::Button::new("用当前队伍预测").small())
-            .on_hover_text("把当前会话测得的队伍设为该行预测队伍")
-            .clicked()
+    } else {
+        if view.can_import
+            && ui
+                .add(egui::Button::new("用当前队伍预测").small())
+                .on_hover_text("把当前会话测得的队伍设为该行预测队伍")
+                .clicked()
         {
             action = LinePredictionAction::ImportCurrent;
         }
-    } else {
-        ui.label(
-            RichText::new("导入数据预测通关时间")
-                .size(11.0)
-                .color(ui.visuals().weak_text_color()),
-        );
+        if !view.can_import {
+            ui.label(
+                RichText::new("导入数据预测通关时间")
+                    .size(11.0)
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
+    }
+    // Per-line file import is always available (the "单独导入" button): load a
+    // DPS data file into just this line.
+    if ui
+        .add(egui::Button::new("单独导入").small())
+        .on_hover_text("为该行单独导入 DPS 数据文件")
+        .clicked()
+    {
+        action = LinePredictionAction::ImportFile;
     }
     action
 }
