@@ -311,6 +311,15 @@ impl EncryptedIniEditorState {
     }
 }
 
+/// A captured team used to predict abyss clear time. `dps` is the team's total
+/// DPS at snapshot; `members` are the contributing character ids (highest damage
+/// first) for drawing avatars. In-memory only — not persisted across launches.
+#[derive(Clone, Default)]
+struct PredictionTeam {
+    dps: f64,
+    members: Vec<u32>,
+}
+
 #[derive(Default)]
 struct AbyssOverviewState {
     dataset: Option<AbyssMonsterDataset>,
@@ -321,6 +330,10 @@ struct AbyssOverviewState {
     selected_monster_pack_id: Option<String>,
     expanded_season: Option<u32>,
     search: String,
+    // Teams assigned to the upper (上行线) and lower (下行线) lines. Predicted
+    // clear time for a line = that line's total HP / team.dps.
+    upper_team: Option<PredictionTeam>,
+    lower_team: Option<PredictionTeam>,
 }
 
 fn load_abyss_stat_display_names() -> HashMap<String, String> {
@@ -361,6 +374,8 @@ impl AbyssOverviewState {
                     selected_monster_pack_id: None,
                     expanded_season: first.map(|(season, _)| season),
                     search: String::new(),
+                    upper_team: None,
+                    lower_team: None,
                 }
             }
             Err(error) => Self {
@@ -372,9 +387,19 @@ impl AbyssOverviewState {
     }
 
     fn reload(&mut self) {
+        // Reloading only refreshes the monster dataset; keep the user's search
+        // and imported prediction teams.
         let search = self.search.clone();
+        let upper_team = self.upper_team.take();
+        let lower_team = self.lower_team.take();
         *self = Self::load();
         self.search = search;
+        self.upper_team = upper_team;
+        self.lower_team = lower_team;
+    }
+
+    fn swap_teams(&mut self) {
+        std::mem::swap(&mut self.upper_team, &mut self.lower_team);
     }
 
     fn ensure_selection(&mut self) {
@@ -2964,6 +2989,41 @@ impl DpsApp {
         self.abyss_floor_contents(&mut content_ui, &floor, selected_monster.as_ref());
     }
 
+    /// Snapshot the current combat session into a prediction team. Returns `None`
+    /// when there is no measured output yet (DPS is zero), so callers can keep the
+    /// "import data first" prompt.
+    fn snapshot_current_team(&self) -> Option<PredictionTeam> {
+        let dps = self.state.dps();
+        if dps <= 0.0 {
+            return None;
+        }
+        let mut members: Vec<(u32, f64)> = self
+            .state
+            .stats
+            .iter()
+            .filter(|(char_id, stats)| **char_id != 0 && **char_id < 900_000 && stats.damage > 0.0)
+            .map(|(char_id, stats)| (*char_id, stats.damage))
+            .collect();
+        members.sort_by(|left, right| right.1.total_cmp(&left.1));
+        Some(PredictionTeam {
+            dps,
+            members: members.into_iter().map(|(char_id, _)| char_id).collect(),
+        })
+    }
+
+    fn apply_line_prediction_action(&mut self, upper: bool, action: LinePredictionAction) {
+        let team = match action {
+            LinePredictionAction::None => return,
+            LinePredictionAction::ImportCurrent => self.snapshot_current_team(),
+            LinePredictionAction::Clear => None,
+        };
+        if upper {
+            self.abyss_overview.upper_team = team;
+        } else {
+            self.abyss_overview.lower_team = team;
+        }
+    }
+
     fn abyss_floor_contents(
         &mut self,
         ui: &mut egui::Ui,
@@ -2983,6 +3043,15 @@ impl DpsApp {
                         .hint_text("搜索怪物 / ID")
                         .desired_width(190.0),
                 );
+                let has_team = self.abyss_overview.upper_team.is_some()
+                    || self.abyss_overview.lower_team.is_some();
+                if ui
+                    .add_enabled(has_team, egui::Button::new("⇅ 交换上下队伍"))
+                    .on_hover_text("交换上行线与下行线的预测队伍")
+                    .clicked()
+                {
+                    self.abyss_overview.swap_teams();
+                }
             });
         });
         ui.add_space(4.0);
@@ -3017,8 +3086,13 @@ impl DpsApp {
                 }
             }
             let selected_pack_id = self.abyss_overview.selected_monster_pack_id.clone();
+            let upper_team = self.abyss_overview.upper_team.clone();
+            let lower_team = self.abyss_overview.lower_team.clone();
+            let can_import = self.state.dps() > 0.0;
+            let mut upper_action = LinePredictionAction::None;
+            let mut lower_action = LinePredictionAction::None;
             if !upper_line.is_empty() || !lower_line.is_empty() {
-                draw_abyss_line_section(
+                upper_action = draw_abyss_line_section(
                     ui,
                     "上行线",
                     &upper_line,
@@ -3026,9 +3100,16 @@ impl DpsApp {
                     &mut self.abyss_overview.selected_monster_pack_id,
                     &self.monster_textures,
                     self.dark_mode,
+                    Some(LinePredictionView {
+                        team: upper_team.as_ref(),
+                        line_hp: abyss_line_hp_total(&upper_line),
+                        can_import,
+                        avatar_textures: &self.avatar_textures,
+                        characters: &self.characters,
+                    }),
                 );
                 ui.add_space(6.0);
-                draw_abyss_line_section(
+                lower_action = draw_abyss_line_section(
                     ui,
                     "下行线",
                     &lower_line,
@@ -3036,6 +3117,13 @@ impl DpsApp {
                     &mut self.abyss_overview.selected_monster_pack_id,
                     &self.monster_textures,
                     self.dark_mode,
+                    Some(LinePredictionView {
+                        team: lower_team.as_ref(),
+                        line_hp: abyss_line_hp_total(&lower_line),
+                        can_import,
+                        avatar_textures: &self.avatar_textures,
+                        characters: &self.characters,
+                    }),
                 );
             }
             if !unassigned.is_empty() {
@@ -3050,8 +3138,11 @@ impl DpsApp {
                     &mut self.abyss_overview.selected_monster_pack_id,
                     &self.monster_textures,
                     self.dark_mode,
+                    None,
                 );
             }
+            self.apply_line_prediction_action(true, upper_action);
+            self.apply_line_prediction_action(false, lower_action);
         }
         ui.add_space(8.0);
         ui.separator();
@@ -4486,6 +4577,151 @@ fn draw_abyss_floor_nav(
         });
 }
 
+/// What a line section's prediction control was clicked to do this frame.
+#[derive(PartialEq, Eq)]
+enum LinePredictionAction {
+    None,
+    ImportCurrent,
+    Clear,
+}
+
+/// Inputs for the per-line clear-time prediction shown in a line section header.
+struct LinePredictionView<'a> {
+    team: Option<&'a PredictionTeam>,
+    line_hp: f64,
+    can_import: bool,
+    avatar_textures: &'a HashMap<String, egui::TextureHandle>,
+    characters: &'a HashMap<u32, CharacterInfo>,
+}
+
+fn abyss_line_hp_total(monsters: &[&AbyssMonsterEntry]) -> f64 {
+    monsters
+        .iter()
+        .map(|monster| monster.stats.hp_max_base)
+        .sum()
+}
+
+fn predicted_clear_seconds(line_hp: f64, team: &PredictionTeam) -> Option<f64> {
+    (team.dps > 0.0 && line_hp > 0.0).then(|| line_hp / team.dps)
+}
+
+fn format_clear_seconds(seconds: f64) -> String {
+    if seconds >= 60.0 {
+        let minutes = (seconds / 60.0).floor();
+        let rest = seconds - minutes * 60.0;
+        format!("{minutes:.0}分{rest:04.1}秒")
+    } else {
+        format!("{seconds:.1}秒")
+    }
+}
+
+fn draw_team_avatar(
+    ui: &mut egui::Ui,
+    char_id: u32,
+    size: f32,
+    avatar_textures: &HashMap<String, egui::TextureHandle>,
+    characters: &HashMap<u32, CharacterInfo>,
+    dark_mode: bool,
+) {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    let radius = size * 0.3;
+    let character = characters.get(&char_id);
+    let display_name = character.map(|info| {
+        if info.name_zh.is_empty() {
+            info.name_en.clone()
+        } else {
+            info.name_zh.clone()
+        }
+    });
+    let texture = character
+        .and_then(|info| info.avatar.as_deref())
+        .and_then(|avatar| avatar_textures.get(avatar));
+    if let Some(texture) = texture {
+        egui::Image::new((texture.id(), rect.size()))
+            .corner_radius(radius)
+            .paint_at(ui, rect);
+    } else {
+        let color = readable_accent(character_color(char_id, characters, 0), dark_mode);
+        ui.painter()
+            .rect_filled(rect, radius, color.gamma_multiply(0.85));
+        if let Some(initial) = display_name.as_deref().and_then(|name| name.chars().next()) {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                initial,
+                egui::FontId::proportional(size * 0.5),
+                contrast_text(color),
+            );
+        }
+    }
+    if let Some(name) = display_name {
+        response.on_hover_text(name);
+    }
+}
+
+fn draw_line_prediction_header(
+    ui: &mut egui::Ui,
+    view: &LinePredictionView,
+    dark_mode: bool,
+) -> LinePredictionAction {
+    let mut action = LinePredictionAction::None;
+    ui.add_space(10.0);
+    if let Some(team) = view.team {
+        for char_id in team.members.iter().take(6) {
+            draw_team_avatar(
+                ui,
+                *char_id,
+                22.0,
+                view.avatar_textures,
+                view.characters,
+                dark_mode,
+            );
+        }
+        ui.add_space(4.0);
+        let time_text = match predicted_clear_seconds(view.line_hp, team) {
+            Some(seconds) => format!("预计 {}", format_clear_seconds(seconds)),
+            None => "预计 —".to_owned(),
+        };
+        ui.label(
+            RichText::new(time_text)
+                .size(12.0)
+                .strong()
+                .color(theme_accent(dark_mode)),
+        );
+        ui.label(
+            RichText::new(format!("· {} DPS", format_number(team.dps)))
+                .size(10.0)
+                .color(ui.visuals().weak_text_color()),
+        );
+        if ui
+            .add(egui::Button::new("✕").frame(false).small())
+            .on_hover_text("清除该行预测队伍")
+            .clicked()
+        {
+            action = LinePredictionAction::Clear;
+        }
+    } else if view.can_import {
+        if ui
+            .add(egui::Button::new("用当前队伍预测").small())
+            .on_hover_text("把当前会话测得的队伍设为该行预测队伍")
+            .clicked()
+        {
+            action = LinePredictionAction::ImportCurrent;
+        }
+    } else {
+        ui.label(
+            RichText::new("导入数据预测通关时间")
+                .size(11.0)
+                .color(ui.visuals().weak_text_color()),
+        );
+    }
+    action
+}
+
+// UI draw helper: each argument is a distinct, unrelated input (selection state,
+// textures, theme, prediction), so grouping them into a struct would not aid
+// readability.
+#[allow(clippy::too_many_arguments)]
 fn draw_abyss_line_section(
     ui: &mut egui::Ui,
     title: &str,
@@ -4494,9 +4730,11 @@ fn draw_abyss_line_section(
     selected_target: &mut Option<String>,
     monster_textures: &HashMap<String, egui::TextureHandle>,
     dark_mode: bool,
-) {
+    prediction: Option<LinePredictionView>,
+) -> LinePredictionAction {
     const SLOT_COUNT: usize = 6;
     const GAP: f32 = 6.0;
+    let mut action = LinePredictionAction::None;
     egui::Frame::new()
         .fill(shadcn_card(dark_mode))
         .stroke(Stroke::new(1.0, shadcn_border(dark_mode)))
@@ -4516,6 +4754,9 @@ fn draw_abyss_line_section(
                         .size(11.0)
                         .color(ui.visuals().weak_text_color()),
                 );
+                if let Some(view) = prediction.as_ref() {
+                    action = draw_line_prediction_header(ui, view, dark_mode);
+                }
             });
             ui.add_space(5.0);
             ui.horizontal(|ui| {
@@ -4546,6 +4787,7 @@ fn draw_abyss_line_section(
                 }
             });
         });
+    action
 }
 
 fn draw_abyss_monster_chip(
