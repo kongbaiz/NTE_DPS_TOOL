@@ -1584,7 +1584,8 @@ fn enrich_hit_with_gameplay_effect(
     };
     hit.gameplay_effect_name = Some(effect_name.clone());
     hit.damage_name = resolve_damage_name(effect_name, skills, wooden_names);
-    if let Some(skill) = skills.get(effect_name) {
+    let skill = skills.get(effect_name);
+    if let Some(skill) = skill {
         hit.ability_name = skill.ability_name.clone();
         hit.attack_type = Some(skill.attack_type.clone());
     } else if let Some(attack_type) = hit
@@ -1596,7 +1597,10 @@ fn enrich_hit_with_gameplay_effect(
     } else {
         hit.attack_type = Some(classify_attack_type(None, effect_name, None));
     }
-    if is_player_outgoing_damage_effect(effect_name) {
+    if is_known_incoming_damage_effect(effect_name) {
+        hit.direction = "incoming".to_owned();
+    }
+    if is_known_outgoing_damage_effect(effect_name, skill) {
         hit.direction = "outgoing".to_owned();
     }
     if is_vehicle_physical_damage_effect(effect_name) {
@@ -1606,8 +1610,40 @@ fn enrich_hit_with_gameplay_effect(
     }
 }
 
-fn is_player_outgoing_damage_effect(effect_name: &str) -> bool {
-    effect_name.starts_with("GE_Player_") && effect_name.contains("_Damage")
+fn is_known_outgoing_damage_effect(effect_name: &str, skill: Option<&GameplayEffectSkill>) -> bool {
+    let effect_name_lower = effect_name.to_ascii_lowercase();
+    if effect_name_lower.starts_with("ge_mon_") {
+        return false;
+    }
+    if effect_name.starts_with("GE_Player_") && effect_name.contains("_Damage") {
+        return true;
+    }
+    if effect_name.starts_with("GE_ActorReaction_")
+        || effect_name.starts_with("GE_Reaction")
+        || effect_name.starts_with("Buff_Reaction_")
+    {
+        return true;
+    }
+    if effect_name_lower.contains("tenacity") && effect_name_lower.contains("damage") {
+        return true;
+    }
+    let damage_like_effect = effect_name_lower.contains("damage")
+        || effect_name_lower.contains("_dmg")
+        || effect_name_lower.ends_with("_dmg");
+    damage_like_effect
+        && skill.is_some_and(|skill| {
+            skill
+                .ability_name
+                .as_deref()
+                .is_some_and(|ability_name| ability_name.starts_with("GA_"))
+        })
+}
+
+fn is_known_incoming_damage_effect(effect_name: &str) -> bool {
+    let effect_name_lower = effect_name.to_ascii_lowercase();
+    effect_name_lower.starts_with("ge_mon_")
+        && !effect_name_lower.contains("steal")
+        && (effect_name_lower.contains("damage") || effect_name_lower.contains("_dmg"))
 }
 
 fn is_vehicle_physical_damage_effect(effect_name: &str) -> bool {
@@ -3063,6 +3099,148 @@ mod tests {
 
         assert_eq!(hit.direction, "outgoing");
         assert_eq!(hit.attack_type.as_deref(), Some("环合"));
+    }
+
+    #[test]
+    fn non_prefixed_player_skill_damage_effect_overrides_incoming_direction() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 3010,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(3010, "GE_Nanally010_Lv3_Damage".to_owned())]);
+        let skills = HashMap::from([(
+            "GE_Nanally010_Lv3_Damage".to_owned(),
+            GameplayEffectSkill {
+                damage_source_category: Some("A".to_owned()),
+                ability_name: Some("GA_Nanally_Melee".to_owned()),
+                attack_type: "普攻".to_owned(),
+            },
+        )]);
+        let mut hit = targetless_hit();
+        hit.direction = "incoming".to_owned();
+
+        enrich_hit_with_gameplay_effect(&mut hit, &effects, &names, &skills, &HashMap::new());
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("普攻"));
+    }
+
+    #[test]
+    fn reaction_damage_effect_overrides_incoming_direction() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 4010,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(4010, "GE_ActorReaction_1_Damage".to_owned())]);
+        let mut hit = targetless_hit();
+        hit.direction = "incoming".to_owned();
+
+        enrich_hit_with_gameplay_effect(
+            &mut hit,
+            &effects,
+            &names,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("创生花"));
+    }
+
+    #[test]
+    fn reaction_buff_effect_overrides_incoming_direction() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 4011,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(4011, "Buff_Reaction_4_new".to_owned())]);
+        let mut hit = targetless_hit();
+        hit.direction = "incoming".to_owned();
+
+        enrich_hit_with_gameplay_effect(
+            &mut hit,
+            &effects,
+            &names,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("黯星"));
+    }
+
+    #[test]
+    fn tenacity_damage_effect_overrides_incoming_direction() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 4012,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(4012, "Buff_Tenacity_damage".to_owned())]);
+        let mut hit = targetless_hit();
+        hit.direction = "incoming".to_owned();
+
+        enrich_hit_with_gameplay_effect(
+            &mut hit,
+            &effects,
+            &names,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("倾陷伤害"));
+    }
+
+    #[test]
+    fn monster_damage_effect_overrides_outgoing_direction_to_incoming() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 5010,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(5010, "GE_mon_25_act05_Dmg02_BP".to_owned())]);
+        let mut hit = targetless_hit();
+        hit.direction = "outgoing".to_owned();
+
+        enrich_hit_with_gameplay_effect(
+            &mut hit,
+            &effects,
+            &names,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
+
+        assert_eq!(hit.direction, "incoming");
+        assert_eq!(hit.attack_type.as_deref(), Some("其他"));
+    }
+
+    #[test]
+    fn monster_steal_damage_effect_does_not_force_incoming_direction() {
+        let effects = [ParsedGameplayEffect {
+            unique_index: 5010,
+            byte_offset: 0,
+            bit_shift: 0,
+        }];
+        let names = HashMap::from([(5010, "GE_mon_14_act05_Dmg01_Steal_BP".to_owned())]);
+        let skills = HashMap::from([(
+            "GE_mon_14_act05_Dmg01_Steal_BP".to_owned(),
+            GameplayEffectSkill {
+                damage_source_category: Some("E".to_owned()),
+                ability_name: Some("GA_Lacrimosa_Skill".to_owned()),
+                attack_type: "E技能".to_owned(),
+            },
+        )]);
+        let mut hit = targetless_hit();
+        hit.direction = "outgoing".to_owned();
+
+        enrich_hit_with_gameplay_effect(&mut hit, &effects, &names, &skills, &HashMap::new());
+
+        assert_eq!(hit.direction, "outgoing");
+        assert_eq!(hit.attack_type.as_deref(), Some("E技能"));
     }
 
     #[test]

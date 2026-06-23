@@ -8,9 +8,11 @@ use crate::parser::find_data_file;
 
 const ABYSS_MONSTER_STATIC_PATH: &str = "res/data/abyss/DT_MonsterStaticData_Abyss.json";
 const MONSTER_PACK_DATA_PATH: &str = "res/data/abyss/DT_MonsterPackData.json";
+const ABYSS_SEASON_NAMES_PATH: &str = "res/data/abyss/season_names_zh_cn.json";
 const LEGACY_ABYSS_MONSTER_STATIC_PATH: &str =
     "NTE_Assets/DataTable/Monster/DT_MonsterStaticData_Abyss.json";
 const LEGACY_MONSTER_PACK_DATA_PATH: &str = "NTE_Assets/DataTable/PackData/DT_MonsterPackData.json";
+const LEGACY_ABYSS_LOCALIZATION_PATH: &str = "NTE_Assets/Localization/zh-CN/game.json";
 type AbyssPackIdParts = (u32, u32, Option<u32>, Option<u32>, String);
 
 #[derive(Clone, Debug, Default)]
@@ -21,12 +23,14 @@ pub struct AbyssMonsterDataset {
 #[derive(Clone, Debug)]
 pub struct AbyssSeason {
     pub season: u32,
+    pub name: Option<String>,
     pub floors: Vec<AbyssFloor>,
 }
 
 #[derive(Clone, Debug)]
 pub struct AbyssFloor {
     pub season: u32,
+    pub season_name: Option<String>,
     pub floor: u32,
     pub monsters: Vec<AbyssMonsterEntry>,
 }
@@ -65,6 +69,7 @@ impl AbyssMonsterDataset {
         let pack_rows =
             load_rows(&pack_path).with_context(|| format!("无法读取 {}", pack_path.display()))?;
         let static_index = build_static_index(&static_rows);
+        let season_names = load_abyss_season_names();
         let mut floors = HashMap::<(u32, u32), Vec<AbyssMonsterEntry>>::new();
 
         for (pack_id, row) in &pack_rows {
@@ -98,8 +103,10 @@ impl AbyssMonsterDataset {
                     .then_with(|| left.name.cmp(&right.name))
                     .then_with(|| left.pack_id.cmp(&right.pack_id))
             });
+            let season_name = season_names.get(&season).cloned();
             grouped.entry(season).or_default().push(AbyssFloor {
                 season,
+                season_name,
                 floor,
                 monsters,
             });
@@ -109,7 +116,11 @@ impl AbyssMonsterDataset {
             .into_iter()
             .map(|(season, mut floors)| {
                 floors.sort_by_key(|floor| floor.floor);
-                AbyssSeason { season, floors }
+                AbyssSeason {
+                    season,
+                    name: season_names.get(&season).cloned(),
+                    floors,
+                }
             })
             .collect::<Vec<_>>();
         seasons.sort_by_key(|season| season.season);
@@ -155,6 +166,63 @@ fn load_rows(path: &PathBuf) -> Result<HashMap<String, Value>> {
         .iter()
         .map(|(key, row)| (key.clone(), row.clone()))
         .collect())
+}
+
+fn load_abyss_season_names() -> HashMap<u32, String> {
+    let Some(path) = find_data_file(ABYSS_SEASON_NAMES_PATH.as_ref())
+        .or_else(|| find_data_file(LEGACY_ABYSS_LOCALIZATION_PATH.as_ref()))
+    else {
+        return HashMap::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(document) = serde_json::from_str::<Value>(&text) else {
+        return HashMap::new();
+    };
+    parse_abyss_season_names(&document)
+}
+
+fn parse_abyss_season_names(document: &Value) -> HashMap<u32, String> {
+    let mut names = parse_plain_abyss_season_names(document);
+    collect_localized_abyss_season_names(document, &mut names);
+    names
+}
+
+fn parse_plain_abyss_season_names(document: &Value) -> HashMap<u32, String> {
+    let Some(object) = document.as_object() else {
+        return HashMap::new();
+    };
+    object
+        .iter()
+        .filter_map(|(key, value)| {
+            let season = key.parse::<u32>().ok()?;
+            let name = valid_abyss_season_name(value)?;
+            Some((season, name.to_owned()))
+        })
+        .collect()
+}
+
+fn collect_localized_abyss_season_names(document: &Value, names: &mut HashMap<u32, String>) {
+    let Some(object) = document.as_object() else {
+        return;
+    };
+    for (key, value) in object {
+        if let Some(season_text) = key
+            .strip_prefix("Abyss_")
+            .and_then(|value| value.strip_suffix("_name"))
+            && let Ok(season) = season_text.parse::<u32>()
+            && let Some(name) = valid_abyss_season_name(value)
+        {
+            names.insert(season, name.to_owned());
+        }
+        collect_localized_abyss_season_names(value, names);
+    }
+}
+
+fn valid_abyss_season_name(value: &Value) -> Option<&str> {
+    let name = value.as_str()?.trim();
+    (!name.is_empty() && !name.contains(',')).then_some(name)
 }
 
 fn build_static_index(rows: &HashMap<String, Value>) -> HashMap<String, StaticMonsterInfo> {
@@ -286,7 +354,9 @@ fn number(row: &Value, key: &str) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_static_index, lookup_static_monster, parse_abyss_pack_id};
+    use super::{
+        build_static_index, lookup_static_monster, parse_abyss_pack_id, parse_abyss_season_names,
+    };
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -339,5 +409,28 @@ mod tests {
             lookup_static_monster(&index, "mon_35_Red_BF").and_then(|info| info.name.as_deref()),
             Some("红锡兵(近战)")
         );
+    }
+
+    #[test]
+    fn parses_localized_abyss_season_names() {
+        let names = parse_abyss_season_names(&json!({
+            "Abyss_4_name": "晦冥环线",
+            "Abyss_5_name": "ST_AbyssBattle,Abyss_5_name",
+            "Buff_Abyss_Phase_004_name": "无星之夜"
+        }));
+
+        assert_eq!(names.get(&4).map(String::as_str), Some("晦冥环线"));
+        assert!(!names.contains_key(&5));
+    }
+
+    #[test]
+    fn parses_plain_abyss_season_names_resource() {
+        let names = parse_abyss_season_names(&json!({
+            "4": "晦冥环线",
+            "5": "晦冥环线"
+        }));
+
+        assert_eq!(names.get(&4).map(String::as_str), Some("晦冥环线"));
+        assert_eq!(names.get(&5).map(String::as_str), Some("晦冥环线"));
     }
 }

@@ -2893,6 +2893,7 @@ impl DpsApp {
             .map(|season| {
                 (
                     season.season,
+                    season.name.clone(),
                     season
                         .floors
                         .iter()
@@ -2903,7 +2904,7 @@ impl DpsApp {
             .collect::<Vec<_>>();
         let floor_count = season_nav
             .iter()
-            .map(|(_, floors)| floors.len())
+            .map(|(_, _, floors)| floors.len())
             .sum::<usize>();
         let selected_floor = self
             .abyss_overview
@@ -2988,35 +2989,15 @@ impl DpsApp {
         self.abyss_floor_contents(&mut content_ui, &floor, selected_monster.as_ref());
     }
 
-    /// Snapshot the current combat session into a prediction team. Returns `None`
+    /// Snapshot the current global combat session into a prediction team. Returns `None`
     /// when there is no measured output yet (DPS is zero), so callers can keep the
     /// "import data first" prompt.
     fn snapshot_current_team(&self) -> Option<TeamDps> {
-        let dps = self.state.dps();
-        if dps <= 0.0 {
-            return None;
-        }
-        // A single capture can contain both abyss teams; keep only the top
-        // TEAM_DPS_MAX_MEMBERS contributors so one slot is never overfilled.
-        let mut members: Vec<&CharacterStats> = self
-            .state
-            .stats
-            .values()
-            .filter(|stats| stats.char_id != 0 && stats.char_id < 900_000 && stats.damage > 0.0)
-            .collect();
-        members.sort_by(|left, right| right.damage.total_cmp(&left.damage));
-        members.truncate(TEAM_DPS_MAX_MEMBERS);
-        Some(TeamDps {
-            dps,
-            members: members
-                .into_iter()
-                .map(|stats| TeamDpsMember {
-                    id: stats.char_id,
-                    dps: stats.dps(),
-                    name: stats.name.clone(),
-                })
-                .collect(),
-        })
+        snapshot_team_from_stats(
+            self.state.dps(),
+            self.state.duration(),
+            self.state.stats.values(),
+        )
     }
 
     fn apply_line_prediction_action(&mut self, upper: bool, action: LinePredictionAction) {
@@ -3086,22 +3067,14 @@ impl DpsApp {
         self.status = "已导入 DPS 队伍数据".to_owned();
     }
 
-    /// Main-window "导出队伍数据": write a compact JSON with whatever teams exist
-    /// (current session as `single`, plus the abyss upper/lower if set). No
-    /// packets or per-hit data, latest DPS only, serialized without indentation.
+    /// Main-window "导出队伍数据": write a compact JSON with the current session as
+    /// `single` and real-time abyss halves as `upper`/`lower` when available.
+    /// Prediction-panel teams are kept as a fallback for manually imported data.
+    /// No packets or per-hit data, latest DPS only, serialized without indentation.
     fn export_team_dps(&mut self) {
-        let single = self.snapshot_current_team();
-        let upper = self.abyss_overview.upper_team.clone();
-        let lower = self.abyss_overview.lower_team.clone();
-        if single.is_none() && upper.is_none() && lower.is_none() {
+        let Some(export) = build_team_dps_export(&self.state, &self.abyss_overview) else {
             self.last_error = Some("没有可导出的队伍数据，请先抓包或设置深渊队伍".to_owned());
             return;
-        }
-        let export = TeamDpsExport {
-            version: TEAM_DPS_EXPORT_VERSION,
-            single,
-            upper,
-            lower,
         };
         let Ok(json) = serde_json::to_string(&export) else {
             self.last_error = Some("序列化队伍数据失败".to_owned());
@@ -3129,10 +3102,14 @@ impl DpsApp {
     ) {
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(format!("第 {} 期 · 第 {} 层", floor.season, floor.floor))
-                    .size(16.0)
-                    .strong()
-                    .color(shadcn_foreground(self.dark_mode)),
+                RichText::new(format!(
+                    "{} · 第 {} 层",
+                    abyss_season_label(floor.season, floor.season_name.as_deref()),
+                    floor.floor
+                ))
+                .size(16.0)
+                .strong()
+                .color(shadcn_foreground(self.dark_mode)),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(
@@ -4610,9 +4587,70 @@ fn abyss_overview_viewport_id() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("nte_abyss_overview_viewport")
 }
 
+fn snapshot_party_team(party: &PartyCombatState) -> Option<TeamDps> {
+    snapshot_team_from_stats(party.dps(), party.duration(), party.stats.values())
+}
+
+fn build_team_dps_export(
+    state: &CombatState,
+    abyss_overview: &AbyssOverviewState,
+) -> Option<TeamDpsExport> {
+    let single = snapshot_team_from_stats(state.dps(), state.duration(), state.stats.values());
+    let upper =
+        snapshot_party_team(&state.abyss.first_half).or_else(|| abyss_overview.upper_team.clone());
+    let lower =
+        snapshot_party_team(&state.abyss.second_half).or_else(|| abyss_overview.lower_team.clone());
+    if single.is_none() && upper.is_none() && lower.is_none() {
+        return None;
+    }
+    Some(TeamDpsExport {
+        version: TEAM_DPS_EXPORT_VERSION,
+        single,
+        upper,
+        lower,
+    })
+}
+
+fn snapshot_team_from_stats<'a>(
+    dps: f64,
+    duration: f64,
+    stats: impl IntoIterator<Item = &'a CharacterStats>,
+) -> Option<TeamDps> {
+    if dps <= 0.0 {
+        return None;
+    }
+    // A capture can contain non-party pseudo rows; keep only the top contributors
+    // and use the same duration as the exported team DPS for comparable numbers.
+    let shared_duration = duration.max(1.0);
+    let mut members: Vec<&CharacterStats> = stats
+        .into_iter()
+        .filter(|stats| stats.char_id != 0 && stats.char_id < 900_000 && stats.damage > 0.0)
+        .collect();
+    members.sort_by(|left, right| {
+        right
+            .damage
+            .total_cmp(&left.damage)
+            .then_with(|| left.char_id.cmp(&right.char_id))
+    });
+    members.truncate(TEAM_DPS_MAX_MEMBERS);
+    Some(TeamDps {
+        dps,
+        members: members
+            .into_iter()
+            .map(|stats| TeamDpsMember {
+                id: stats.char_id,
+                dps: stats.damage / shared_duration,
+                name: stats.name.clone(),
+            })
+            .collect(),
+    })
+}
+
+type AbyssSeasonNavEntry = (u32, Option<String>, Vec<(u32, usize)>);
+
 fn draw_abyss_floor_nav(
     ui: &mut egui::Ui,
-    season_nav: &[(u32, Vec<(u32, usize)>)],
+    season_nav: &[AbyssSeasonNavEntry],
     selected_season: &mut Option<u32>,
     selected_floor: &mut Option<u32>,
     selected_monster_pack_id: &mut Option<String>,
@@ -4629,12 +4667,13 @@ fn draw_abyss_floor_nav(
         .auto_shrink([false, false])
         .max_height(ui.available_height())
         .show(ui, |ui| {
-            for (season, floors) in season_nav {
+            for (season, name, floors) in season_nav {
                 let expanded = *expanded_season == Some(*season);
                 let selected_in_season = *selected_season == Some(*season);
                 let season_label = format!(
-                    "{} 第 {season} 期 ·  {} 层",
+                    "{} {} ·  {} 层",
                     if expanded { "▼" } else { "▶" },
+                    abyss_season_label(*season, name.as_deref()),
                     floors.len()
                 );
                 if ui
@@ -4672,6 +4711,12 @@ fn draw_abyss_floor_nav(
                 ui.add_space(4.0);
             }
         });
+}
+
+fn abyss_season_label(season: u32, name: Option<&str>) -> String {
+    name.filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("第 {season} 期"))
 }
 
 /// What a line section's prediction control was clicked to do this frame.
@@ -7863,12 +7908,13 @@ fn data_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        DpsApp, HitDetailFilter, QteTypeFilterSummary, UiConfigSavePlan, adjusted_cached_index,
-        cached_hit_row, compare_cached_team_hits, damage_digit_key_for_hit,
-        damage_digit_resource_path, damage_number_digits_text, follow_up_damage_digit_key_for_hit,
-        hit_detail_filter_available, hit_type_label, is_party_member_row, mixed_damage_digit_key,
-        qte_type_filter_label, reaction_text_key_for_hit,
-        reaction_text_key_from_trigger_attack_type, resolve_cached_hit, summarize_qte_type_filters,
+        AbyssOverviewState, DpsApp, HitDetailFilter, QteTypeFilterSummary, UiConfigSavePlan,
+        adjusted_cached_index, build_team_dps_export, cached_hit_row, compare_cached_team_hits,
+        damage_digit_key_for_hit, damage_digit_resource_path, damage_number_digits_text,
+        follow_up_damage_digit_key_for_hit, hit_detail_filter_available, hit_type_label,
+        is_party_member_row, mixed_damage_digit_key, qte_type_filter_label,
+        reaction_text_key_for_hit, reaction_text_key_from_trigger_attack_type, resolve_cached_hit,
+        snapshot_team_from_stats, summarize_qte_type_filters,
     };
     use crate::config::UiConfig;
     use crate::encrypted_ini::{
@@ -7876,7 +7922,7 @@ mod tests {
         encrypt_encrypted_ini_records, encrypt_encrypted_ini_text, encrypted_ini_search_matches,
         encrypted_ini_text_fingerprint, parse_encrypted_ini_text, pkcs7_pad,
     };
-    use crate::model::{CharacterInfo, CharacterStats, Hit};
+    use crate::model::{CharacterInfo, CharacterStats, CombatState, Hit, TeamDps, TeamDpsMember};
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD as BASE64;
     use std::collections::{HashMap, VecDeque};
@@ -8231,6 +8277,103 @@ mod tests {
             },
             &hits
         ));
+    }
+
+    #[test]
+    fn team_dps_snapshot_uses_team_duration_and_top_party_members() {
+        let stats = [
+            CharacterStats {
+                char_id: 1,
+                name: "一".to_owned(),
+                damage: 100.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 2,
+                name: "二".to_owned(),
+                damage: 200.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 3,
+                name: "三".to_owned(),
+                damage: 300.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 4,
+                name: "四".to_owned(),
+                damage: 400.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 5,
+                name: "五".to_owned(),
+                damage: 500.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 6,
+                name: "零伤害".to_owned(),
+                damage: 0.0,
+                ..Default::default()
+            },
+            CharacterStats {
+                char_id: 999_999,
+                name: "伪角色".to_owned(),
+                damage: 10_000.0,
+                ..Default::default()
+            },
+        ];
+
+        let team = snapshot_team_from_stats(150.0, 10.0, stats.iter()).unwrap();
+
+        assert_eq!(team.dps, 150.0);
+        assert_eq!(
+            team.members
+                .iter()
+                .map(|member| member.id)
+                .collect::<Vec<_>>(),
+            vec![5, 4, 3, 2]
+        );
+        assert_eq!(
+            team.members
+                .iter()
+                .map(|member| member.dps)
+                .collect::<Vec<_>>(),
+            vec![50.0, 40.0, 30.0, 20.0]
+        );
+    }
+
+    #[test]
+    fn team_dps_export_prefers_realtime_abyss_halves() {
+        let mut state = CombatState::default();
+        let mut upper_hit = hit_with_direction("outgoing");
+        upper_hit.char_id = 10;
+        upper_hit.char_name = "上行".to_owned();
+        upper_hit.damage = 100.0;
+        let mut lower_hit = hit_with_direction("outgoing");
+        lower_hit.char_id = 20;
+        lower_hit.char_name = "下行".to_owned();
+        lower_hit.damage = 200.0;
+        state.abyss.first_half.push_hit(upper_hit);
+        state.abyss.second_half.push_hit(lower_hit);
+
+        let mut overview = AbyssOverviewState::default();
+        overview.upper_team = Some(TeamDps {
+            dps: 1.0,
+            members: vec![TeamDpsMember {
+                id: 99,
+                dps: 1.0,
+                name: "旧预测".to_owned(),
+            }],
+        });
+
+        let export = build_team_dps_export(&state, &overview).unwrap();
+
+        assert!(export.single.is_none());
+        assert_eq!(export.upper.unwrap().members[0].id, 10);
+        assert_eq!(export.lower.unwrap().members[0].id, 20);
     }
 
     #[test]

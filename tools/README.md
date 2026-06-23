@@ -50,6 +50,7 @@ python tools/nte_asset_pipeline.py build --assets-root .\NTE_Assets --output-res
 - `res/data/skills/wooden_damage_descriptions.json`
 - `res/data/skills/ability_tips.json`
 - `res/data/reactions/reactions.json`
+- `res/data/abyss/season_names_zh_cn.json`
 - `res/data/asset_report.json`
 - `res/data/asset_manifest.json`
 

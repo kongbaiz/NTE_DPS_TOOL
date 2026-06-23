@@ -39,6 +39,10 @@ PROGRAM_TABLE_OUTPUTS = {
     "wooden_damage_descriptions": "data/skills/wooden_damage_descriptions.json",
 }
 
+ZH_CN_LOCALIZATION_PATH = "Localization/zh-CN/game.json"
+ABYSS_SEASON_NAMES_OUTPUT = "data/abyss/season_names_zh_cn.json"
+ABYSS_SEASON_NAME_RE = re.compile(r"^Abyss_(\d+)_name$")
+
 ATTRIBUTE_NAMES = {
     "CHARACTER_ELEMENT_TYPE_COSMOS": "光",
     "CHARACTER_ELEMENT_TYPE_NATURE": "灵",
@@ -364,6 +368,24 @@ def build_reaction_index(tables: dict[str, dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def build_abyss_season_names(localization: dict[str, Any]) -> dict[str, str]:
+    season_names: dict[str, str] = {}
+    collect_abyss_season_names(localization, season_names)
+    return dict(sorted(season_names.items(), key=lambda item: int(item[0])))
+
+
+def collect_abyss_season_names(value: Any, season_names: dict[str, str]) -> None:
+    if not isinstance(value, dict):
+        return
+    for key, child in value.items():
+        match = ABYSS_SEASON_NAME_RE.fullmatch(key)
+        if match and isinstance(child, str):
+            name = child.strip()
+            if name and "," not in name:
+                season_names[str(int(match.group(1)))] = name
+        collect_abyss_season_names(child, season_names)
+
+
 def list_difference(left: set[str], right: set[str]) -> list[str]:
     return sorted(left - right)
 
@@ -440,6 +462,7 @@ def build_resources(args: argparse.Namespace) -> int:
     existing_res = args.existing_res.resolve() if args.existing_res else None
     paths = validate_assets_root(assets_root)
     tables = {name: table_rows(path) for name, path in paths.items()}
+    localization_path = assets_root / ZH_CN_LOCALIZATION_PATH
 
     for table_name, relative_output in PROGRAM_TABLE_OUTPUTS.items():
         destination = output_res / relative_output
@@ -460,6 +483,12 @@ def build_resources(args: argparse.Namespace) -> int:
     reaction_index = build_reaction_index(tables)
     write_json(output_res / "data/skills/ability_tips.json", ability_index)
     write_json(output_res / "data/reactions/reactions.json", reaction_index)
+    abyss_season_names: dict[str, str] = {}
+    if localization_path.is_file():
+        localization = read_json(localization_path)
+        if isinstance(localization, dict):
+            abyss_season_names = build_abyss_season_names(localization)
+            write_json(output_res / ABYSS_SEASON_NAMES_OUTPUT, abyss_season_names)
 
     coverage = build_coverage(tables, characters_report, missing_attribute_images)
     write_json(output_res / "data/asset_report.json", coverage)
@@ -474,12 +503,23 @@ def build_resources(args: argparse.Namespace) -> int:
                 "sha256": file_sha256(path),
             }
             for name, path in paths.items()
-        },
+        }
+        | (
+            {
+                "zh_cn_localization": {
+                    "path": ZH_CN_LOCALIZATION_PATH,
+                    "sha256": file_sha256(localization_path),
+                }
+            }
+            if localization_path.is_file()
+            else {}
+        ),
         "outputs": {
             "program_tables": PROGRAM_TABLE_OUTPUTS,
             "characters": "data/characters/characters.json",
             "ability_tips": "data/skills/ability_tips.json",
             "reactions": "data/reactions/reactions.json",
+            "abyss_season_names": ABYSS_SEASON_NAMES_OUTPUT,
             "coverage_report": "data/asset_report.json",
         },
     }

@@ -693,13 +693,6 @@ fn damage_record_targets_declared_character(
     })
 }
 
-fn damage_record_has_incoming_state_flags(
-    record: &ParsedDamageRecord,
-    character_id: Option<u32>,
-) -> bool {
-    character_id.is_some() && record.state_flags == [0, 1, 0]
-}
-
 pub fn parse_damage_payload(
     data: &[u8],
     timestamp: f64,
@@ -736,8 +729,7 @@ pub fn parse_damage_payload(
             });
         let target_hp_after = (target_hp_before - damage).max(0.0);
         let targets_declared_character =
-            damage_record_targets_declared_character(&record, resolved_packet_char_id, evidence)
-                || damage_record_has_incoming_state_flags(&record, resolved_packet_char_id);
+            damage_record_targets_declared_character(&record, resolved_packet_char_id, evidence);
         let direction = if targets_declared_character {
             "incoming"
         } else if resolved_packet_char_id.is_some() {
@@ -1069,7 +1061,7 @@ mod character_tests {
     }
 
     #[test]
-    fn incoming_state_flags_mark_known_character_damage_as_incoming() {
+    fn incoming_state_flags_alone_do_not_mark_damage_as_incoming() {
         let payload = encoded_damage_record_with_flags(161.0, 5_388.0, 5_388.0, [0, 1, 0]);
         let evidence = [(1023, 6, 400)];
         let characters = HashMap::from([(
@@ -1086,8 +1078,31 @@ mod character_tests {
         let hits = parse_damage_payload(&payload, 1.0, Some(1023), None, &characters, &evidence);
 
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].direction, "incoming");
+        assert_eq!(hits[0].direction, "outgoing");
         assert_eq!(hits[0].char_id, 1023);
+    }
+
+    #[test]
+    fn incoming_state_flags_do_not_mark_enemy_hp_as_incoming() {
+        let payload =
+            encoded_damage_record_with_flags(4_107.0, 1_053_085.5, 1_284_149.0, [0, 1, 0]);
+        let evidence = [(1004, 1, 200)];
+        let characters = HashMap::from([(
+            1004,
+            CharacterInfo {
+                name_zh: "安魂曲".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: None,
+            },
+        )]);
+
+        let hits = parse_damage_payload(&payload, 1.0, Some(1004), None, &characters, &evidence);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].direction, "outgoing");
+        assert_eq!(hits[0].char_id, 1004);
     }
 
     #[test]
