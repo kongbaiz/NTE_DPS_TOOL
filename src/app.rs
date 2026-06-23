@@ -47,6 +47,11 @@ const UI_EVENT_BUDGET: Duration = Duration::from_millis(4);
 const DETAIL_CACHE_REFRESH_DELAY: Duration = Duration::from_millis(200);
 const MAX_PAUSED_EVENTS: usize = 50_000;
 const MAX_ENGINE_QUEUE_BACKLOG: usize = 20_000;
+/// Absolute ceiling on the engine→UI queue. Best-effort shedding within the per-frame budget is
+/// skipped while a detail list is scrolling, so without this the unbounded channel could grow
+/// indefinitely under a sustained flood. This cap is enforced every frame regardless of scrolling
+/// or pause state so memory stays bounded.
+const MAX_ENGINE_QUEUE_HARD_CAP: usize = 100_000;
 const MAX_DETAIL_HITS: usize = 10_000;
 const DETAIL_HIT_ROW_HEIGHT: f32 = 40.0;
 const TITLE_BAR_BUTTON_SIZE: egui::Vec2 = egui::vec2(28.0, 22.0);
@@ -954,7 +959,6 @@ impl DpsApp {
 
     fn current_ui_config(&self) -> UiConfig {
         UiConfig {
-            version: 1,
             opacity: self.opacity,
             dark_mode: self.dark_mode,
             always_on_top: self.always_on_top,
@@ -1105,24 +1109,14 @@ impl DpsApp {
                 let Ok(event) = self.receiver.try_recv() else {
                     break;
                 };
-                match event {
-                    EngineEvent::Packet(_) => {
-                        self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
-                    }
-                    EngineEvent::Hit(_)
-                    | EngineEvent::HitFollowUp(_)
-                    | EngineEvent::HitDamageCorrection(_)
-                    | EngineEvent::Abyss(_) => {
-                        if self.paused_events.len() == MAX_PAUSED_EVENTS {
-                            self.paused_events.pop_front();
-                        }
-                        self.paused_events.push_back(event);
-                    }
-                    EngineEvent::Status(_)
-                    | EngineEvent::Warning(_)
-                    | EngineEvent::Error(_)
-                    | EngineEvent::CaptureStopped => self.apply_engine_event(event),
-                }
+                self.buffer_paused_event(event);
+            }
+            // Bound the queue even if inflow outpaces the per-frame budget while paused.
+            while self.receiver.len() > MAX_ENGINE_QUEUE_HARD_CAP {
+                let Ok(event) = self.receiver.try_recv() else {
+                    break;
+                };
+                self.buffer_paused_event(event);
             }
             return;
         }
@@ -1141,6 +1135,46 @@ impl DpsApp {
         }
         if !scrolling && started.elapsed() < UI_EVENT_BUDGET {
             self.shed_event_backlog(started);
+        }
+        self.enforce_engine_queue_hard_cap();
+    }
+
+    /// Routes one event while paused: debug packets are dropped, hit-like events are buffered
+    /// (oldest dropped past the cap) for replay on resume, and lifecycle events apply immediately.
+    fn buffer_paused_event(&mut self, event: EngineEvent) {
+        match event {
+            EngineEvent::Packet(_) => {
+                self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
+            }
+            EngineEvent::Hit(_)
+            | EngineEvent::HitFollowUp(_)
+            | EngineEvent::HitDamageCorrection(_)
+            | EngineEvent::Abyss(_) => {
+                if self.paused_events.len() == MAX_PAUSED_EVENTS {
+                    self.paused_events.pop_front();
+                }
+                self.paused_events.push_back(event);
+            }
+            EngineEvent::Status(_)
+            | EngineEvent::Warning(_)
+            | EngineEvent::Error(_)
+            | EngineEvent::CaptureStopped => self.apply_engine_event(event),
+        }
+    }
+
+    /// Absolute ceiling on the engine→UI queue so it can never grow without bound — e.g. a sustained
+    /// packet flood while the user keeps a detail list scrolling (which otherwise skips shedding).
+    /// Dropping debug packets is O(1); the rare non-packet events are applied so stats stay correct.
+    fn enforce_engine_queue_hard_cap(&mut self) {
+        while self.receiver.len() > MAX_ENGINE_QUEUE_HARD_CAP {
+            let Ok(event) = self.receiver.try_recv() else {
+                break;
+            };
+            if matches!(event, EngineEvent::Packet(_)) {
+                self.dropped_debug_packets = self.dropped_debug_packets.saturating_add(1);
+            } else {
+                self.apply_engine_event(event);
+            }
         }
     }
 
@@ -4185,17 +4219,33 @@ enum UiConfigSavePlan {
     Save(UiConfig),
 }
 
+/// System CJK fonts tried in order. The whole UI is Chinese, so without a CJK face every label
+/// renders as tofu. Microsoft YaHei is the preferred match; the rest are fallbacks that ship on
+/// common Windows editions (including ones where YaHei was removed or replaced).
+const CJK_FONT_CANDIDATES: &[&str] = &[
+    "msyh.ttc",   // Microsoft YaHei (Win 8+)
+    "msyh.ttf",   // Microsoft YaHei (older layout)
+    "msyhl.ttc",  // Microsoft YaHei Light
+    "simsun.ttc", // SimSun / NSimSun
+    "simhei.ttf", // SimHei
+    "Deng.ttf",   // DengXian
+];
+
 fn install_fonts(ctx: &egui::Context) {
     let windows_dir = std::env::var_os("SystemRoot")
         .or_else(|| std::env::var_os("WINDIR"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    let Ok(bytes) = std::fs::read(windows_dir.join("Fonts").join("msyh.ttc")) else {
+    let fonts_dir = windows_dir.join("Fonts");
+    let Some(bytes) = CJK_FONT_CANDIDATES
+        .iter()
+        .find_map(|name| std::fs::read(fonts_dir.join(name)).ok())
+    else {
         return;
     };
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "microsoft-yahei".to_owned(),
+        "system-cjk".to_owned(),
         egui::FontData::from_owned(bytes).into(),
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
@@ -4203,7 +4253,7 @@ fn install_fonts(ctx: &egui::Context) {
             .families
             .entry(family)
             .or_default()
-            .insert(0, "microsoft-yahei".to_owned());
+            .insert(0, "system-cjk".to_owned());
     }
     ctx.set_fonts(fonts);
 }
@@ -7815,14 +7865,12 @@ mod tests {
     fn ui_config_save_plan_debounces_first_dirty_state() {
         let now = Instant::now();
         let saved = UiConfig {
-            version: 1,
             opacity: 0.8,
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
         };
         let current = UiConfig {
-            version: 1,
             opacity: 0.9,
             dark_mode: false,
             always_on_top: true,
@@ -7841,14 +7889,12 @@ mod tests {
     fn ui_config_save_plan_retries_when_unmodified_pending_expires() {
         let now = Instant::now();
         let saved = UiConfig {
-            version: 1,
             opacity: 0.8,
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
         };
         let current = UiConfig {
-            version: 1,
             opacity: 0.9,
             dark_mode: false,
             always_on_top: true,

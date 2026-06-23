@@ -480,14 +480,11 @@ fn parse_damage_record_at(
 }
 
 pub fn parse_damage_records(data: &[u8]) -> Vec<ParsedDamageRecord> {
+    // Each (byte_offset, bit_shift) pair is visited exactly once, so no dedup set is needed.
     let mut records = Vec::new();
-    let mut seen = HashSet::new();
     for byte_offset in 0..data.len() {
         for bit_shift in 0..8_u8 {
-            let Some(record) = parse_damage_record_at(data, byte_offset, bit_shift) else {
-                continue;
-            };
-            if seen.insert((byte_offset, bit_shift)) {
+            if let Some(record) = parse_damage_record_at(data, byte_offset, bit_shift) {
                 records.push(record);
             }
         }

@@ -14,7 +14,7 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::Local;
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
 use libloading::Library;
 use pcap_file::DataLink;
 use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
@@ -46,6 +46,17 @@ const MAX_IGNORABLE_BINARY_PACKET_LEN: usize = 96;
 const UNREADABLE_PROTOCOL_TEXT: &str = "未解析到可读协议文本";
 const CAPTURE_SNAPLEN: u32 = 65_535;
 const RAW_CAPTURE_FLUSH_INTERVAL: u64 = 256;
+/// Bounded queue between the acquisition thread and the parser thread. Large enough that realistic
+/// game traffic never fills it, so a parse latency spike no longer stalls `pcap_next_ex` (which
+/// would let the Npcap kernel buffer overflow and drop frames). If it ever fills under pathological
+/// load the frame is dropped for live parsing only — the raw frame is already written to the
+/// PCAPNG and stays recoverable via Debug replay.
+const CAPTURE_FRAME_QUEUE_CAPACITY: usize = 16_384;
+
+struct CaptureFrame {
+    data: Vec<u8>,
+    timestamp: f64,
+}
 
 #[repr(C)]
 struct PcapIf {
@@ -630,6 +641,7 @@ fn length_prefixed_identifier_score(value: &str) -> usize {
 
 fn extract_length_prefixed_identifiers(data: &[u8]) -> Vec<(usize, String)> {
     let mut found = Vec::new();
+    let mut seen = HashSet::new();
     for offset in 0..data.len().saturating_sub(8) {
         let Some(length_bytes) = data.get(offset..offset + 4) else {
             continue;
@@ -648,7 +660,7 @@ fn extract_length_prefixed_identifiers(data: &[u8]) -> Vec<(usize, String)> {
             continue;
         };
         let score = length_prefixed_identifier_score(value);
-        if score > 0 && !found.iter().any(|(_, item)| item == value) {
+        if score > 0 && seen.insert(value.to_owned()) {
             found.push((score, value.to_owned()));
         }
     }
@@ -657,10 +669,11 @@ fn extract_length_prefixed_identifiers(data: &[u8]) -> Vec<(usize, String)> {
 
 fn decode_payload_text(data: &[u8]) -> String {
     let mut found = Vec::<(usize, String)>::new();
+    let mut seen = HashSet::new();
     for bit_shift in 0..8 {
         let shifted = decode_shifted_payload(data, bit_shift);
         for (score, value) in extract_length_prefixed_identifiers(&shifted) {
-            if !found.iter().any(|(_, item)| item == &value) {
+            if seen.insert(value.clone()) {
                 found.push((score, value));
             }
         }
@@ -673,7 +686,7 @@ fn decode_payload_text(data: &[u8]) -> String {
             };
             let value = value.trim();
             let score = protocol_text_score(value);
-            if score == 0 || found.iter().any(|(_, item)| item == value) {
+            if score == 0 || !seen.insert(value.to_owned()) {
                 continue;
             }
             found.push((score, value.to_owned()));
@@ -1959,7 +1972,7 @@ pub fn start_capture(
             filter: &filter,
             include_incoming,
             use_server_damage_calibration,
-            characters: &characters,
+            characters,
             sender: &sender,
             stop: &thread_stop,
             raw_capture: &thread_raw_capture,
@@ -1983,10 +1996,39 @@ struct CaptureRunConfig<'a> {
     filter: &'a str,
     include_incoming: bool,
     use_server_damage_calibration: bool,
-    characters: &'a HashMap<u32, CharacterInfo>,
+    characters: Arc<HashMap<u32, CharacterInfo>>,
     sender: &'a Sender<EngineEvent>,
     stop: &'a AtomicBool,
     raw_capture: &'a RawCaptureBuffer,
+}
+
+/// Parser thread body: drains decoded frames off the bounded queue and runs the stable decode
+/// pipeline, fully decoupled from packet acquisition. It owns its own `PacketDecoder` and exits
+/// once the acquisition thread drops the frame sender, flushing any deferred ambiguous hits.
+fn run_parser(
+    frames: Receiver<CaptureFrame>,
+    local_ip: Option<Ipv4Addr>,
+    include_incoming: bool,
+    use_server_damage_calibration: bool,
+    characters: Arc<HashMap<u32, CharacterInfo>>,
+    sender: Sender<EngineEvent>,
+) {
+    let mut decoder = PacketDecoder::with_server_damage_calibration(use_server_damage_calibration);
+    if let Some(warning) = decoder.resource_warning() {
+        let _ = sender.send(EngineEvent::Warning(warning));
+    }
+    while let Ok(frame) = frames.recv() {
+        decoder.process_ethernet_frame(
+            &frame.data,
+            frame.timestamp,
+            local_ip,
+            include_incoming,
+            &characters,
+            &sender,
+        );
+    }
+    let pending_hits = decoder.take_all_ambiguous_hits();
+    decoder.emit_hits(pending_hits, &characters, &sender);
 }
 
 fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
@@ -2059,11 +2101,26 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
             raw_capture_status
         )));
 
-        let mut decoder =
-            PacketDecoder::with_server_damage_calibration(use_server_damage_calibration);
-        if let Some(warning) = decoder.resource_warning() {
-            let _ = sender.send(EngineEvent::Warning(warning));
-        }
+        // Decode on a dedicated thread so a parse latency spike cannot stall the acquisition loop
+        // below. The acquisition thread only reads frames, writes the raw PCAPNG, and forwards a
+        // copy onto the bounded queue.
+        let (frame_sender, frame_receiver) = bounded::<CaptureFrame>(CAPTURE_FRAME_QUEUE_CAPACITY);
+        let parser_thread = {
+            let characters = Arc::clone(&characters);
+            let sender = sender.clone();
+            thread::spawn(move || {
+                run_parser(
+                    frame_receiver,
+                    local_ip,
+                    include_incoming,
+                    use_server_damage_calibration,
+                    characters,
+                    sender,
+                );
+            })
+        };
+
+        let mut loop_result = Ok(());
         while !stop.load(Ordering::Relaxed) {
             let mut header = ptr::null();
             let mut packet_data = ptr::null();
@@ -2073,7 +2130,8 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
             }
             if result < 0 {
                 let error = c_string(get_err(handle.as_ptr()));
-                return Err(format!("failed to read packet: {error}"));
+                loop_result = Err(format!("failed to read packet: {error}"));
+                break;
             }
             if header.is_null() || packet_data.is_null() {
                 continue;
@@ -2090,17 +2148,20 @@ fn run_capture(config: CaptureRunConfig<'_>) -> Result<(), String> {
                 header_ref.ts.tv_usec.clamp(0, 999_999) as u32 * 1_000,
             );
             raw_capture.push(raw_timestamp, header_ref.len, packet);
-            decoder.process_ethernet_frame(
-                packet,
+            match frame_sender.try_send(CaptureFrame {
+                data: packet.to_vec(),
                 timestamp,
-                local_ip,
-                include_incoming,
-                characters,
-                sender,
-            );
+            }) {
+                // Queue full: drop for live parsing only. The raw frame is already persisted above
+                // and remains recoverable via Debug replay, so acquisition keeps draining Npcap.
+                Ok(()) | Err(TrySendError::Full(_)) => {}
+                // Parser thread ended unexpectedly; nothing left to feed.
+                Err(TrySendError::Disconnected(_)) => break,
+            }
         }
-        let pending_hits = decoder.take_all_ambiguous_hits();
-        decoder.emit_hits(pending_hits, characters, sender);
+        drop(frame_sender);
+        let _ = parser_thread.join();
+        loop_result?;
     }
     Ok(())
 }

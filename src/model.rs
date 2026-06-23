@@ -5,6 +5,11 @@ const ABYSS_RESTART_STAGE_WINDOW_SECONDS: f64 = 10.0;
 use serde::{Deserialize, Serialize};
 
 const MAX_COMBAT_HITS: usize = 50_000;
+/// Low-water mark for trimming. Once the hit window exceeds `MAX_COMBAT_HITS` we trim down to this
+/// in one pass and rebuild aggregates once, instead of popping a single hit and rebuilding on every
+/// subsequent push. This turns the O(n) rebuild from per-hit into amortized O(1) at the cap while
+/// keeping memory bounded by `MAX_COMBAT_HITS`.
+const COMBAT_HITS_RETAIN: usize = 46_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterInfo {
@@ -317,12 +322,10 @@ impl PartyCombatState {
         );
         self.hits.push_back(hit);
         self.hits_generation = self.hits_generation.wrapping_add(1);
-        let mut trimmed = false;
-        while self.hits.len() > MAX_COMBAT_HITS {
-            self.hits.pop_front();
-            trimmed = true;
-        }
-        if trimmed {
+        if self.hits.len() > MAX_COMBAT_HITS {
+            while self.hits.len() > COMBAT_HITS_RETAIN {
+                self.hits.pop_front();
+            }
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -535,12 +538,10 @@ impl CombatState {
         );
         self.hits.push_back(hit);
         self.hits_generation = self.hits_generation.wrapping_add(1);
-        let mut trimmed = false;
-        while self.hits.len() > MAX_COMBAT_HITS {
-            self.hits.pop_front();
-            trimmed = true;
-        }
-        if trimmed {
+        if self.hits.len() > MAX_COMBAT_HITS {
+            while self.hits.len() > COMBAT_HITS_RETAIN {
+                self.hits.pop_front();
+            }
             rebuild_combat_totals(
                 &self.hits,
                 &mut self.stats,
@@ -725,7 +726,8 @@ mod tests {
         total_damage_taken: f64,
         duration: f64,
     ) {
-        assert_eq!(hits.len(), MAX_COMBAT_HITS);
+        assert!(hits.len() <= MAX_COMBAT_HITS);
+        assert!(hits.len() >= COMBAT_HITS_RETAIN);
 
         let expected_damage: f64 = hits
             .iter()

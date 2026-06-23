@@ -9,7 +9,6 @@ const CONFIG_FILENAME: &str = "config.json";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
-    pub version: u32,
     pub opacity: f32,
     pub dark_mode: bool,
     pub always_on_top: bool,
@@ -19,7 +18,6 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            version: 1,
             opacity: 0.92,
             dark_mode: false,
             always_on_top: true,
@@ -30,7 +28,6 @@ impl Default for UiConfig {
 
 impl UiConfig {
     pub fn sanitized(mut self) -> Self {
-        self.version = 1;
         self.opacity = if self.opacity.is_finite() {
             self.opacity.clamp(0.35, 1.0)
         } else {
@@ -70,12 +67,10 @@ pub fn load() -> (UiConfig, Option<String>) {
 }
 
 pub fn save(path: &Path, config: &UiConfig) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
     let text = serde_json::to_string_pretty(&config.clone().sanitized())
         .map_err(|error| error.to_string())?;
-    fs::write(path, format!("{text}\n")).map_err(|error| error.to_string())
+    // Atomic write so a crash mid-write cannot leave a truncated/corrupt config.json.
+    crate::io_util::atomic_write_text(path, &format!("{text}\n"))
 }
 
 #[cfg(test)]
