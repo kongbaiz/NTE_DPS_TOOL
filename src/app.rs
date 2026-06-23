@@ -6020,7 +6020,7 @@ fn damage_digit_key_for_hit<'a>(
     }
 
     attack_type
-        .and_then(|attack_type| mixed_damage_digit_key(attack_type, source_attribute?))
+        .and_then(|attack_type| mixed_damage_digit_key(attack_type, source_attribute))
         .or(source_attribute)
 }
 
@@ -6028,50 +6028,43 @@ fn follow_up_damage_digit_key_for_hit(hit: &crate::model::Hit) -> Option<&str> {
     let source_attribute = hit.follow_up_damage_attribute.as_deref()?;
     hit.follow_up_attack_type
         .as_deref()
-        .and_then(|attack_type| mixed_damage_digit_key(attack_type, source_attribute))
+        .and_then(|attack_type| mixed_damage_digit_key(attack_type, Some(source_attribute)))
         .or(Some(source_attribute))
 }
 
-fn mixed_damage_digit_key(attack_type: &str, source_attribute: &str) -> Option<&'static str> {
+fn mixed_damage_digit_key(
+    attack_type: &str,
+    source_attribute: Option<&str>,
+) -> Option<&'static str> {
     let reaction = attack_type.strip_prefix("环合·").unwrap_or(attack_type);
     match reaction {
-        "创生" | "创生花" => match source_attribute {
-            "光" => Some("Guangling_G"),
-            "灵" => Some("Guangling_L"),
-            _ => None,
-        },
-        "覆纹" => match source_attribute {
-            "灵" => Some("lingzhou_L"),
-            "咒" => Some("lingzhou_Z"),
-            _ => None,
-        },
-        "延滞" => match source_attribute {
+        // 异能环合的伤害跳字固定为触发侧属性的字系，与该伤害最终记给环合双方
+        // 哪一名角色无关。每个反应都只用属性对里的一侧：
+        //   创生 (光灵) -> 恒为 Guangling_G（光），不再出现 Guangling_L
+        //   覆纹 (灵咒) -> 恒为 lingzhou_L（灵），不再出现 lingzhou_Z
+        //   黯星 (暗魂) -> 恒为 Anhun_A（暗），不再出现 Anhun_H
+        //   浊燃 (咒暗) -> 恒为 Zhouan_A（暗），不再出现 Zhouan_Z
+        "创生" | "创生花" => Some("Guangling_G"),
+        "覆纹" => Some("lingzhou_L"),
+        "黯星" => Some("Anhun_A"),
+        "浊燃" => Some("Zhouan_A"),
+        "延滞" => match source_attribute? {
             "光" => Some("Guangxiang_G"),
             "相" => Some("Guangxiang_X"),
             _ => None,
         },
-        "黯星" => match source_attribute {
-            "暗" => Some("Anhun_A"),
-            "魂" => Some("Anhun_H"),
-            _ => None,
-        },
-        "浊燃" => match source_attribute {
-            "暗" => Some("Zhouan_A"),
-            "咒" => Some("Zhouan_Z"),
-            _ => None,
-        },
-        "浸染" | "魂相" => match source_attribute {
+        "浸染" | "魂相" => match source_attribute? {
             "魂" => Some("Hunxiang_H"),
             "相" => Some("Hunxiang_X"),
             _ => None,
         },
-        "盈蓄" => match source_attribute {
+        "盈蓄" => match source_attribute? {
             "光" => Some("Guangling_G"),
             "灵" => Some("Guangling_L"),
             "相" => Some("Guangxiang_X"),
             _ => None,
         },
-        "失谐" => match source_attribute {
+        "失谐" => match source_attribute? {
             "暗" => Some("Anhun_A"),
             "魂" => Some("Anhun_H"),
             "咒" => Some("Zhouan_Z"),
@@ -7476,9 +7469,9 @@ mod tests {
         DpsApp, HitDetailFilter, QteTypeFilterSummary, UiConfigSavePlan, adjusted_cached_index,
         cached_hit_row, compare_cached_team_hits, damage_digit_key_for_hit,
         damage_digit_resource_path, damage_number_digits_text, follow_up_damage_digit_key_for_hit,
-        hit_detail_filter_available, hit_type_label, is_party_member_row, qte_type_filter_label,
-        reaction_text_key_for_hit, reaction_text_key_from_trigger_attack_type, resolve_cached_hit,
-        summarize_qte_type_filters,
+        hit_detail_filter_available, hit_type_label, is_party_member_row, mixed_damage_digit_key,
+        qte_type_filter_label, reaction_text_key_for_hit,
+        reaction_text_key_from_trigger_attack_type, resolve_cached_hit, summarize_qte_type_filters,
     };
     use crate::config::UiConfig;
     use crate::encrypted_ini::{
@@ -7735,11 +7728,12 @@ mod tests {
         hit.attack_type = Some("倾陷伤害".to_owned());
         assert_eq!(damage_digit_key_for_hit(&hit, &characters), Some("真实"));
 
+        // 覆纹跳字固定为灵字系（lingzhou_L），即便伤害记给的是咒角色。
         hit.attack_type = Some("覆纹".to_owned());
         hit.damage_attribute = Some("咒".to_owned());
         assert_eq!(
             damage_digit_key_for_hit(&hit, &characters),
-            Some("lingzhou_Z")
+            Some("lingzhou_L")
         );
 
         hit.attack_type = Some("创生花".to_owned());
@@ -7760,7 +7754,35 @@ mod tests {
         hit.direction = "outgoing".to_owned();
         hit.follow_up_attack_type = Some("覆纹".to_owned());
         hit.follow_up_damage_attribute = Some("咒".to_owned());
-        assert_eq!(follow_up_damage_digit_key_for_hit(&hit), Some("lingzhou_Z"));
+        assert_eq!(follow_up_damage_digit_key_for_hit(&hit), Some("lingzhou_L"));
+    }
+
+    #[test]
+    fn reaction_damage_digit_key_locks_to_trigger_side_series() {
+        // 异能环合伤害的跳字固定为触发侧属性字系，无论记给环合双方哪一侧，
+        // 也无论是否解析出 source_attribute。
+        for attribute in [None, Some("光"), Some("灵")] {
+            assert_eq!(
+                mixed_damage_digit_key("创生花", attribute),
+                Some("Guangling_G")
+            );
+            assert_eq!(
+                mixed_damage_digit_key("环合·创生", attribute),
+                Some("Guangling_G")
+            );
+        }
+        for attribute in [None, Some("灵"), Some("咒")] {
+            assert_eq!(
+                mixed_damage_digit_key("覆纹", attribute),
+                Some("lingzhou_L")
+            );
+        }
+        for attribute in [None, Some("暗"), Some("魂")] {
+            assert_eq!(mixed_damage_digit_key("黯星", attribute), Some("Anhun_A"));
+        }
+        for attribute in [None, Some("暗"), Some("咒")] {
+            assert_eq!(mixed_damage_digit_key("浊燃", attribute), Some("Zhouan_A"));
+        }
     }
 
     #[test]

@@ -1673,7 +1673,10 @@ fn reattribute_orphan_reaction(
     timestamp: f64,
     characters: &HashMap<u32, CharacterInfo>,
 ) {
-    let Some(valid_attributes) = hit.attack_type.as_deref().and_then(reaction_owner_attributes)
+    let Some(valid_attributes) = hit
+        .attack_type
+        .as_deref()
+        .and_then(reaction_owner_attributes)
     else {
         return;
     };
@@ -1801,12 +1804,7 @@ impl PacketDecoder {
                     hit.attack_type = Some(format!("环合·{reaction_type}"));
                 }
             }
-            reattribute_orphan_reaction(
-                hit,
-                &self.character_declarations,
-                timestamp,
-                characters,
-            );
+            reattribute_orphan_reaction(hit, &self.character_declarations, timestamp, characters);
             self.follow_up_damage.observe_fuwen_trigger_hit(hit);
         }
         let prepared_hits =
