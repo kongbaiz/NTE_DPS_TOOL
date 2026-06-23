@@ -2659,7 +2659,12 @@ impl DpsApp {
                 .with_min_inner_size([760.0, 460.0])
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                .with_transparent(true)
+                // Deliberately NOT transparent: a transparent + always-on-top
+                // immediate viewport crashes with a native access violation
+                // (STATUS_ACCESS_VIOLATION, no Rust panic) when resized on
+                // Windows — see egui #4061 / #4091. The window is painted with an
+                // opaque full-rect background and DWM still rounds the corners
+                // (DWMWCP_ROUND), so dropping transparency is visually a no-op.
                 .with_resizable(true),
             |ctx, _class| {
                 if !self.team_hit_detail_corner_applied {
@@ -2770,7 +2775,12 @@ impl DpsApp {
                 .with_min_inner_size([820.0, 560.0])
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                .with_transparent(true)
+                // Deliberately NOT transparent: a transparent + always-on-top
+                // immediate viewport crashes with a native access violation
+                // (STATUS_ACCESS_VIOLATION, no Rust panic) when resized on
+                // Windows — see egui #4061 / #4091. The window is painted with an
+                // opaque full-rect background and DWM still rounds the corners
+                // (DWMWCP_ROUND), so dropping transparency is visually a no-op.
                 .with_resizable(true),
             |ctx, _class| {
                 if !self.abyss_overview_corner_applied {
@@ -3103,7 +3113,12 @@ impl DpsApp {
                 .with_min_inner_size([860.0, 560.0])
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                .with_transparent(true)
+                // Deliberately NOT transparent: a transparent + always-on-top
+                // immediate viewport crashes with a native access violation
+                // (STATUS_ACCESS_VIOLATION, no Rust panic) when resized on
+                // Windows — see egui #4061 / #4091. The window is painted with an
+                // opaque full-rect background and DWM still rounds the corners
+                // (DWMWCP_ROUND), so dropping transparency is visually a no-op.
                 .with_resizable(true),
             |ctx, _class| {
                 if !self.hit_detail_corner_applied {
@@ -3344,7 +3359,12 @@ impl DpsApp {
                 .with_min_inner_size([720.0, 480.0])
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                .with_transparent(true)
+                // Deliberately NOT transparent: a transparent + always-on-top
+                // immediate viewport crashes with a native access violation
+                // (STATUS_ACCESS_VIOLATION, no Rust panic) when resized on
+                // Windows — see egui #4061 / #4091. The window is painted with an
+                // opaque full-rect background and DWM still rounds the corners
+                // (DWMWCP_ROUND), so dropping transparency is visually a no-op.
                 .with_resizable(true),
             |ctx, _class| {
                 if !self.debug_corner_applied {
