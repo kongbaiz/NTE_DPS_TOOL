@@ -6036,9 +6036,15 @@ fn mixed_damage_digit_key(
     attack_type: &str,
     source_attribute: Option<&str>,
 ) -> Option<&'static str> {
-    let reaction = attack_type.strip_prefix("环合·").unwrap_or(attack_type);
-    match reaction {
-        // 异能环合的伤害跳字固定为触发侧属性的字系，与该伤害最终记给环合双方
+    // 触发环合的那一下伤害（attack_type 形如 "环合·创生"）是造成伤害角色自己打出的
+    // 攻击，跳字应使用该角色的属性字系，而不是环合反应字系。这里返回 None，让调用方
+    // 回退到 source_attribute（造成伤害角色的属性）。只有环合之后产生的反应伤害本体
+    // （attack_type 为不带 "环合·" 前缀的反应名）才使用下面固定的反应字系。
+    if attack_type.starts_with("环合·") {
+        return None;
+    }
+    match attack_type {
+        // 环合反应伤害本体的跳字固定为触发侧属性的字系，与该伤害最终记给环合双方
         // 哪一名角色无关。每个反应都只用属性对里的一侧：
         //   创生 (光灵) -> 恒为 Guangling_G（光），不再出现 Guangling_L
         //   覆纹 (灵咒) -> 恒为 lingzhou_L（灵），不再出现 lingzhou_Z
@@ -7758,16 +7764,12 @@ mod tests {
     }
 
     #[test]
-    fn reaction_damage_digit_key_locks_to_trigger_side_series() {
-        // 异能环合伤害的跳字固定为触发侧属性字系，无论记给环合双方哪一侧，
-        // 也无论是否解析出 source_attribute。
+    fn reaction_burst_digit_key_locks_to_trigger_side_series() {
+        // 环合反应伤害本体（不带 "环合·" 前缀）的跳字固定为触发侧属性字系，
+        // 无论记给环合双方哪一侧，也无论是否解析出 source_attribute。
         for attribute in [None, Some("光"), Some("灵")] {
             assert_eq!(
                 mixed_damage_digit_key("创生花", attribute),
-                Some("Guangling_G")
-            );
-            assert_eq!(
-                mixed_damage_digit_key("环合·创生", attribute),
                 Some("Guangling_G")
             );
         }
@@ -7783,6 +7785,33 @@ mod tests {
         for attribute in [None, Some("暗"), Some("咒")] {
             assert_eq!(mixed_damage_digit_key("浊燃", attribute), Some("Zhouan_A"));
         }
+    }
+
+    #[test]
+    fn reaction_trigger_hit_digit_key_uses_caster_attribute() {
+        // 触发环合的那一下伤害（"环合·xxx"）走造成伤害角色自身属性字系，
+        // mixed_damage_digit_key 返回 None，由调用方回退到 source_attribute。
+        for trigger in ["环合·创生", "环合·黯星", "环合·浊燃", "环合·覆纹"] {
+            assert_eq!(mixed_damage_digit_key(trigger, Some("灵")), None);
+        }
+        // 端到端：娜娜莉（灵）触发创生的那一下，跳字应为灵字系而非创生字系。
+        let characters = HashMap::from([(
+            1010,
+            CharacterInfo {
+                name_zh: "娜娜莉".to_owned(),
+                name_en: String::new(),
+                color: None,
+                avatar: None,
+                attribute: Some("灵".to_owned()),
+            },
+        )]);
+        let mut trigger_hit = hit_with_direction("outgoing");
+        trigger_hit.char_id = 1010;
+        trigger_hit.attack_type = Some("环合·创生".to_owned());
+        assert_eq!(
+            damage_digit_key_for_hit(&trigger_hit, &characters),
+            Some("灵")
+        );
     }
 
     #[test]
