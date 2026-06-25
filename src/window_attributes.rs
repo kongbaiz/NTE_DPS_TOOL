@@ -110,15 +110,6 @@ pub(crate) fn apply_window_attributes(
         );
 
         if config.hud_overlay {
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_NCRENDERING_POLICY as u32,
-                std::ptr::from_ref(&DWMNCRP_DISABLED).cast(),
-                std::mem::size_of_val(&DWMNCRP_DISABLED) as u32,
-            );
-        }
-
-        if config.hud_overlay {
             // HUD transparency comes from the transparent swapchain/clear colour,
             // not a colour key. Force the uniform-alpha path to re-run when we
             // leave HUD mode.
