@@ -51,9 +51,12 @@ var targets = options.Targets.Count > 0
 var report = new JObject
 {
     ["generated_at"] = DateTimeOffset.UtcNow.ToString("O"),
-    ["paks_directory"] = paksDirectory,
+    ["paks_directory_name"] = Path.GetFileName(paksDirectory),
     ["game"] = EGame.GAME_NevernessToEverness.ToString(),
-    ["usmap"] = options.UsmapPath is null ? null : Path.GetFullPath(options.UsmapPath)
+    ["usmap_file"] = options.UsmapPath is null
+        ? null
+        : Path.GetFileName(Path.GetFullPath(options.UsmapPath)),
+    ["paths_redacted"] = true
 };
 
 if (options.MappingFilters.Count > 0)
@@ -91,7 +94,7 @@ if (options.MappingFilters.Count > 0)
             }));
     var mappingReportPath = Path.Combine(outputDirectory, "usmap_mappings.json");
     File.WriteAllText(mappingReportPath, report.ToString(Formatting.Indented));
-    Console.WriteLine($"Report: {mappingReportPath}");
+    Console.WriteLine($"Report: {Path.GetFileName(mappingReportPath)}");
     Console.WriteLine(report.ToString(Formatting.Indented));
     return 0;
 }
@@ -303,7 +306,7 @@ try
                     destination,
                     JsonConvert.SerializeObject(exports, Formatting.Indented));
                 result["status"] = "exported";
-                result["output"] = destination;
+                result["output"] = normalizedTarget + ".json";
                 result["export_count"] = exports.Count();
             }
             catch (Exception exception)
@@ -327,7 +330,7 @@ catch (Exception exception)
 
 var reportPath = Path.Combine(outputDirectory, "cue4parse_report.json");
 File.WriteAllText(reportPath, report.ToString(Formatting.Indented));
-Console.WriteLine($"Report: {reportPath}");
+Console.WriteLine($"Report: {Path.GetFileName(reportPath)}");
 Console.WriteLine(report.ToString(Formatting.Indented));
 return report["fatal_error"] is null ? 0 : 1;
 

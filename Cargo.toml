@@ -2,6 +2,9 @@
 name = "nte-dps-tool"
 version = "0.1.0"
 edition = "2024"
+description = "Local Windows DPS diagnostics tool for NTE."
+repository = "https://github.com/kongbaiz/NTE_DPS_TOOL"
+license = "PolyForm-Noncommercial-1.0.0"
 
 [features]
 default = []
@@ -13,7 +16,7 @@ aes = "0.8"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 crossbeam-channel = "0.5"
-eframe = { version = "0.32", features = ["default_fonts", "glow"] }
+eframe = { version = "0.34.3", features = ["accesskit", "default_fonts", "glow"], default-features = false }
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 libloading = "0.8"

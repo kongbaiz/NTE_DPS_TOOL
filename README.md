@@ -1,6 +1,8 @@
 # NTE DPS TOOL
 
-Rust + egui 实现的 NTE 实时 DPS 工具。工具通过 Npcap 抓取本机 UDP 流量，解析伤害、深渊事件和部分 GameplayEffect 信息，并在本地展示总览、角色、技能、命中明细和深渊上下行线统计。
+Rust + egui 实现的 NTE 本地 DPS 诊断工具。工具在用户本机运行，通过 Npcap 读取本机相关 UDP 流量，提取伤害、深渊事件和部分 GameplayEffect 统计，并在本地展示总览、角色、技能、命中明细和深渊上下行线统计。
+
+本项目为独立社区工具，与 NTE 游戏发行方、开发方、平台方或相关权利方无从属、授权、背书或合作关系。
 
 ## 功能
 
@@ -21,6 +23,14 @@ Rust + egui 实现的 NTE 实时 DPS 工具。工具通过 Npcap 抓取本机 UD
 
 具体敌方目标识别与场景识别仍在研究中，代码保留在 `research/scene-target-identification` 分支。稳定主线不再主动填充或显示 `target_id`、`target_name`、`target_context`，这些字段仅作为旧 JSON 兼容字段保留。
 
+## 许可与使用范围
+
+项目自有代码和文档采用 [PolyForm Noncommercial License 1.0.0](LICENSE)，仅允许非商用使用。因为许可证限制商用，本项目属于 source-available/noncommercial，不是 OSI 意义上的开源许可证项目。
+
+禁止在未取得单独书面授权的情况下销售本工具、提供付费托管/代跑/数据服务、打包进商业产品、用于商业竞品分析或作为商业服务的一部分分发。
+
+第三方库、运行组件和资源文件保留各自许可和权利声明，见 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) 与 [NOTICE.md](NOTICE.md)。
+
 ## 环境
 
 - Windows 10/11
@@ -37,9 +47,11 @@ cargo test
 cargo run --release
 ```
 
-普通使用只需要 Rust、Npcap 和仓库内的 `res` 资源。不需要 `data/DataTable`、CUE4Parse、FModel、Python、Npcap SDK、资源导出 AES key 或 usmap。Debug 面板的加密 INI 编辑器使用代码内置的稳定 INI 协议 key，不需要用户提供导出密钥。
+普通使用只需要 Rust、Npcap 和仓库内的 `res` 资源。不需要客户端导出树、CUE4Parse、FModel、Python、Npcap SDK、资源导出 AES key 或 usmap。Debug 面板的加密 INI 编辑器使用代码内置的稳定 INI 协议 key，不需要用户提供资源导出密钥。
 
 开始实时抓包后，程序会把通过当前 BPF 过滤器的原始帧写入 `logs/nte_raw_*.pcapng`。Debug 面板可导入完整 PCAPNG 或解析 JSON，并使用与实时抓包相同的稳定解析流程；停止抓包后可另存当前完整 PCAPNG。
+
+请勿把 `logs/`、`target/`、`data/`、本机抓包、完整载荷、授权资源路径、资源导出密钥、usmap 或完整解包数据提交到仓库、Issue、PR 或公开报告。
 
 ## 资源目录
 
@@ -64,13 +76,15 @@ res/
 资源维护脚本位于 `tools/`：
 
 - `tools/nte_asset_pipeline.py`：从已有导出树生成稳定资源和覆盖率报告。
-- `tools/export_nte_res.py`：直接调用项目内 CUE4Parse probe 导出稳定 DataTable。
+- `tools/export_nte_res.py`：直接调用项目内 CUE4Parse probe 导出工具所需的稳定表数据。
 - `tools/unpack_nte_reslist.py`：解密并解压启动器 ResList/lastdiff 清单。
 - `tools/analyze_nte_ini.py`：分析 NTE 加密 INI，报告会脱敏敏感字段。
 
 可导出的稳定数据组包括 `gameplay-effect-mapping`、`skill-damage`、`wooden-descriptions`、`characters`、`ability-tips`、`reactions` 和 `all`。深渊怪物数据当前作为稳定运行资源放在 `res/data/abyss/`，主程序直接读取。
 
 更多命令见 `tools/README.md`。脚本生成的 `target`、`logs`、`NTE_Assets`、C# `bin/obj`、第三方工具目录、资源导出 AES key、usmap 和解包数据不应提交。
+
+顶层 `NTE_封包解析算法.md` 是降敏后的维护摘要，只记录解析模块的公开设计边界。更细的样本、特征、偏移、函数名和抓包对照不应随公开仓库发布。
 
 ## 验证
 

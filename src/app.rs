@@ -38,8 +38,8 @@ use crate::model::{
 use crate::network::{GameNetwork, detect_game_device};
 use crate::parser::{CHARACTER_DATA_PATH, find_data_file, load_characters};
 use crate::window_attributes::{
-    apply_rounding_to_process_windows, apply_window_attributes, clear_process_windows_topmost,
-    restore_visible_process_windows_topmost, set_window_topmost,
+    WindowAttributeConfig, apply_rounding_to_process_windows, apply_window_attributes,
+    clear_process_windows_topmost, restore_visible_process_windows_topmost, set_window_topmost,
 };
 
 const MAX_UI_EVENTS_PER_FRAME: usize = 2_048;
@@ -737,17 +737,48 @@ impl DpsApp {
         }
     }
 
-    fn toggle_mouse_passthrough(&mut self, _ctx: &egui::Context) {
-        self.mouse_passthrough = !self.mouse_passthrough;
-        // The WS_EX_TRANSPARENT click-through style is (re)applied every frame by
-        // apply_window_attributes from self.mouse_passthrough; nudge a reapply so it
-        // lands immediately rather than on the next repaint.
+    fn set_mouse_passthrough(&mut self, ctx: &egui::Context, enabled: bool) {
+        if self.mouse_passthrough == enabled {
+            return;
+        }
+        self.mouse_passthrough = enabled;
+        ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(enabled));
         self.opacity_reapply_frames = 2;
         self.status = if self.mouse_passthrough {
-            "鼠标穿透已开启 按下HOME键关闭".to_owned()
+            if self.hud_mode {
+                "HUD 穿透已开启，按 Home 进入编辑模式".to_owned()
+            } else {
+                "鼠标穿透已开启 按下 HOME 键关闭".to_owned()
+            }
+        } else if self.hud_mode {
+            "HUD 编辑模式已开启，按 Home 返回游戏穿透".to_owned()
         } else {
             "鼠标穿透已关闭".to_owned()
         };
+    }
+
+    fn toggle_mouse_passthrough(&mut self, ctx: &egui::Context) {
+        self.set_mouse_passthrough(ctx, !self.mouse_passthrough);
+    }
+
+    fn set_hud_mode(&mut self, ctx: &egui::Context, enabled: bool) {
+        if self.hud_mode == enabled {
+            return;
+        }
+        self.hud_mode = enabled;
+        if enabled {
+            if !self.always_on_top {
+                self.always_on_top = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                    egui::WindowLevel::AlwaysOnTop,
+                ));
+            }
+            self.set_mouse_passthrough(ctx, true);
+            self.status = "战斗 HUD 已开启：置顶显示并默认穿透鼠标".to_owned();
+        } else {
+            self.set_mouse_passthrough(ctx, false);
+            self.status = "已退出战斗 HUD".to_owned();
+        }
     }
 
     fn toggle_always_on_top(&mut self, ctx: &egui::Context) {
@@ -863,7 +894,7 @@ impl DpsApp {
                                 .on_hover_text("无底板 HUD，直接叠在游戏画面上")
                                 .clicked()
                             {
-                                self.hud_mode = !self.hud_mode;
+                                self.set_hud_mode(ui.ctx(), !self.hud_mode);
                                 ui.close();
                             }
                         });
@@ -912,9 +943,8 @@ impl DpsApp {
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
-        // A solid (non-key) rail makes the strip grabbable: under the chroma key,
-        // transparent pixels are click-through, so only painted pixels receive
-        // drag/click input.
+        // A solid rail makes the edit strip easy to grab after Home disables
+        // viewport mouse pass-through.
         let painter = ui.painter();
         painter.rect_filled(
             full_rect,
@@ -948,7 +978,7 @@ impl DpsApp {
                 .on_hover_text("返回普通窗口")
                 .clicked()
             {
-                self.hud_mode = false;
+                self.set_hud_mode(ui.ctx(), false);
             }
             if ui
                 .selectable_label(self.mouse_passthrough, "穿透")
@@ -1430,11 +1460,13 @@ impl DpsApp {
         };
         match raw_capture.save(&destination) {
             Ok((packet_count, captured_bytes)) => {
+                let file_name = destination
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("PCAPNG 文件");
                 self.status = format!(
                     "已另存完整抓包至 {}（{} 包，{} 字节）",
-                    destination.display(),
-                    packet_count,
-                    captured_bytes
+                    file_name, packet_count, captured_bytes
                 );
                 self.last_error = None;
             }
@@ -1904,8 +1936,8 @@ impl DpsApp {
 
     fn note_detail_scroll_activity(&mut self, ctx: &egui::Context) {
         let scrolling = ctx.input(|input| {
-            input.raw_scroll_delta != egui::Vec2::ZERO
-                || input.smooth_scroll_delta != egui::Vec2::ZERO
+            input.is_scrolling()
+                || input.smooth_scroll_delta() != egui::Vec2::ZERO
                 || ((self.hit_detail_char_id.is_some() || self.team_hit_detail_open)
                     && input.pointer.primary_down())
         });
@@ -2098,7 +2130,7 @@ impl DpsApp {
                 .on_hover_text("切换为无底板战斗 HUD（叠在游戏上 · 从外观菜单退出）")
                 .clicked()
             {
-                self.hud_mode = true;
+                self.set_hud_mode(ui.ctx(), true);
             }
             if ui
                 .button("控制台")
@@ -2287,7 +2319,7 @@ impl DpsApp {
             egui::Order::Foreground,
             egui::Id::new("theme_transition_overlay"),
         ))
-        .rect_filled(ctx.screen_rect(), 0.0, overlay);
+        .rect_filled(ctx.content_rect(), 0.0, overlay);
         ctx.request_repaint();
     }
 
@@ -3060,15 +3092,15 @@ impl DpsApp {
                     self.team_hit_detail_corner_applied = true;
                 }
                 let mut close_clicked = false;
-                egui::TopBottomPanel::top("team_hit_detail_title_bar")
-                    .exact_height(34.0)
+                egui::Panel::top("team_hit_detail_title_bar")
+                    .exact_size(34.0)
                     .frame(
                         egui::Frame::new()
                             .fill(ctx.style().visuals.panel_fill)
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         close_clicked = secondary_title_bar(
                             ui,
                             &title,
@@ -3082,7 +3114,7 @@ impl DpsApp {
                             .fill(shadcn_background(self.dark_mode))
                             .inner_margin(egui::Margin::same(10)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         egui::Frame::new()
                             .fill(shadcn_card(self.dark_mode))
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
@@ -3175,15 +3207,15 @@ impl DpsApp {
                     self.abyss_overview_corner_applied = true;
                 }
                 let mut close_clicked = false;
-                egui::TopBottomPanel::top("abyss_overview_title_bar")
-                    .exact_height(34.0)
+                egui::Panel::top("abyss_overview_title_bar")
+                    .exact_size(34.0)
                     .frame(
                         egui::Frame::new()
                             .fill(ctx.style().visuals.panel_fill)
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         close_clicked = secondary_title_bar(
                             ui,
                             "深渊怪物数值",
@@ -3197,7 +3229,7 @@ impl DpsApp {
                             .fill(shadcn_background(self.dark_mode))
                             .inner_margin(egui::Margin::same(10)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         self.abyss_overview_contents(ui);
                     });
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
@@ -3680,15 +3712,15 @@ impl DpsApp {
                     self.hit_detail_corner_applied = true;
                 }
                 let mut close_clicked = false;
-                egui::TopBottomPanel::top("hit_detail_title_bar")
-                    .exact_height(34.0)
+                egui::Panel::top("hit_detail_title_bar")
+                    .exact_size(34.0)
                     .frame(
                         egui::Frame::new()
                             .fill(ctx.style().visuals.panel_fill)
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         close_clicked = secondary_title_bar(
                             ui,
                             &title,
@@ -3702,7 +3734,7 @@ impl DpsApp {
                             .fill(shadcn_background(self.dark_mode))
                             .inner_margin(egui::Margin::same(10)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         egui::Frame::new()
                             .fill(shadcn_card(self.dark_mode))
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
@@ -3925,15 +3957,15 @@ impl DpsApp {
                     self.console_corner_applied = true;
                 }
                 let mut close_clicked = false;
-                egui::TopBottomPanel::top("console_title_bar")
-                    .exact_height(34.0)
+                egui::Panel::top("console_title_bar")
+                    .exact_size(34.0)
                     .frame(
                         egui::Frame::new()
                             .fill(ctx.style().visuals.panel_fill)
                             .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         close_clicked = secondary_title_bar(
                             ui,
                             "NTE 控制台",
@@ -3947,7 +3979,7 @@ impl DpsApp {
                             .fill(shadcn_background(self.dark_mode))
                             .inner_margin(egui::Margin::same(10)),
                     )
-                    .show(ctx, |ui| {
+                    .show_inside(ctx, |ui| {
                         self.console_contents(ui);
                     });
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
@@ -4338,11 +4370,16 @@ impl DpsApp {
                         let raw_capture_label = self.raw_capture.as_ref().map_or_else(
                             || "无原始抓包".to_owned(),
                             |capture| {
-                                let path = capture.path().map_or_else(
+                                let file = capture.path().map_or_else(
                                     || "写入不可用".to_owned(),
-                                    |path| path.display().to_string(),
+                                    |path| {
+                                        path.file_name()
+                                            .and_then(|name| name.to_str())
+                                            .unwrap_or("原始抓包文件")
+                                            .to_owned()
+                                    },
                                 );
-                                format!("{} 包 · {path}", capture.packet_count())
+                                format!("{} 包 · {file}", capture.packet_count())
                             },
                         );
                         ui.monospace(raw_capture_label);
@@ -4743,7 +4780,7 @@ impl eframe::App for DpsApp {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.style_dark_mode_applied != Some(self.dark_mode) {
             configure_style(ctx, self.dark_mode);
             self.style_dark_mode_applied = Some(self.dark_mode);
@@ -4756,12 +4793,14 @@ impl eframe::App for DpsApp {
         let force_opacity = self.opacity_reapply_frames > 0;
         apply_window_attributes(
             frame,
-            self.opacity,
-            force_opacity,
+            WindowAttributeConfig {
+                opacity: self.opacity,
+                force_opacity,
+                hud_overlay: self.hud_mode,
+                passthrough: self.mouse_passthrough,
+            },
             &mut self.applied_opacity,
             &mut self.corner_applied_hwnd,
-            self.hud_mode,
-            self.mouse_passthrough,
         );
         self.opacity_reapply_frames = self.opacity_reapply_frames.saturating_sub(1);
         if self.capture.is_some() || self.replay_thread.is_some() {
@@ -4786,7 +4825,10 @@ impl eframe::App for DpsApp {
                 MAIN_WINDOW_BASE_SIZE * self.main_window_scale,
             ));
         }
+    }
 
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         // HUD mode replaces the full title bar with a compact strip (drag · 穿透 ·
         // 退出) and strips the panel fill so only the game shows behind it.
         let show_hud_title = self.hud_mode && !self.mouse_passthrough;
@@ -4796,14 +4838,14 @@ impl eframe::App for DpsApp {
                 egui::Frame::new()
             } else {
                 egui::Frame::new()
-                    .fill(ctx.style().visuals.panel_fill)
+                    .fill(ctx.global_style().visuals.panel_fill)
                     .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
                     .inner_margin(egui::Margin::symmetric(8, 2))
             };
-            egui::TopBottomPanel::top("custom_title_bar")
-                .exact_height(if self.hud_mode { 24.0 } else { 32.0 })
+            egui::Panel::top("custom_title_bar")
+                .exact_size(if self.hud_mode { 24.0 } else { 32.0 })
                 .frame(title_frame)
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     if self.hud_mode {
                         self.hud_title_bar(ui);
                     } else {
@@ -4823,7 +4865,7 @@ impl eframe::App for DpsApp {
                     .fill(central_fill)
                     .inner_margin(egui::Margin::same(8)),
             )
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 if self.hud_mode {
                     self.hud_panel(ui);
                 } else {
@@ -4840,22 +4882,22 @@ impl eframe::App for DpsApp {
             });
 
         if self.console_open {
-            self.console_panel(ctx);
+            self.console_panel(&ctx);
         }
         if let Some(char_id) = self.hit_detail_char_id {
-            self.hit_detail_panel(ctx, char_id);
+            self.hit_detail_panel(&ctx, char_id);
         }
         if self.team_hit_detail_open {
-            self.team_hit_detail_panel(ctx);
+            self.team_hit_detail_panel(&ctx);
         }
         if self.abyss_overview_open {
-            self.abyss_overview_panel(ctx);
+            self.abyss_overview_panel(&ctx);
         }
         if ctx.input(|input| !input.raw.hovered_files.is_empty()) {
             egui::Area::new(egui::Id::new("pcapng_drop_overlay"))
                 .order(egui::Order::Foreground)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(ctx, |ui| {
+                .show(&ctx, |ui| {
                     egui::Frame::popup(ui.style())
                         .fill(shadcn_card(self.dark_mode))
                         .stroke(Stroke::new(2.0, theme_accent(self.dark_mode)))
@@ -4870,13 +4912,13 @@ impl eframe::App for DpsApp {
                         });
                 });
         }
-        self.paint_theme_transition(ctx);
+        self.paint_theme_transition(&ctx);
         if let Some(error) = self.last_error.clone() {
             egui::Window::new("错误")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(ctx, |ui| {
+                .show(&ctx, |ui| {
                     ui.label(error);
                     if ui.button("关闭").clicked() {
                         self.last_error = None;
@@ -6252,7 +6294,7 @@ fn configure_style(ctx: &egui::Context, dark_mode: bool) {
     visuals.selection.stroke = Stroke::new(1.0, contrast_text(accent));
     ctx.set_visuals(visuals);
 
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     style.animation_time = 0.14;
     style.interaction.selectable_labels = false;
     style.spacing.item_spacing = egui::vec2(8.0, 5.0);
@@ -6270,7 +6312,7 @@ fn configure_style(ctx: &egui::Context, dark_mode: bool) {
     style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
     style.visuals.widgets.active.expansion = 0.0;
     style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 #[derive(Clone)]
@@ -7229,7 +7271,7 @@ fn draw_damage_number_fallback(
         egui::FontId::monospace(15.0),
         color,
     );
-    let width = ui.fonts(|fonts| {
+    let width = ui.fonts_mut(|fonts| {
         fonts
             .layout_no_wrap(text.to_owned(), egui::FontId::monospace(15.0), color)
             .size()
@@ -7732,7 +7774,7 @@ fn truncate_text_to_width(
     max_width: f32,
 ) -> String {
     let text_width = |value: &str| {
-        ui.fonts(|fonts| {
+        ui.fonts_mut(|fonts| {
             fonts
                 .layout_no_wrap(value.to_owned(), font.clone(), color)
                 .size()
@@ -7833,7 +7875,7 @@ fn draw_hit_column_separators(
     rect: egui::Rect,
     layout: CharacterHitLayout,
 ) {
-    let color = if painter.ctx().style().visuals.dark_mode {
+    let color = if painter.ctx().global_style().visuals.dark_mode {
         Color32::from_rgba_unmultiplied(255, 255, 255, 92)
     } else {
         Color32::from_rgba_unmultiplied(70, 74, 82, 88)
@@ -7852,7 +7894,7 @@ fn draw_team_hit_column_separators(
     rect: egui::Rect,
     layout: TeamHitLayout,
 ) {
-    let color = if painter.ctx().style().visuals.dark_mode {
+    let color = if painter.ctx().global_style().visuals.dark_mode {
         Color32::from_rgba_unmultiplied(255, 255, 255, 92)
     } else {
         Color32::from_rgba_unmultiplied(70, 74, 82, 88)
@@ -8045,7 +8087,7 @@ fn encrypted_ini_layout_galley(
         request.wrap_width,
         request.dark_mode,
     );
-    let galley = ui.fonts(|fonts| fonts.layout_job(layout_job));
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(layout_job));
     cache.key = Some(key);
     cache.galley = Some(Arc::clone(&galley));
     galley

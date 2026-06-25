@@ -41,6 +41,12 @@ class ExportError(RuntimeError):
     pass
 
 
+def path_label(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return path.name
+
+
 def selected_tables(groups: list[str] | None) -> list[str]:
     requested = groups or DEFAULT_TABLES
     result: list[str] = []
@@ -66,7 +72,7 @@ def resolve_key_file(
     if explicit_path is not None:
         path = explicit_path.resolve()
         if not path.is_file():
-            raise ExportError(f"AES key 文件不存在: {path}")
+            raise ExportError("AES key 文件不存在")
         key = path.read_text(encoding="utf-8").strip()
         if not AES_KEY_RE.fullmatch(key):
             raise ExportError("AES key 文件必须只包含一个 32 字节十六进制 key")
@@ -106,7 +112,7 @@ def run_probe(args: argparse.Namespace, tables: list[str], raw_root: Path) -> di
     for label, path, is_directory in paths_to_check:
         valid = path.is_dir() if is_directory else path.is_file()
         if not valid:
-            raise ExportError(f"{label}不存在: {path}")
+            raise ExportError(f"{label}不存在")
 
     key_file, remove_key_file = resolve_key_file(args.aes_key_file, raw_root)
     command = [
@@ -252,16 +258,17 @@ def main() -> int:
         transformed = transform_tables(args, tables, raw_root, output_res)
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "paks_directory": str(args.paks_dir.resolve()),
-            "usmap": str(args.usmap.resolve()) if args.usmap is not None else None,
+            "paks_directory_name": path_label(args.paks_dir.resolve()),
+            "usmap_file": path_label(args.usmap.resolve() if args.usmap is not None else None),
+            "paths_redacted": True,
             "selected_tables": tables,
             "available_file_count": probe_report.get("available_file_count"),
             **transformed,
         }
         report_path = output_res / "data/direct_export_report.json"
         pipeline.write_json(report_path, report)
-        print(f"res 数据已生成到: {output_res}")
-        print(f"导出报告: {report_path}")
+        print("res 数据已生成")
+        print(f"导出报告: {report_path.name}")
         print(
             "数据表行数: "
             + ", ".join(

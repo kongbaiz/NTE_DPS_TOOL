@@ -526,7 +526,7 @@ def build_resources(args: argparse.Namespace) -> int:
     write_json(output_res / "data/asset_manifest.json", manifest)
 
     counts = coverage["counts"]
-    print(f"资源已生成到: {output_res}")
+    print("资源已生成")
     print(
         "关键数据: "
         f"映射 {counts['gameplay_effect_mapping']}，"
@@ -536,14 +536,14 @@ def build_resources(args: argparse.Namespace) -> int:
         f"角色 {counts['characters']}，"
         f"环合 {counts['reaction_details']}"
     )
-    print(f"覆盖率报告: {output_res / 'data/asset_report.json'}")
+    print("覆盖率报告: data/asset_report.json")
     return 0
 
 
 def inventory_game(args: argparse.Namespace) -> int:
     paks_dir = args.paks_dir.resolve()
     if not paks_dir.is_dir():
-        raise PipelineError(f"Paks 目录不存在: {paks_dir}")
+        raise PipelineError("Paks 目录不存在")
     files = []
     for path in sorted(paks_dir.iterdir()):
         if path.is_file() and path.suffix.lower() in {".pak", ".utoc", ".ucas", ".sig"}:
@@ -558,7 +558,8 @@ def inventory_game(args: argparse.Namespace) -> int:
                 }
             )
     result = {
-        "paks_dir": str(paks_dir),
+        "paks_dir_name": paks_dir.name,
+        "paths_redacted": True,
         "container_types": sorted({item["type"] for item in files}),
         "total_size": sum(item["size"] for item in files),
         "files": files,
@@ -570,7 +571,7 @@ def inventory_game(args: argparse.Namespace) -> int:
     }
     if args.output:
         write_json(args.output.resolve(), result)
-        print(f"容器清单已写入: {args.output.resolve()}")
+        print(f"容器清单已写入: {args.output.name}")
     else:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

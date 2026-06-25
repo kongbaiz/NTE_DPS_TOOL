@@ -33,6 +33,7 @@ fn main() -> Result<()> {
             .with_decorations(false)
             .with_resizable(false)
             .with_transparent(true)
+            .with_has_shadow(false)
             .with_icon(Arc::new(app_icon()))
             .with_window_level(if ui_config.always_on_top {
                 egui::WindowLevel::AlwaysOnTop

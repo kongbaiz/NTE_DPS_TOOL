@@ -119,13 +119,14 @@ def analyze_file(path: Path, output_dir: Path) -> dict[str, object]:
     decrypted_path = output_dir / f"{safe_name}.decrypted.redacted.ini"
     decrypted_path.write_text("\n".join(redacted_lines) + "\n", encoding="utf-8")
     return {
-        "path": str(path.resolve()),
+        "file": path.name,
         "key": key_name,
         "input_lines": len(text.splitlines()),
         "decrypted_lines": encrypted_lines,
         "parsed_entries": len(entries),
         "interesting_entries": interesting,
-        "redacted_output": str(decrypted_path.resolve()),
+        "redacted_output": decrypted_path.name,
+        "paths_redacted": True,
     }
 
 
@@ -143,7 +144,7 @@ def main() -> int:
         json.dumps({"files": reports}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(report_path)
+    print(report_path.name)
     return 0
 
 

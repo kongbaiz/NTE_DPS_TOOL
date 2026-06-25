@@ -1,6 +1,8 @@
 # NTE DPS Tool 资源工具
 
-本目录保存资源维护脚本和 CUE4Parse probe。普通运行程序不需要执行这些脚本；只有更新 `res/` 数据或排查客户端资源时才需要。
+本目录保存资源维护脚本和 CUE4Parse probe。普通运行程序不需要执行这些脚本；只有在具备合法资源访问权限、需要更新 `res/` 数据或排查资源兼容性时才使用。
+
+不要把资源导出 AES key、usmap、完整解包数据、客户端安装路径、本机抓包或原始载荷写入提交、Issue、PR、报告或示例命令。
 
 ## Python 环境
 
@@ -12,13 +14,13 @@ python -m pip install -r tools/requirements.txt
 
 ## 直接从客户端导出 res
 
-`export_nte_res.py` 会调用项目内的 CUE4Parse probe，从客户端容器导出项目需要的数据表，并转换到 `res/`。
+`export_nte_res.py` 会调用项目内的 CUE4Parse probe，从用户已授权访问的客户端容器中导出项目需要的数据表，并转换到 `res/`。
 
 ```powershell
-$env:NTE_AES_KEY = "<64位十六进制AES key>"
+$env:NTE_AES_KEY = "<authorized-resource-key>"
 python tools/export_nte_res.py `
-  --paks-dir "D:\Neverness To Everness\Client\WindowsNoEditor\HT\Content" `
-  --usmap ".\NTE-5.6.1.usmap" `
+  --paks-dir "<client-content-dir>" `
+  --usmap "<schema.usmap>" `
   --table all
 ```
 
@@ -32,14 +34,14 @@ python tools/export_nte_res.py `
 - `reactions`
 - `all`
 
-默认输出到仓库内 `res/`，原始导出和报告写入 `target/nte-direct-export`。如果不想使用环境变量，也可以用 `--aes-key-file <path>` 指定只包含资源导出 AES key 的文件。
+默认输出到仓库内 `res/`，原始导出和报告写入 `target/nte-direct-export`。如果不想使用环境变量，也可以用 `--aes-key-file <path>` 指定只包含资源导出 AES key 的本机私有文件；该文件不得提交。
 
 ## 从已解包资源生成 res
 
-如果已经有 FModel、CUE4Parse 或其他工具导出的 `NTE_Assets` 树，可以只运行后处理：
+如果已经有 FModel、CUE4Parse 或其他工具导出的本机资源树，可以只运行后处理：
 
 ```powershell
-python tools/nte_asset_pipeline.py build --assets-root .\NTE_Assets --output-res .\res
+python tools/nte_asset_pipeline.py build --assets-root "<exported-assets-dir>" --output-res .\res
 ```
 
 该流程会生成或更新：
@@ -62,14 +64,14 @@ python tools/nte_asset_pipeline.py build --assets-root .\NTE_Assets --output-res
 - `res/data/abyss/DT_AbyssMonsterPool.json`
 - `res/data/abyss/abyss_floor_monster_summary.json`
 
-它们来自客户端 `DataAssets/DataAssetSet/Abyss` 下的层配置和怪物池表；汇总表把层、上下行线、波次、怪物池和怪物数量展开，供主程序直接加载。
+它们来自已授权资源导出的深渊层配置和怪物池表；汇总表把层、上下行线、波次、怪物池和怪物数量展开，供主程序直接加载。
 
 ## 辅助分析
 
 盘点客户端容器：
 
 ```powershell
-python tools/nte_asset_pipeline.py inventory --paks-dir "<HT Content路径>" --output target/paks-inventory.json
+python tools/nte_asset_pipeline.py inventory --paks-dir "<client-content-dir>" --output target/paks-inventory.json
 ```
 
 解密启动器 ResList/lastdiff 清单：
@@ -86,4 +88,4 @@ python tools/analyze_nte_ini.py "<ini文件或目录>" --output target/ini-analy
 
 ## 提交规则
 
-可以提交手工维护的脚本和稳定 `res/` 资源。不要提交 `target/`、`logs/`、`NTE_Assets/`、第三方工具目录、C# `bin/obj`、资源导出 AES key、usmap 或完整解包数据。主程序内置的加密 INI 协议 key 不用于资源导出。
+可以提交手工维护的脚本和确认可分发的稳定 `res/` 资源。不要提交 `target/`、`logs/`、`NTE_Assets/`、第三方工具目录、C# `bin/obj`、资源导出 AES key、usmap、完整解包数据或本机路径。主程序内置的加密 INI 协议 key 不用于资源导出。

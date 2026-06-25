@@ -1,7 +1,8 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::Graphics::Dwm::{
-    DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+    DWMNCRP_DISABLED, DWMNCRP_ENABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, HWND_NOTOPMOST,
@@ -14,16 +15,20 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
 const DWMWA_COLOR_DEFAULT: u32 = 0xFFFF_FFFF;
 
+pub(crate) struct WindowAttributeConfig {
+    pub(crate) opacity: f32,
+    pub(crate) force_opacity: bool,
+    pub(crate) hud_overlay: bool,
+    pub(crate) passthrough: bool,
+}
+
 pub(crate) fn apply_window_attributes(
     frame: &eframe::Frame,
-    opacity: f32,
-    force_opacity: bool,
+    config: WindowAttributeConfig,
     applied_opacity: &mut Option<f32>,
     corner_applied_hwnd: &mut Option<isize>,
-    hud_overlay: bool,
-    passthrough: bool,
 ) {
-    let opacity = opacity.clamp(0.35, 1.0);
+    let opacity = config.opacity.clamp(0.35, 1.0);
     let Ok(window_handle) = frame.window_handle() else {
         return;
     };
@@ -46,23 +51,33 @@ pub(crate) fn apply_window_attributes(
         }
 
         // Normal windows use layered uniform alpha for the opacity slider. HUD
-        // mode prefers the transparent framebuffer created by eframe/winit and
-        // avoids SetLayeredWindowAttributes so text/images can stay opaque while
-        // empty pixels keep real alpha. Click-through still needs
-        // WS_EX_TRANSPARENT, and on Windows that is reliable only on a layered
-        // top-level window.
+        // mode prefers the transparent framebuffer created by eframe/winit so
+        // text/images stay opaque while empty pixels keep real alpha. Click-through
+        // still needs a Win32 WS_EX_TRANSPARENT fallback; egui's viewport command
+        // alone is not reliable on every Windows compositor path.
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let mut new_style = style;
-        if hud_overlay {
-            if passthrough {
-                new_style |= (WS_EX_LAYERED | WS_EX_TRANSPARENT) as isize;
+        if config.hud_overlay {
+            // Match egui_overlay/glfw's transparent-framebuffer model: the HUD
+            // should only keep layered style when needed for reliable mouse
+            // pass-through.
+            if config.passthrough {
+                new_style |= WS_EX_LAYERED as isize;
             } else {
                 new_style &= !(WS_EX_LAYERED as isize);
+            }
+            if config.passthrough {
+                new_style |= WS_EX_TRANSPARENT as isize;
+            } else {
                 new_style &= !(WS_EX_TRANSPARENT as isize);
             }
         } else {
             new_style |= WS_EX_LAYERED as isize;
-            new_style &= !(WS_EX_TRANSPARENT as isize);
+            if config.passthrough {
+                new_style |= WS_EX_TRANSPARENT as isize;
+            } else {
+                new_style &= !(WS_EX_TRANSPARENT as isize);
+            }
         }
         let style_changed = new_style != style;
         if style_changed {
@@ -70,7 +85,7 @@ pub(crate) fn apply_window_attributes(
         }
 
         // No window border in HUD mode so it reads as a true overlay, not a frame.
-        let border = if hud_overlay {
+        let border = if config.hud_overlay {
             DWMWA_COLOR_NONE
         } else {
             DWMWA_COLOR_DEFAULT
@@ -82,7 +97,19 @@ pub(crate) fn apply_window_attributes(
             std::mem::size_of_val(&border) as u32,
         );
 
-        if hud_overlay {
+        let nc_policy = if config.hud_overlay {
+            DWMNCRP_DISABLED
+        } else {
+            DWMNCRP_ENABLED
+        };
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_NCRENDERING_POLICY as u32,
+            std::ptr::from_ref(&nc_policy).cast(),
+            std::mem::size_of_val(&nc_policy) as u32,
+        );
+
+        if config.hud_overlay {
             // HUD transparency comes from the transparent swapchain/clear colour,
             // not a colour key. Force the uniform-alpha path to re-run when we
             // leave HUD mode.
@@ -93,7 +120,7 @@ pub(crate) fn apply_window_attributes(
         // Normal: layered uniform-alpha opacity (style already applied above).
         let opacity_stale =
             !applied_opacity.is_some_and(|current| (current - opacity).abs() < f32::EPSILON);
-        if (force_opacity || style_changed || opacity_stale)
+        if (config.force_opacity || style_changed || opacity_stale)
             && SetLayeredWindowAttributes(hwnd, 0, (opacity * 255.0).round() as u8, LWA_ALPHA) != 0
         {
             *applied_opacity = Some(opacity);

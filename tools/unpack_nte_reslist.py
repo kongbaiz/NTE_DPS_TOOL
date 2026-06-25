@@ -38,7 +38,7 @@ def find_inputs(paths: list[Path]) -> list[Path]:
                 if item.is_file() and item.name.lower() in MANIFEST_NAMES
             )
         else:
-            raise FileNotFoundError(path)
+            raise FileNotFoundError(path.name)
     return sorted(found)
 
 
@@ -68,7 +68,7 @@ def decrypt_manifest(path: Path) -> tuple[bytes, dict[str, object]]:
         if item["filename"].lower().endswith(container_suffixes)
     ]
     summary: dict[str, object] = {
-        "source": str(path),
+        "source": path.name,
         "source_size": len(data),
         "xml_size": len(xml_data),
         "xml_sha256": hashlib.sha256(xml_data).hexdigest(),
@@ -119,22 +119,23 @@ def main() -> int:
             xml_data, summary = decrypt_manifest(path)
             destination = args.output_dir / output_name(path, used_names)
             destination.write_bytes(xml_data)
-            summary["output"] = str(destination.resolve())
+            summary["output"] = destination.name
+            summary["paths_redacted"] = True
             report["files"].append(summary)
             print(
-                f"OK {path}: {summary['root']} entries={summary['entry_count']} "
+                f"OK {path.name}: {summary['root']} entries={summary['entry_count']} "
                 f"containers={summary['container_count']}"
             )
         except (OSError, ValueError, zlib.error, ET.ParseError) as error:
-            report["errors"].append({"source": str(path), "error": str(error)})
-            print(f"ERROR {path}: {error}")
+            report["errors"].append({"source": path.name, "error": str(error)})
+            print(f"ERROR {path.name}: {error}")
 
     report_path = args.output_dir / "report.json"
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(f"Report: {report_path.resolve()}")
+    print(f"Report: {report_path.name}")
     return 1 if report["errors"] else 0
 
 
