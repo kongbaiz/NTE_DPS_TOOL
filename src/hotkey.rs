@@ -5,12 +5,13 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use crate::config::PassthroughHotkey;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
 #[cfg(not(feature = "no_debug"))]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_F12;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_HOME;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_F8, VK_F9, VK_HOME, VK_INSERT};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, MSG, PM_REMOVE,
     PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
@@ -26,7 +27,8 @@ struct HotkeyState {
 
 static HOTKEY_STATE: OnceLock<Mutex<HotkeyState>> = OnceLock::new();
 static HOTKEY_INSTANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
-static HOME_DOWN: AtomicBool = AtomicBool::new(false);
+static PASSTHROUGH_VK: AtomicU64 = AtomicU64::new(VK_HOME as u64);
+static PASSTHROUGH_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(not(feature = "no_debug"))]
 static F12_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -57,6 +59,15 @@ fn send_hotkey(event: HotkeyEvent) {
     }
 }
 
+fn passthrough_virtual_key(hotkey: PassthroughHotkey) -> u64 {
+    match hotkey {
+        PassthroughHotkey::Home => VK_HOME as u64,
+        PassthroughHotkey::Insert => VK_INSERT as u64,
+        PassthroughHotkey::F8 => VK_F8 as u64,
+        PassthroughHotkey::F9 => VK_F9 as u64,
+    }
+}
+
 // SAFETY: Windows calls this function with the WH_KEYBOARD_LL hook ABI and hook-owned
 // parameters. The body forwards unhandled events and only dereferences l_param for code >= 0.
 unsafe extern "system" fn low_level_keyboard_proc(
@@ -82,13 +93,13 @@ unsafe extern "system" fn low_level_keyboard_proc(
         // SAFETY: For WH_KEYBOARD_LL with code >= 0, l_param points to a KBDLLHOOKSTRUCT
         // that is valid for the duration of this callback.
         let keyboard = unsafe { &*(l_param as *const KBDLLHOOKSTRUCT) };
-        if keyboard.vkCode == VK_HOME as u32 {
+        if keyboard.vkCode as u64 == PASSTHROUGH_VK.load(Ordering::Relaxed) {
             match w_param as u32 {
-                WM_KEYDOWN | WM_SYSKEYDOWN if !HOME_DOWN.swap(true, Ordering::Relaxed) => {
+                WM_KEYDOWN | WM_SYSKEYDOWN if !PASSTHROUGH_DOWN.swap(true, Ordering::Relaxed) => {
                     send_hotkey(HotkeyEvent::TogglePassthrough);
                 }
                 WM_KEYUP | WM_SYSKEYUP => {
-                    HOME_DOWN.store(false, Ordering::Relaxed);
+                    PASSTHROUGH_DOWN.store(false, Ordering::Relaxed);
                 }
                 _ => {}
             }
@@ -117,9 +128,16 @@ pub struct HotkeyHandle {
 }
 
 impl HotkeyHandle {
-    pub fn start(context: egui::Context) -> (Self, Receiver<HotkeyEvent>) {
+    pub fn start(
+        context: egui::Context,
+        passthrough_hotkey: PassthroughHotkey,
+    ) -> (Self, Receiver<HotkeyEvent>) {
         let instance_id = HOTKEY_INSTANCE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = unbounded();
+        PASSTHROUGH_VK.store(
+            passthrough_virtual_key(passthrough_hotkey),
+            Ordering::Relaxed,
+        );
         {
             let state = HOTKEY_STATE.get_or_init(|| Mutex::new(HotkeyState::default()));
             let mut state = match state.lock() {
@@ -146,9 +164,9 @@ impl HotkeyHandle {
                 // SAFETY: GetLastError reads the calling thread's last Windows error code.
                 let error = unsafe { GetLastError() };
                 #[cfg(not(feature = "no_debug"))]
-                let shortcut = "Home / F12";
+                let shortcut = format!("{} / F12", passthrough_hotkey.label());
                 #[cfg(feature = "no_debug")]
-                let shortcut = "Home";
+                let shortcut = passthrough_hotkey.label().to_owned();
                 let _ = sender.send(HotkeyEvent::RegistrationFailed(format!(
                     "{shortcut} 注册失败，GetLastError={error}"
                 )));
@@ -179,6 +197,11 @@ impl HotkeyHandle {
             },
             receiver,
         )
+    }
+
+    pub fn set_passthrough_hotkey(&self, hotkey: PassthroughHotkey) {
+        PASSTHROUGH_VK.store(passthrough_virtual_key(hotkey), Ordering::Relaxed);
+        PASSTHROUGH_DOWN.store(false, Ordering::Relaxed);
     }
 }
 

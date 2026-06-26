@@ -22,7 +22,7 @@ use crate::capture::{
 use crate::character_editor::{
     CHARACTER_ATTRIBUTES, CharacterEditForm, CharacterEditorState, json_string_field,
 };
-use crate::config::{self, UiConfig};
+use crate::config::{self, PassthroughHotkey, UiConfig, WINDOW_SCALE_MAX, WINDOW_SCALE_MIN};
 use crate::encrypted_ini::{
     EncryptedIniKey, EncryptedIniRecord, encrypt_encrypted_ini_records,
     encrypted_ini_search_matches, encrypted_ini_text_fingerprint, parse_encrypted_ini_text,
@@ -66,11 +66,11 @@ const ABYSS_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(1040.0, 720.0);
 const HIT_DETAIL_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(1120.0, 760.0);
 const TEAM_HIT_DETAIL_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(980.0, 660.0);
 const CONSOLE_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(980.0, 640.0);
+const PASSTHROUGH_HOTKEY_COMBO_WIDTH: f32 = 150.0;
+const CHARACTER_ATTRIBUTE_COMBO_WIDTH: f32 = 150.0;
 /// Width the HUD window shrinks to; height is computed per row count so the
 /// window hugs the readout with no empty translucent area.
 const HUD_WINDOW_WIDTH: f32 = 380.0;
-const WINDOW_SCALE_MIN: f32 = 0.7;
-const WINDOW_SCALE_MAX: f32 = 1.5;
 const WINDOW_SCALE_STEP: f32 = 0.1;
 const UI_CONFIG_SAVE_DELAY: Duration = Duration::from_millis(350);
 const UI_CONFIG_SAVE_RETRY_DELAY: Duration = Duration::from_secs(2);
@@ -81,6 +81,49 @@ enum DebugImportKind {
     Pcapng,
     CaptureJson,
     EncryptedIni,
+}
+
+impl DebugImportKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pcapng => "PCAPNG",
+            Self::CaptureJson => "抓包 JSON",
+            Self::EncryptedIni => "加密 INI",
+        }
+    }
+}
+
+struct ActiveImport {
+    kind: DebugImportKind,
+    path: PathBuf,
+    started_at: Instant,
+    viewport: egui::ViewportId,
+}
+
+#[derive(Clone, Copy)]
+struct PendingDebugImport {
+    kind: DebugImportKind,
+    delay: u8,
+    viewport: egui::ViewportId,
+}
+
+enum ConfirmationAction {
+    StartLive,
+    ResetSession,
+    ImportPcapng(PathBuf),
+    ImportCaptureJson(PathBuf),
+    ClearEncryptedIni,
+    ReloadEncryptedIni(PathBuf),
+}
+
+#[derive(Clone, Copy)]
+enum ErrorAction {
+    RefreshNetwork,
+    OpenPcapng,
+    OpenCaptureJson,
+    OpenEncryptedIni,
+    OpenTeamDpsImport,
+    OpenConsole,
 }
 
 /// Tabs of the console window. The first three are user-facing tools promoted
@@ -476,6 +519,8 @@ pub struct DpsApp {
     status: String,
     diagnostic: Option<String>,
     last_error: Option<String>,
+    last_error_action: Option<ErrorAction>,
+    last_error_viewport: egui::ViewportId,
     console_open: bool,
     console_corner_applied: bool,
     console_tab: ConsoleTab,
@@ -487,11 +532,12 @@ pub struct DpsApp {
     dark_mode: bool,
     always_on_top: bool,
     mouse_passthrough: bool,
+    passthrough_hotkey: PassthroughHotkey,
     opacity: f32,
     applied_opacity: Option<f32>,
     corner_applied_hwnd: Option<isize>,
     // Per-window proportional size factor (1.0 = the window's default size). Set
-    // by the title-bar −／＋ stepper; not persisted across launches.
+    // by the title-bar −／＋ stepper and persisted in the UI config.
     main_window_scale: f32,
     abyss_window_scale: f32,
     hit_detail_window_scale: f32,
@@ -501,14 +547,17 @@ pub struct DpsApp {
     opacity_reapply_frames: u8,
     theme_transition_from: Option<Color32>,
     theme_transition_started_at: Option<f64>,
-    pending_debug_import: Option<(DebugImportKind, u8)>,
+    pending_debug_import: Option<PendingDebugImport>,
+    active_import: Option<ActiveImport>,
+    pending_confirmation: Option<ConfirmationAction>,
+    pending_confirmation_viewport: egui::ViewportId,
     saved_ui_config: UiConfig,
     pending_ui_config: Option<(UiConfig, Instant)>,
     ui_config_path: PathBuf,
     native_file_drop: NativeFileDrop,
     last_dropped_file: Option<(PathBuf, Instant)>,
     hotkey_receiver: Receiver<HotkeyEvent>,
-    _hotkey: HotkeyHandle,
+    hotkey: HotkeyHandle,
 }
 
 impl DpsApp {
@@ -519,7 +568,9 @@ impl DpsApp {
     ) -> Self {
         install_fonts(&cc.egui_ctx);
         configure_style(&cc.egui_ctx, ui_config.dark_mode);
-        let (hotkey, hotkey_receiver) = HotkeyHandle::start(cc.egui_ctx.clone());
+        let ui_config = ui_config.sanitized();
+        let (hotkey, hotkey_receiver) =
+            HotkeyHandle::start(cc.egui_ctx.clone(), ui_config.passthrough_hotkey);
         let (sender, receiver) = unbounded();
         let data_root = data_root();
         let characters_path = data_root.join(CHARACTER_DATA_PATH);
@@ -625,6 +676,8 @@ impl DpsApp {
             status,
             diagnostic,
             last_error: startup_error,
+            last_error_action: None,
+            last_error_viewport: egui::ViewportId::ROOT,
             console_open: false,
             console_corner_applied: false,
             console_tab: ConsoleTab::default(),
@@ -636,27 +689,31 @@ impl DpsApp {
             dark_mode: ui_config.dark_mode,
             always_on_top: ui_config.always_on_top,
             mouse_passthrough: false,
+            passthrough_hotkey: ui_config.passthrough_hotkey,
             opacity: ui_config.opacity,
             applied_opacity: None,
             corner_applied_hwnd: None,
-            main_window_scale: 1.0,
-            abyss_window_scale: 1.0,
-            hit_detail_window_scale: 1.0,
-            team_hit_detail_window_scale: 1.0,
-            console_window_scale: 1.0,
+            main_window_scale: ui_config.main_window_scale,
+            abyss_window_scale: ui_config.abyss_window_scale,
+            hit_detail_window_scale: ui_config.hit_detail_window_scale,
+            team_hit_detail_window_scale: ui_config.team_hit_detail_window_scale,
+            console_window_scale: ui_config.console_window_scale,
             // eframe may replace the context style after app construction.
             style_dark_mode_applied: None,
             opacity_reapply_frames: 4,
             theme_transition_from: None,
             theme_transition_started_at: None,
             pending_debug_import: None,
+            active_import: None,
+            pending_confirmation: None,
+            pending_confirmation_viewport: egui::ViewportId::ROOT,
             saved_ui_config: ui_config,
             pending_ui_config: None,
             ui_config_path: config::config_path(),
             native_file_drop: NativeFileDrop::new(),
             last_dropped_file: None,
             hotkey_receiver,
-            _hotkey: hotkey,
+            hotkey,
         }
     }
 
@@ -673,6 +730,7 @@ impl DpsApp {
         // All producers are joined, so every queued event belongs to the stopped task.
         // Apply them now to prevent a delayed CaptureStopped from affecting the next task.
         self.drain_pending_events();
+        self.active_import = None;
     }
 
     fn reset_combat_session(&mut self) {
@@ -695,13 +753,131 @@ impl DpsApp {
         self.dropped_debug_packets = 0;
     }
 
+    fn has_session_data(&self) -> bool {
+        !self.state.hits.is_empty()
+            || !self.state.packets.is_empty()
+            || !self.state.stats.is_empty()
+            || self.state.abyss.is_active()
+    }
+
+    fn request_reset_combat_session(&mut self) {
+        if self.has_session_data() || self.capture.is_some() || self.replay_thread.is_some() {
+            self.request_confirmation_for(egui::ViewportId::ROOT, ConfirmationAction::ResetSession);
+        } else {
+            self.reset_combat_session();
+        }
+    }
+
+    fn request_start_live(&mut self) {
+        if self.has_session_data() {
+            self.request_confirmation_for(egui::ViewportId::ROOT, ConfirmationAction::StartLive);
+        } else {
+            self.start_live();
+        }
+    }
+
+    fn request_import_file(&mut self, kind: DebugImportKind, path: PathBuf) {
+        self.request_import_file_for(kind, path, egui::ViewportId::ROOT);
+    }
+
+    fn request_import_file_for(
+        &mut self,
+        kind: DebugImportKind,
+        path: PathBuf,
+        viewport: egui::ViewportId,
+    ) {
+        let action = match kind {
+            DebugImportKind::Pcapng => ConfirmationAction::ImportPcapng(path),
+            DebugImportKind::CaptureJson => ConfirmationAction::ImportCaptureJson(path),
+            DebugImportKind::EncryptedIni => {
+                self.load_encrypted_ini_for(path, viewport);
+                return;
+            }
+        };
+        if self.has_session_data() || self.capture.is_some() || self.replay_thread.is_some() {
+            self.request_confirmation_for(viewport, action);
+        } else {
+            self.run_confirmation_action_for(action, viewport);
+        }
+    }
+
+    fn run_confirmation_action_for(
+        &mut self,
+        action: ConfirmationAction,
+        viewport: egui::ViewportId,
+    ) {
+        match action {
+            ConfirmationAction::StartLive => self.start_live(),
+            ConfirmationAction::ResetSession => {
+                self.stop_engine();
+                self.reset_combat_session();
+                self.status = "统计已重置".to_owned();
+            }
+            ConfirmationAction::ImportPcapng(path) => self.start_pcapng_import_for(path, viewport),
+            ConfirmationAction::ImportCaptureJson(path) => {
+                self.start_capture_json_import_for(path, viewport);
+            }
+            ConfirmationAction::ClearEncryptedIni => {
+                self.encrypted_ini_editor = EncryptedIniEditorState::default();
+                self.status = "加密 INI 编辑器已清空".to_owned();
+            }
+            ConfirmationAction::ReloadEncryptedIni(path) => {
+                self.load_encrypted_ini_for(path, viewport)
+            }
+        }
+    }
+
+    fn request_confirmation_for(&mut self, viewport: egui::ViewportId, action: ConfirmationAction) {
+        self.pending_confirmation = Some(action);
+        self.pending_confirmation_viewport = viewport;
+    }
+
+    fn set_last_error(&mut self, message: impl Into<String>, action: Option<ErrorAction>) {
+        self.set_last_error_for(egui::ViewportId::ROOT, message, action);
+    }
+
+    fn set_last_error_for(
+        &mut self,
+        viewport: egui::ViewportId,
+        message: impl Into<String>,
+        action: Option<ErrorAction>,
+    ) {
+        self.last_error = Some(message.into());
+        self.last_error_action = action;
+        self.last_error_viewport = viewport;
+    }
+
+    fn set_last_error_in(
+        &mut self,
+        ctx: &egui::Context,
+        message: impl Into<String>,
+        action: Option<ErrorAction>,
+    ) {
+        self.set_last_error_for(ctx.viewport_id(), message, action);
+    }
+
+    fn clear_last_error(&mut self) {
+        self.last_error = None;
+        self.last_error_action = None;
+    }
+
+    fn set_passthrough_hotkey(&mut self, hotkey: PassthroughHotkey) {
+        if self.passthrough_hotkey == hotkey {
+            return;
+        }
+        self.passthrough_hotkey = hotkey;
+        self.hotkey.set_passthrough_hotkey(hotkey);
+        self.status = format!("鼠标穿透热键已切换为 {}", hotkey.label());
+    }
+
     fn drain_hotkeys(&mut self, ctx: &egui::Context) {
-        let home_pressed = ctx.input(|input| input.key_pressed(egui::Key::Home));
+        let passthrough_key = passthrough_egui_key(self.passthrough_hotkey);
+        let passthrough_pressed = ctx.input(|input| input.key_pressed(passthrough_key));
         let import_pressed =
             ctx.input(|input| input.modifiers.command && input.key_pressed(egui::Key::O));
         #[cfg(not(feature = "no_debug"))]
         let f12_pressed = ctx.input(|input| input.key_pressed(egui::Key::F12));
-        if home_pressed {
+        if passthrough_pressed {
             self.toggle_mouse_passthrough(ctx);
         }
         if import_pressed {
@@ -744,14 +920,15 @@ impl DpsApp {
         self.mouse_passthrough = enabled;
         ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(enabled));
         self.opacity_reapply_frames = 2;
+        let hotkey = self.passthrough_hotkey.label();
         self.status = if self.mouse_passthrough {
             if self.hud_mode {
-                "HUD 穿透已开启，按 Home 进入编辑模式".to_owned()
+                format!("HUD 穿透已开启，按 {hotkey} 进入编辑模式")
             } else {
-                "鼠标穿透已开启 按下 HOME 键关闭".to_owned()
+                format!("鼠标穿透已开启，按 {hotkey} 关闭")
             }
         } else if self.hud_mode {
-            "HUD 编辑模式已开启，按 Home 返回游戏穿透".to_owned()
+            format!("HUD 编辑模式已开启，按 {hotkey} 返回游戏穿透")
         } else {
             "鼠标穿透已关闭".to_owned()
         };
@@ -774,7 +951,10 @@ impl DpsApp {
                 ));
             }
             self.set_mouse_passthrough(ctx, true);
-            self.status = "战斗 HUD 已开启：置顶显示并默认穿透鼠标".to_owned();
+            self.status = format!(
+                "战斗 HUD 已开启：置顶显示并默认穿透鼠标，按 {} 编辑",
+                self.passthrough_hotkey.label()
+            );
         } else {
             self.set_mouse_passthrough(ctx, false);
             self.status = "已退出战斗 HUD".to_owned();
@@ -798,7 +978,8 @@ impl DpsApp {
     }
 
     fn title_bar(&mut self, ui: &mut egui::Ui) {
-        let title_height = 28.0;
+        let title_height = ui.available_height().max(28.0);
+        let passthrough_hint = format!("{} 可随时切换鼠标穿透", self.passthrough_hotkey.label());
         // The whole title bar is the drag-to-move zone: allocate it first with a
         // drag sense, then draw the label/buttons on top. Buttons (added later)
         // win the pointer where they are, so dragging works on any empty area —
@@ -890,7 +1071,10 @@ impl DpsApp {
                             }
                             ui.separator();
                             if ui
-                                .selectable_label(self.hud_mode, "战斗 HUD")
+                                .add(
+                                    egui::Button::selectable(self.hud_mode, "战斗 HUD")
+                                        .frame_when_inactive(true),
+                                )
                                 .on_hover_text("无底板 HUD，直接叠在游戏画面上")
                                 .clicked()
                             {
@@ -908,9 +1092,10 @@ impl DpsApp {
                 if ui
                     .add_sized(
                         TITLE_BAR_TOGGLE_SIZE,
-                        egui::Button::selectable(self.mouse_passthrough, passthrough_label),
+                        egui::Button::selectable(self.mouse_passthrough, passthrough_label)
+                            .frame_when_inactive(true),
                     )
-                    .on_hover_text("Home 可随时切换鼠标穿透")
+                    .on_hover_text(passthrough_hint)
                     .clicked()
                 {
                     self.toggle_mouse_passthrough(ui.ctx());
@@ -918,7 +1103,8 @@ impl DpsApp {
                 if ui
                     .add_sized(
                         TITLE_BAR_TOGGLE_SIZE,
-                        egui::Button::selectable(self.always_on_top, "置顶"),
+                        egui::Button::selectable(self.always_on_top, "置顶")
+                            .frame_when_inactive(true),
                     )
                     .on_hover_text("保持主窗口位于游戏上方")
                     .clicked()
@@ -943,8 +1129,8 @@ impl DpsApp {
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
-        // A solid rail makes the edit strip easy to grab after Home disables
-        // viewport mouse pass-through.
+        // A solid rail makes the edit strip easy to grab after the pass-through
+        // hotkey disables viewport mouse pass-through.
         let painter = ui.painter();
         painter.rect_filled(
             full_rect,
@@ -973,6 +1159,11 @@ impl DpsApp {
                 .color(Color32::from_rgb(218, 224, 228)),
         );
         child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let passthrough_hint = format!(
+                "{} 可随时切换；穿透时点不到按钮，先按 {} 关闭再退出",
+                self.passthrough_hotkey.label(),
+                self.passthrough_hotkey.label()
+            );
             if ui
                 .small_button("退出")
                 .on_hover_text("返回普通窗口")
@@ -981,8 +1172,11 @@ impl DpsApp {
                 self.set_hud_mode(ui.ctx(), false);
             }
             if ui
-                .selectable_label(self.mouse_passthrough, "穿透")
-                .on_hover_text("Home 可随时切换；穿透时点不到按钮，先按 Home 关闭再退出")
+                .add(
+                    egui::Button::selectable(self.mouse_passthrough, "穿透")
+                        .frame_when_inactive(true),
+                )
+                .on_hover_text(passthrough_hint)
                 .clicked()
             {
                 self.toggle_mouse_passthrough(ui.ctx());
@@ -994,11 +1188,14 @@ impl DpsApp {
         self.stop_engine();
         self.active_capture_filter = None;
         if let Err(error) = self.refresh_game_network() {
-            self.last_error = Some(error);
+            self.set_last_error(error, Some(ErrorAction::RefreshNetwork));
             return;
         }
         let Some(device) = self.devices.get(self.selected_device).cloned() else {
-            self.last_error = Some("没有可用抓包设备，请确认已安装 Npcap".to_owned());
+            self.set_last_error(
+                "没有可用抓包设备，请确认已安装 Npcap",
+                Some(ErrorAction::RefreshNetwork),
+            );
             return;
         };
         let local_ip = self.game_network.as_ref().map(|network| network.local_ip);
@@ -1034,7 +1231,7 @@ impl DpsApp {
         Ok(())
     }
 
-    fn start_pcapng_import(&mut self, path: PathBuf) {
+    fn start_pcapng_import_for(&mut self, path: PathBuf, viewport: egui::ViewportId) {
         self.stop_engine();
         self.raw_capture = None;
         self.active_capture_filter = None;
@@ -1045,6 +1242,12 @@ impl DpsApp {
             .map(|network| network.local_ip)
             .or_else(|| self.local_ip.parse::<Ipv4Addr>().ok());
         let stop = Arc::new(AtomicBool::new(false));
+        self.active_import = Some(ActiveImport {
+            kind: DebugImportKind::Pcapng,
+            path: path.clone(),
+            started_at: Instant::now(),
+            viewport,
+        });
         self.replay_thread = Some(import_pcapng(
             path,
             self.characters.clone(),
@@ -1061,12 +1264,18 @@ impl DpsApp {
         );
     }
 
-    fn start_capture_json_import(&mut self, path: PathBuf) {
+    fn start_capture_json_import_for(&mut self, path: PathBuf, viewport: egui::ViewportId) {
         self.stop_engine();
         self.raw_capture = None;
         self.active_capture_filter = None;
         self.reset_combat_session();
         let stop = Arc::new(AtomicBool::new(false));
+        self.active_import = Some(ActiveImport {
+            kind: DebugImportKind::CaptureJson,
+            path: path.clone(),
+            started_at: Instant::now(),
+            viewport,
+        });
         self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
         self.replay_stop = Some(stop);
         self.status = "正在导入抓包 JSON...".to_owned();
@@ -1099,18 +1308,21 @@ impl DpsApp {
             return;
         }
         self.last_dropped_file = Some((path.clone(), Instant::now()));
-        let is_pcapng = path
+        let extension = path
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("pcapng"));
-        if !is_pcapng {
-            self.last_error = Some(format!(
-                "不支持拖入该文件：{}\n当前仅支持 .pcapng",
-                path.display()
-            ));
-            return;
+            .map(|extension| extension.to_ascii_lowercase());
+        match extension.as_deref() {
+            Some("pcapng") => self.request_import_file(DebugImportKind::Pcapng, path),
+            Some("json") => self.request_import_file(DebugImportKind::CaptureJson, path),
+            _ => {
+                let name = file_display_name(&path);
+                self.set_last_error(
+                    format!("不支持拖入该文件：{name}\n当前支持 .pcapng 和 .json"),
+                    Some(ErrorAction::OpenPcapng),
+                );
+            }
         }
-        self.start_pcapng_import(path);
     }
 
     fn current_ui_config(&self) -> UiConfig {
@@ -1119,6 +1331,12 @@ impl DpsApp {
             dark_mode: self.dark_mode,
             always_on_top: self.always_on_top,
             server_damage_calibration: self.server_damage_calibration,
+            passthrough_hotkey: self.passthrough_hotkey,
+            main_window_scale: self.main_window_scale,
+            abyss_window_scale: self.abyss_window_scale,
+            hit_detail_window_scale: self.hit_detail_window_scale,
+            team_hit_detail_window_scale: self.team_hit_detail_window_scale,
+            console_window_scale: self.console_window_scale,
         }
         .sanitized()
     }
@@ -1168,10 +1386,13 @@ impl DpsApp {
                     self.pending_ui_config = None;
                 }
                 Err(error) => {
-                    self.last_error = Some(format!(
-                        "UI configuration failed to save. Please check: {error} {}",
-                        self.ui_config_path.display()
-                    ));
+                    self.set_last_error(
+                        format!(
+                            "UI 配置保存失败，请检查权限或磁盘空间：{error}\n{}",
+                            self.ui_config_path.display()
+                        ),
+                        Some(ErrorAction::OpenConsole),
+                    );
                     self.pending_ui_config = Some((pending, now + UI_CONFIG_SAVE_RETRY_DELAY));
                 }
             },
@@ -1192,7 +1413,11 @@ impl DpsApp {
     fn request_debug_import(&mut self, ctx: &egui::Context, kind: DebugImportKind) {
         clear_process_windows_topmost(false);
         ctx.request_repaint();
-        self.pending_debug_import = Some((kind, 1));
+        self.pending_debug_import = Some(PendingDebugImport {
+            kind,
+            delay: 1,
+            viewport: ctx.viewport_id(),
+        });
     }
 
     fn open_native_file_dialog<T>(
@@ -1220,15 +1445,18 @@ impl DpsApp {
     }
 
     fn process_debug_import_dialog(&mut self, ctx: &egui::Context) {
-        let Some((kind, delay)) = self.pending_debug_import else {
+        let Some(pending) = self.pending_debug_import else {
             return;
         };
-        if delay > 0 {
-            self.pending_debug_import = Some((kind, delay - 1));
+        if pending.delay > 0 {
+            self.pending_debug_import = Some(PendingDebugImport {
+                delay: pending.delay - 1,
+                ..pending
+            });
             return;
         }
         self.pending_debug_import = None;
-        let path = self.open_native_file_dialog(ctx, || match kind {
+        let path = self.open_native_file_dialog(ctx, || match pending.kind {
             DebugImportKind::Pcapng => rfd::FileDialog::new()
                 .add_filter("Wireshark 抓包", &["pcapng"])
                 .pick_file(),
@@ -1241,10 +1469,13 @@ impl DpsApp {
                 .pick_file(),
         });
         if let Some(path) = path {
-            match kind {
-                DebugImportKind::Pcapng => self.start_pcapng_import(path),
-                DebugImportKind::CaptureJson => self.start_capture_json_import(path),
-                DebugImportKind::EncryptedIni => self.load_encrypted_ini(path),
+            match pending.kind {
+                DebugImportKind::Pcapng | DebugImportKind::CaptureJson => {
+                    self.request_import_file_for(pending.kind, path, pending.viewport);
+                }
+                DebugImportKind::EncryptedIni => {
+                    self.load_encrypted_ini_for(path, pending.viewport);
+                }
             }
         }
     }
@@ -1383,7 +1614,12 @@ impl DpsApp {
             }
             EngineEvent::Error(error) => {
                 self.status = "运行失败".to_owned();
-                self.last_error = Some(error);
+                let action = import_error_action(&error);
+                let viewport = self
+                    .active_import
+                    .as_ref()
+                    .map_or(egui::ViewportId::ROOT, |task| task.viewport);
+                self.set_last_error_for(viewport, humanize_engine_error(&error), action);
             }
             EngineEvent::CaptureStopped => {
                 let import_finished = self.replay_thread.is_some();
@@ -1395,6 +1631,7 @@ impl DpsApp {
                 if import_finished {
                     self.selected_abyss_half = AbyssHalf::First;
                     self.abyss_compact_mode = false;
+                    self.active_import = None;
                 }
                 self.status = "已停止".to_owned();
             }
@@ -1404,11 +1641,15 @@ impl DpsApp {
     fn export_capture_info(&mut self, ctx: &egui::Context) {
         self.drain_pending_events();
         if self.state.hits.is_empty() && self.state.packets.is_empty() {
-            self.last_error = Some("当前没有可导出的抓包信息".to_owned());
+            self.set_last_error_in(
+                ctx,
+                "当前没有可导出的抓包信息",
+                Some(ErrorAction::OpenConsole),
+            );
             return;
         }
         if self.capture.is_some() || self.replay_thread.is_some() {
-            self.last_error = Some("请先停止抓包或回放，再导出本次抓包信息".to_owned());
+            self.set_last_error_in(ctx, "请先停止抓包或回放，再导出本次抓包信息", None);
             return;
         }
 
@@ -1428,21 +1669,21 @@ impl DpsApp {
         }) {
             Ok(()) => {
                 self.status = "已导出抓包信息".to_owned();
-                self.last_error = None;
+                self.clear_last_error();
             }
             Err(error) => {
-                self.last_error = Some(format!("导出抓包信息失败：{error}"));
+                self.set_last_error_in(ctx, format!("导出抓包信息失败：{error}"), None);
             }
         }
     }
 
     fn export_raw_capture(&mut self, ctx: &egui::Context) {
         if self.capture.is_some() {
-            self.last_error = Some("请先停止抓包，再另存完整 PCAPNG".to_owned());
+            self.set_last_error_in(ctx, "请先停止抓包，再另存完整 PCAPNG", None);
             return;
         }
         if self.raw_capture.is_none() {
-            self.last_error = Some("当前没有可另存的完整 PCAPNG".to_owned());
+            self.set_last_error_in(ctx, "当前没有可另存的完整 PCAPNG", None);
             return;
         }
         let default_file_name = format!("nte_raw_{}.pcapng", Local::now().format("%Y%m%d_%H%M%S"));
@@ -1455,7 +1696,7 @@ impl DpsApp {
             return;
         };
         let Some(raw_capture) = self.raw_capture.as_ref() else {
-            self.last_error = Some("当前没有可另存的完整 PCAPNG".to_owned());
+            self.set_last_error_in(ctx, "当前没有可另存的完整 PCAPNG", None);
             return;
         };
         match raw_capture.save(&destination) {
@@ -1468,10 +1709,10 @@ impl DpsApp {
                     "已另存完整抓包至 {}（{} 包，{} 字节）",
                     file_name, packet_count, captured_bytes
                 );
-                self.last_error = None;
+                self.clear_last_error();
             }
             Err(error) => {
-                self.last_error = Some(format!("另存完整抓包失败：{error}"));
+                self.set_last_error_in(ctx, format!("另存完整抓包失败：{error}"), None);
             }
         }
     }
@@ -2012,12 +2253,14 @@ impl DpsApp {
                     .selectable(false),
                 );
                 ui.separator();
-                ui.selectable_value(
+                stable_selectable_value(
+                    ui,
                     &mut self.selected_abyss_half,
                     AbyssHalf::First,
                     RichText::new(AbyssHalf::First.label()).size(13.0),
                 );
-                ui.selectable_value(
+                stable_selectable_value(
+                    ui,
                     &mut self.selected_abyss_half,
                     AbyssHalf::Second,
                     RichText::new(AbyssHalf::Second.label()).size(13.0),
@@ -2096,8 +2339,12 @@ impl DpsApp {
     fn controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if self.capture.is_none() && self.replay_thread.is_none() {
-                if ui.add(primary_button("开始", self.dark_mode)).clicked() {
-                    self.start_live();
+                if ui
+                    .add(primary_button("开始", self.dark_mode))
+                    .on_hover_text("自动检测 HTGame.exe 连接和网卡后开始实时抓包")
+                    .clicked()
+                {
+                    self.request_start_live();
                 }
             } else if ui
                 .add(
@@ -2108,21 +2355,38 @@ impl DpsApp {
                     )
                     .stroke(Stroke::new(1.0, semantic_danger(self.dark_mode))),
                 )
+                .on_hover_text("停止当前实时抓包或导入回放")
                 .clicked()
             {
                 self.stop_engine();
                 self.drain_pending_events();
             }
-            if ui.button("重置").clicked() {
-                self.reset_combat_session();
+            if ui
+                .button("重置")
+                .on_hover_text("清空当前统计，执行前会确认")
+                .clicked()
+            {
+                self.request_reset_combat_session();
             }
             if ui
-                .selectable_label(self.paused, if self.paused { "继续" } else { "暂停" })
+                .add(
+                    egui::Button::selectable(
+                        self.paused,
+                        if self.paused { "继续" } else { "暂停" },
+                    )
+                    .frame_when_inactive(true),
+                )
+                .on_hover_text("暂停 UI 处理；继续后会补处理已缓存的命中事件")
                 .clicked()
             {
                 self.paused = !self.paused;
             }
-            if self.state.abyss.is_active() && ui.button("折叠").clicked() {
+            if self.state.abyss.is_active()
+                && ui
+                    .button("折叠")
+                    .on_hover_text("折叠深渊上下行线选择和工具栏")
+                    .clicked()
+            {
                 self.abyss_compact_mode = true;
             }
             if ui
@@ -2187,8 +2451,8 @@ impl DpsApp {
             egui::Sense::hover(),
         );
         let full_rect = egui::Rect::from_min_size(
-            rect.min + egui::vec2(2.0, 1.0),
-            egui::vec2((rect.width() - 4.0).max(0.0), full_height - 2.0),
+            rect.min + egui::vec2(2.0, 0.0),
+            egui::vec2((rect.width() - 4.0).max(0.0), full_height - 1.0),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -2252,12 +2516,12 @@ impl DpsApp {
         ui.allocate_rect(available, egui::Sense::hover());
     }
 
-    fn import_loading_content(&self, ui: &mut egui::Ui) {
+    fn import_loading_content(&mut self, ui: &mut egui::Ui) {
         let available_rect = ui.available_rect_before_wrap();
         ui.allocate_rect(available_rect, egui::Sense::hover());
         let card_size = egui::vec2(
             360.0_f32.min(available_rect.width()),
-            150.0_f32.min(available_rect.height()),
+            190.0_f32.min(available_rect.height()),
         );
         let card_rect = egui::Rect::from_center_size(available_rect.center(), card_size);
         ui.painter().rect(
@@ -2274,7 +2538,7 @@ impl DpsApp {
                 .max_rect(content_rect)
                 .layout(egui::Layout::top_down(egui::Align::Center)),
         );
-        content.add_space((content_rect.height() - 83.0).max(0.0) * 0.5);
+        content.add_space((content_rect.height() - 126.0).max(0.0) * 0.5);
         content.add(
             egui::Spinner::new()
                 .size(28.0)
@@ -2288,6 +2552,19 @@ impl DpsApp {
                 .color(shadcn_foreground(self.dark_mode)),
         );
         content.add_space(2.0);
+        if let Some(task) = &self.active_import {
+            let elapsed = task.started_at.elapsed().as_secs();
+            content.label(
+                RichText::new(format!(
+                    "{} · {} · {}s",
+                    task.kind.label(),
+                    file_display_name(&task.path),
+                    elapsed
+                ))
+                .size(11.0)
+                .color(content.visuals().weak_text_color()),
+            );
+        }
         content.label(
             RichText::new(format!(
                 "已解析 {} 条伤害记录 · {} 个封包",
@@ -2297,6 +2574,11 @@ impl DpsApp {
             .size(11.0)
             .color(content.visuals().weak_text_color()),
         );
+        content.add_space(8.0);
+        if content.button("取消导入").clicked() {
+            self.stop_engine();
+            self.status = "导入已取消".to_owned();
+        }
     }
 
     fn paint_theme_transition(&mut self, ctx: &egui::Context) {
@@ -3027,6 +3309,7 @@ impl DpsApp {
     }
 
     fn team_hit_detail_panel(&mut self, ctx: &egui::Context) {
+        let viewport_id = team_hit_detail_viewport_id();
         let (detail_source, _) = self.detail_source();
         let direction_summary =
             summarize_hit_directions(detail_hits_for_source(&self.state, detail_source));
@@ -3077,7 +3360,7 @@ impl DpsApp {
             "队伍战斗明细".to_owned()
         };
         let close_requested = ctx.show_viewport_immediate(
-            team_hit_detail_viewport_id(),
+            viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
                 .with_inner_size(TEAM_HIT_DETAIL_WINDOW_BASE_SIZE)
@@ -3154,17 +3437,20 @@ impl DpsApp {
                                         .color(ui.visuals().weak_text_color()),
                                 ),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::All,
                                 format!("全部 {}", outgoing_count + incoming_count),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::Outgoing,
                                 format!("输出 {outgoing_count}"),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::Incoming,
                                 format!("受击 {incoming_count}"),
@@ -3181,18 +3467,21 @@ impl DpsApp {
                         ui.separator();
                         self.team_hits(ui, self.team_hit_detail_filter.clone());
                     });
+                self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
         if close_requested {
             self.team_hit_detail_open = false;
             self.team_hit_detail_corner_applied = false;
+            self.retarget_dialogs(viewport_id, egui::ViewportId::ROOT);
         }
     }
 
     fn abyss_overview_panel(&mut self, ctx: &egui::Context) {
+        let viewport_id = abyss_overview_viewport_id();
         let close_requested = ctx.show_viewport_immediate(
-            abyss_overview_viewport_id(),
+            viewport_id,
             egui::ViewportBuilder::default()
                 .with_title("深渊怪物数值")
                 .with_inner_size(ABYSS_WINDOW_BASE_SIZE)
@@ -3232,12 +3521,14 @@ impl DpsApp {
                     .show_inside(ctx, |ui| {
                         self.abyss_overview_contents(ui);
                     });
+                self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
         if close_requested {
             self.abyss_overview_open = false;
             self.abyss_overview_corner_applied = false;
+            self.retarget_dialogs(viewport_id, egui::ViewportId::ROOT);
         }
     }
 
@@ -3402,19 +3693,28 @@ impl DpsApp {
         }
     }
 
-    fn apply_line_prediction_action(&mut self, upper: bool, action: LinePredictionAction) {
+    fn apply_line_prediction_action(
+        &mut self,
+        ctx: &egui::Context,
+        upper: bool,
+        action: LinePredictionAction,
+    ) {
         let team = match action {
             LinePredictionAction::None => return,
             LinePredictionAction::ImportCurrent => self.snapshot_current_team(upper),
             LinePredictionAction::Clear => None,
-            LinePredictionAction::ImportFile => match self.pick_and_load_team_dps() {
+            LinePredictionAction::ImportFile => match self.pick_and_load_team_dps(ctx, None) {
                 // For one line, prefer that line's team from the file, then the
                 // matching upper/lower, then the single team.
                 Some(export) => {
                     let preferred = if upper { export.upper } else { export.lower };
                     let team = preferred.or(export.single);
                     if team.is_none() {
-                        self.last_error = Some("DPS 数据文件里没有可用于该行的队伍".to_owned());
+                        self.set_last_error_in(
+                            ctx,
+                            "DPS 数据文件里没有可用于该行的队伍",
+                            Some(ErrorAction::OpenTeamDpsImport),
+                        );
                         return;
                     }
                     team
@@ -3431,10 +3731,16 @@ impl DpsApp {
 
     /// Open a file dialog and parse a team DPS data file. Returns `None` when the
     /// user cancels; sets `last_error` on a read/parse failure.
-    fn pick_and_load_team_dps(&mut self) -> Option<TeamDpsExport> {
-        let path = rfd::FileDialog::new()
-            .add_filter("NTE 队伍数据", &["json"])
-            .pick_file()?;
+    fn pick_and_load_team_dps(
+        &mut self,
+        ctx: &egui::Context,
+        retry_action: Option<ErrorAction>,
+    ) -> Option<TeamDpsExport> {
+        let path = self.open_native_file_dialog(ctx, || {
+            rfd::FileDialog::new()
+                .add_filter("NTE 队伍数据", &["json"])
+                .pick_file()
+        })?;
         match std::fs::read_to_string(&path)
             .map_err(|error| error.to_string())
             .and_then(|text| {
@@ -3442,7 +3748,7 @@ impl DpsApp {
             }) {
             Ok(export) => Some(export),
             Err(error) => {
-                self.last_error = Some(format!("导入 DPS 数据失败：{error}"));
+                self.set_last_error_in(ctx, format!("导入 DPS 数据失败：{error}"), retry_action);
                 None
             }
         }
@@ -3450,14 +3756,19 @@ impl DpsApp {
 
     /// Main-window "导入 DPS 数据": load a team DPS file into the abyss prediction.
     /// A dual file fills 上行线/下行线 separately; a single-team file fills both.
-    fn import_team_dps(&mut self) {
-        let Some(export) = self.pick_and_load_team_dps() else {
+    fn import_team_dps(&mut self, ctx: &egui::Context) {
+        let Some(export) = self.pick_and_load_team_dps(ctx, Some(ErrorAction::OpenTeamDpsImport))
+        else {
             return;
         };
         let upper = export.upper.clone().or_else(|| export.single.clone());
         let lower = export.lower.clone().or_else(|| export.single.clone());
         if upper.is_none() && lower.is_none() {
-            self.last_error = Some("DPS 数据文件里没有队伍数据".to_owned());
+            self.set_last_error_in(
+                ctx,
+                "DPS 数据文件里没有队伍数据",
+                Some(ErrorAction::OpenTeamDpsImport),
+            );
             return;
         }
         if upper.is_some() {
@@ -3467,32 +3778,37 @@ impl DpsApp {
             self.abyss_overview.lower_team = lower;
         }
         self.status = "已导入 DPS 队伍数据".to_owned();
+        self.clear_last_error();
     }
 
     /// Main-window "导出队伍数据": write a compact JSON with the current session as
     /// `single` and real-time abyss halves as `upper`/`lower` when available.
     /// Prediction-panel teams are kept as a fallback for manually imported data.
     /// No packets or per-hit data, latest DPS only, serialized without indentation.
-    fn export_team_dps(&mut self) {
+    fn export_team_dps(&mut self, ctx: &egui::Context) {
         let Some(export) = build_team_dps_export(&self.state, &self.abyss_overview) else {
-            self.last_error = Some("没有可导出的队伍数据，请先抓包或设置深渊队伍".to_owned());
+            self.set_last_error_in(ctx, "没有可导出的队伍数据，请先抓包或设置深渊队伍", None);
             return;
         };
         let Ok(json) = serde_json::to_string(&export) else {
-            self.last_error = Some("序列化队伍数据失败".to_owned());
+            self.set_last_error_in(ctx, "序列化队伍数据失败", None);
             return;
         };
         let default_name = format!("nte_team_dps_{}.json", Local::now().format("%Y%m%d_%H%M%S"));
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("NTE 队伍数据", &["json"])
-            .set_file_name(&default_name)
-            .save_file()
-        else {
+        let Some(path) = self.open_native_file_dialog(ctx, || {
+            rfd::FileDialog::new()
+                .add_filter("NTE 队伍数据", &["json"])
+                .set_file_name(&default_name)
+                .save_file()
+        }) else {
             return;
         };
         match atomic_write_text(&path, &json) {
-            Ok(()) => self.status = "已导出队伍数据".to_owned(),
-            Err(error) => self.last_error = Some(format!("导出队伍数据失败：{error}")),
+            Ok(()) => {
+                self.status = "已导出队伍数据".to_owned();
+                self.clear_last_error();
+            }
+            Err(error) => self.set_last_error_in(ctx, format!("导出队伍数据失败：{error}"), None),
         }
     }
 
@@ -3622,8 +3938,9 @@ impl DpsApp {
                     None,
                 );
             }
-            self.apply_line_prediction_action(true, upper_action);
-            self.apply_line_prediction_action(false, lower_action);
+            let ctx = ui.ctx().clone();
+            self.apply_line_prediction_action(&ctx, true, upper_action);
+            self.apply_line_prediction_action(&ctx, false, lower_action);
         }
         ui.add_space(8.0);
         ui.separator();
@@ -3652,6 +3969,7 @@ impl DpsApp {
     }
 
     fn hit_detail_panel(&mut self, ctx: &egui::Context, char_id: u32) {
+        let viewport_id = hit_detail_viewport_id();
         let stats = if let Some(party) = self.selected_party_state() {
             party.stats.get(&char_id).cloned()
         } else {
@@ -3697,7 +4015,7 @@ impl DpsApp {
         );
         let title = format!("{} - 战斗明细", stats.name);
         let close_requested = ctx.show_viewport_immediate(
-            hit_detail_viewport_id(),
+            viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
                 .with_inner_size(HIT_DETAIL_WINDOW_BASE_SIZE)
@@ -3856,17 +4174,20 @@ impl DpsApp {
                                         .color(ui.visuals().weak_text_color()),
                                 ),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::All,
                                 format!("全部 {}", outgoing_count + incoming_count),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::Outgoing,
                                 format!("输出 {outgoing_count}"),
                             );
-                            ui.selectable_value(
+                            stable_selectable_value(
+                                ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::Incoming,
                                 format!("受击 {incoming_count}"),
@@ -3891,13 +4212,15 @@ impl DpsApp {
                                         self.hit_detail_skill_filter.clone()
                                     })
                                     .show_ui(ui, |ui| {
-                                        ui.selectable_value(
+                                        stable_popup_selectable_value(
+                                            ui,
                                             &mut self.hit_detail_skill_filter,
                                             String::new(),
                                             "全部招式",
                                         );
                                         for summary in &skill_summaries {
-                                            ui.selectable_value(
+                                            stable_popup_selectable_value(
+                                                ui,
                                                 &mut self.hit_detail_skill_filter,
                                                 summary.name.clone(),
                                                 format!("{}  {}次", summary.name, summary.hits),
@@ -3931,18 +4254,21 @@ impl DpsApp {
                             &skill_filter,
                         );
                     });
+                self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
         if close_requested {
             self.hit_detail_char_id = None;
             self.hit_detail_corner_applied = false;
+            self.retarget_dialogs(viewport_id, egui::ViewportId::ROOT);
         }
     }
 
     fn console_panel(&mut self, ctx: &egui::Context) {
+        let viewport_id = console_viewport_id();
         let close_requested = ctx.show_viewport_immediate(
-            console_viewport_id(),
+            viewport_id,
             egui::ViewportBuilder::default()
                 .with_title("NTE 控制台")
                 .with_inner_size(CONSOLE_WINDOW_BASE_SIZE)
@@ -3982,26 +4308,38 @@ impl DpsApp {
                     .show_inside(ctx, |ui| {
                         self.console_contents(ui);
                     });
+                self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
         );
         if close_requested {
             self.console_open = false;
             self.console_corner_applied = false;
+            self.retarget_dialogs(viewport_id, egui::ViewportId::ROOT);
         }
     }
 
     fn console_contents(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.console_tab, ConsoleTab::Settings, "设置");
-            ui.selectable_value(&mut self.console_tab, ConsoleTab::Characters, "角色数据");
-            ui.selectable_value(&mut self.console_tab, ConsoleTab::EncryptedIni, "加密 INI");
+            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Settings, "设置");
+            stable_selectable_value(
+                ui,
+                &mut self.console_tab,
+                ConsoleTab::Characters,
+                "角色数据",
+            );
+            stable_selectable_value(
+                ui,
+                &mut self.console_tab,
+                ConsoleTab::EncryptedIni,
+                "加密 INI",
+            );
             // Genuine capture debugging — only reachable in debug builds.
             #[cfg(not(feature = "no_debug"))]
             {
                 ui.separator();
-                ui.selectable_value(&mut self.console_tab, ConsoleTab::Packets, "封包");
-                ui.selectable_value(&mut self.console_tab, ConsoleTab::Diagnostics, "诊断");
+                stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Packets, "封包");
+                stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Diagnostics, "诊断");
             }
         });
         ui.separator();
@@ -4024,17 +4362,34 @@ impl DpsApp {
                 .add_enabled(can_save, egui::Button::new("保存为加密 INI"))
                 .clicked()
             {
-                self.save_encrypted_ini();
+                self.save_encrypted_ini(ui.ctx());
             }
             if ui
                 .add_enabled(can_save, egui::Button::new("重新载入"))
                 .clicked()
                 && let Some(path) = self.encrypted_ini_editor.path.clone()
             {
-                self.load_encrypted_ini(path);
+                if self.encrypted_ini_editor.dirty {
+                    self.request_confirmation_for(
+                        ui.ctx().viewport_id(),
+                        ConfirmationAction::ReloadEncryptedIni(path),
+                    );
+                } else {
+                    self.load_encrypted_ini_in(ui.ctx(), path);
+                }
             }
             if ui.button("清空").clicked() {
-                self.encrypted_ini_editor = EncryptedIniEditorState::default();
+                if self.encrypted_ini_editor.dirty {
+                    self.request_confirmation_for(
+                        ui.ctx().viewport_id(),
+                        ConfirmationAction::ClearEncryptedIni,
+                    );
+                } else {
+                    self.run_confirmation_action_for(
+                        ConfirmationAction::ClearEncryptedIni,
+                        ui.ctx().viewport_id(),
+                    );
+                }
             }
         });
         ui.add_space(4.0);
@@ -4049,7 +4404,12 @@ impl DpsApp {
                 .selected_text(self.encrypted_ini_editor.key.label())
                 .show_ui(ui, |ui| {
                     for key in EncryptedIniKey::all() {
-                        ui.selectable_value(&mut self.encrypted_ini_editor.key, key, key.label());
+                        stable_popup_selectable_value(
+                            ui,
+                            &mut self.encrypted_ini_editor.key,
+                            key,
+                            key.label(),
+                        );
                     }
                 });
         });
@@ -4192,20 +4552,24 @@ impl DpsApp {
         });
     }
 
-    fn load_encrypted_ini(&mut self, path: PathBuf) {
+    fn load_encrypted_ini_in(&mut self, ctx: &egui::Context, path: PathBuf) {
+        self.load_encrypted_ini_for(path, ctx.viewport_id());
+    }
+
+    fn load_encrypted_ini_for(&mut self, path: PathBuf, viewport: egui::ViewportId) {
         match EncryptedIniEditorState::load(path) {
             Ok(editor) => {
                 self.encrypted_ini_editor = editor;
-                self.last_error = None;
+                self.clear_last_error();
             }
             Err(error) => {
                 self.encrypted_ini_editor.message = error.clone();
-                self.last_error = Some(error);
+                self.set_last_error_for(viewport, error, Some(ErrorAction::OpenEncryptedIni));
             }
         }
     }
 
-    fn save_encrypted_ini(&mut self) {
+    fn save_encrypted_ini(&mut self, ctx: &egui::Context) {
         let Some(path) = self.encrypted_ini_editor.path.clone() else {
             self.encrypted_ini_editor.message = "请先打开一个 INI 文件".to_owned();
             return;
@@ -4228,13 +4592,13 @@ impl DpsApp {
             Ok(encrypted) => encrypted,
             Err(error) => {
                 self.encrypted_ini_editor.message = format!("生成密文失败: {error}");
-                self.last_error = Some(self.encrypted_ini_editor.message.clone());
+                self.set_last_error_in(ctx, self.encrypted_ini_editor.message.clone(), None);
                 return;
             }
         };
         if let Err(error) = atomic_write_text(&path, &encrypted) {
             self.encrypted_ini_editor.message = format!("保存 {} 失败: {error}", path.display());
-            self.last_error = Some(self.encrypted_ini_editor.message.clone());
+            self.set_last_error_in(ctx, self.encrypted_ini_editor.message.clone(), None);
             return;
         }
         self.encrypted_ini_editor.original_key = self.encrypted_ini_editor.key;
@@ -4246,7 +4610,7 @@ impl DpsApp {
             path.display()
         );
         self.status = "加密 INI 已保存".to_owned();
-        self.last_error = None;
+        self.clear_last_error();
     }
 
     /// First-class settings promoted out of the old debug "环境" tab: parse
@@ -4273,6 +4637,27 @@ impl DpsApp {
                             "重新抓包或重新导入后生效；只在服务端 HP 同步能与单条命中明确配对时覆盖伤害数值",
                         );
                         ui.end_row();
+                        ui.label("穿透热键");
+                        let mut hotkey = self.passthrough_hotkey;
+                        egui::ComboBox::from_id_salt("passthrough_hotkey")
+                            .width(PASSTHROUGH_HOTKEY_COMBO_WIDTH)
+                            .selected_text(hotkey.label())
+                            .show_ui(ui, |ui| {
+                                ui.set_min_width(PASSTHROUGH_HOTKEY_COMBO_WIDTH);
+                                ui.set_max_width(PASSTHROUGH_HOTKEY_COMBO_WIDTH);
+                                for option in PassthroughHotkey::all() {
+                                    stable_popup_selectable_value(
+                                        ui,
+                                        &mut hotkey,
+                                        *option,
+                                        option.label(),
+                                    );
+                                }
+                            });
+                        if hotkey != self.passthrough_hotkey {
+                            self.set_passthrough_hotkey(hotkey);
+                        }
+                        ui.end_row();
                     });
             });
         egui::CollapsingHeader::new("队伍数据")
@@ -4284,14 +4669,14 @@ impl DpsApp {
                         .on_hover_text("导入队伍 DPS 数据（json），用于深渊通关预测")
                         .clicked()
                     {
-                        self.import_team_dps();
+                        self.import_team_dps(ui.ctx());
                     }
                     if ui
                         .button("导出队伍数据")
                         .on_hover_text("导出当前队伍与深渊上下队伍的 DPS（json，不含封包）")
                         .clicked()
                     {
-                        self.export_team_dps();
+                        self.export_team_dps(ui.ctx());
                     }
                 });
                 ui.small("导入/导出与场景无关，大世界与深渊均可使用");
@@ -4389,7 +4774,7 @@ impl DpsApp {
                     if ui.button("重新检测").clicked()
                         && let Err(error) = self.refresh_game_network()
                     {
-                        self.last_error = Some(error);
+                        self.set_last_error_in(ui.ctx(), error, Some(ErrorAction::RefreshNetwork));
                     }
                     ui.label("受击记录已启用");
                     let can_export_json = self.capture.is_none()
@@ -4611,7 +4996,12 @@ impl DpsApp {
                         } else {
                             format!("{id}  {name_zh}  {name_en}{attribute_label}")
                         };
-                        if ui.selectable_label(selected, label).clicked() {
+                        if ui
+                            .add(
+                                egui::Button::selectable(selected, label).frame_when_inactive(true),
+                            )
+                            .clicked()
+                        {
                             if self.character_editor.dirty {
                                 self.character_editor.message =
                                     "请先保存当前修改，再切换角色".to_owned();
@@ -4665,19 +5055,24 @@ impl DpsApp {
                     ui.label("属性");
                     let previous_attribute = self.character_editor.form.attribute.clone();
                     egui::ComboBox::from_id_salt("character_attribute")
+                        .width(CHARACTER_ATTRIBUTE_COMBO_WIDTH)
                         .selected_text(if self.character_editor.form.attribute.is_empty() {
                             "未设置"
                         } else {
                             self.character_editor.form.attribute.as_str()
                         })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(
+                            ui.set_min_width(CHARACTER_ATTRIBUTE_COMBO_WIDTH);
+                            ui.set_max_width(CHARACTER_ATTRIBUTE_COMBO_WIDTH);
+                            stable_popup_selectable_value(
+                                ui,
                                 &mut self.character_editor.form.attribute,
                                 String::new(),
                                 "未设置",
                             );
                             for attribute in CHARACTER_ATTRIBUTES {
-                                ui.selectable_value(
+                                stable_popup_selectable_value(
+                                    ui,
                                     &mut self.character_editor.form.attribute,
                                     attribute.to_owned(),
                                     attribute,
@@ -4762,12 +5157,119 @@ impl DpsApp {
                 self.character_editor.message =
                     format!("ID {id} 已保存并重新加载；实时抓包中的映射将在下次启动时更新");
                 self.status = "characters.json 已保存".to_owned();
-                self.last_error = None;
+                self.clear_last_error();
             }
             Err(error) => {
                 self.character_editor.message = format!("文件已写入，但重新加载失败: {error}");
                 self.character_editor.dirty = true;
             }
+        }
+    }
+
+    fn show_viewport_dialogs(&mut self, ctx: &egui::Context) {
+        self.show_confirmation_dialog(ctx);
+        self.show_error_window(ctx);
+    }
+
+    fn show_confirmation_dialog(&mut self, ctx: &egui::Context) {
+        let Some(action) = self.pending_confirmation.as_ref() else {
+            return;
+        };
+        if self.pending_confirmation_viewport != ctx.viewport_id() {
+            return;
+        }
+        let (title, message, confirm_label) = confirmation_content(action);
+        let mut confirmed = false;
+        let mut cancelled = false;
+        egui::Window::new(title)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(message);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button(confirm_label).clicked() {
+                        confirmed = true;
+                    }
+                    if ui.button("取消").clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+        if confirmed {
+            if let Some(action) = self.pending_confirmation.take() {
+                self.run_confirmation_action_for(action, ctx.viewport_id());
+            }
+        } else if cancelled {
+            self.pending_confirmation = None;
+        }
+    }
+
+    fn show_error_window(&mut self, ctx: &egui::Context) {
+        let Some(error) = self.last_error.clone() else {
+            return;
+        };
+        if self.last_error_viewport != ctx.viewport_id() {
+            return;
+        }
+        let action = self.last_error_action;
+        let mut run_action = None;
+        let mut close = false;
+        egui::Window::new("错误")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(error);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if let Some(action) = action
+                        && ui.button(error_action_label(action)).clicked()
+                    {
+                        run_action = Some(action);
+                    }
+                    if ui.button("关闭").clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if let Some(action) = run_action {
+            self.clear_last_error();
+            self.run_error_action(ctx, action);
+        } else if close {
+            self.clear_last_error();
+        }
+    }
+
+    fn run_error_action(&mut self, ctx: &egui::Context, action: ErrorAction) {
+        match action {
+            ErrorAction::RefreshNetwork => {
+                if let Err(error) = self.refresh_game_network() {
+                    self.set_last_error_in(ctx, error, Some(ErrorAction::RefreshNetwork));
+                }
+            }
+            ErrorAction::OpenPcapng => self.request_debug_import(ctx, DebugImportKind::Pcapng),
+            ErrorAction::OpenCaptureJson => {
+                self.request_debug_import(ctx, DebugImportKind::CaptureJson);
+            }
+            ErrorAction::OpenEncryptedIni => {
+                self.request_debug_import(ctx, DebugImportKind::EncryptedIni);
+            }
+            ErrorAction::OpenTeamDpsImport => self.import_team_dps(ctx),
+            ErrorAction::OpenConsole => {
+                self.console_open = true;
+                self.console_corner_applied = false;
+            }
+        }
+    }
+
+    fn retarget_dialogs(&mut self, from: egui::ViewportId, to: egui::ViewportId) {
+        if self.last_error.is_some() && self.last_error_viewport == from {
+            self.last_error_viewport = to;
+        }
+        if self.pending_confirmation.is_some() && self.pending_confirmation_viewport == from {
+            self.pending_confirmation_viewport = to;
         }
     }
 }
@@ -4839,8 +5341,7 @@ impl eframe::App for DpsApp {
             } else {
                 egui::Frame::new()
                     .fill(ctx.global_style().visuals.panel_fill)
-                    .stroke(Stroke::new(1.0, shadcn_border(self.dark_mode)))
-                    .inner_margin(egui::Margin::symmetric(8, 2))
+                    .inner_margin(egui::Margin::symmetric(8, 0))
             };
             egui::Panel::top("custom_title_bar")
                 .exact_size(if self.hud_mode { 24.0 } else { 32.0 })
@@ -4859,11 +5360,21 @@ impl eframe::App for DpsApp {
         } else {
             shadcn_background(self.dark_mode)
         };
+        let central_margin = if self.hud_mode {
+            egui::Margin::ZERO
+        } else {
+            egui::Margin {
+                left: 8,
+                right: 8,
+                top: 0,
+                bottom: 8,
+            }
+        };
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(central_fill)
-                    .inner_margin(egui::Margin::same(8)),
+                    .inner_margin(central_margin),
             )
             .show_inside(ui, |ui| {
                 if self.hud_mode {
@@ -4904,7 +5415,7 @@ impl eframe::App for DpsApp {
                         .inner_margin(egui::Margin::symmetric(28, 20))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("松开以导入 PCAPNG")
+                                RichText::new("松开以导入 PCAPNG / JSON")
                                     .size(18.0)
                                     .strong()
                                     .color(theme_accent(self.dark_mode)),
@@ -4913,18 +5424,7 @@ impl eframe::App for DpsApp {
                 });
         }
         self.paint_theme_transition(&ctx);
-        if let Some(error) = self.last_error.clone() {
-            egui::Window::new("错误")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(&ctx, |ui| {
-                    ui.label(error);
-                    if ui.button("关闭").clicked() {
-                        self.last_error = None;
-                    }
-                });
-        }
+        self.show_viewport_dialogs(&ctx);
         self.persist_ui_config();
         if self.capture.is_none()
             && self.replay_thread.is_none()
@@ -4947,6 +5447,135 @@ enum UiConfigSavePlan {
     SetPending((UiConfig, Instant)),
     KeepPending((UiConfig, Instant)),
     Save(UiConfig),
+}
+
+fn passthrough_egui_key(hotkey: PassthroughHotkey) -> egui::Key {
+    match hotkey {
+        PassthroughHotkey::Home => egui::Key::Home,
+        PassthroughHotkey::Insert => egui::Key::Insert,
+        PassthroughHotkey::F8 => egui::Key::F8,
+        PassthroughHotkey::F9 => egui::Key::F9,
+    }
+}
+
+fn stable_selectable_value<'a, Value: PartialEq>(
+    ui: &mut egui::Ui,
+    current_value: &mut Value,
+    selected_value: Value,
+    text: impl egui::IntoAtoms<'a>,
+) -> egui::Response {
+    let mut response = ui.add(
+        egui::Button::selectable(*current_value == selected_value, text).frame_when_inactive(true),
+    );
+    if response.clicked() && *current_value != selected_value {
+        *current_value = selected_value;
+        response.mark_changed();
+    }
+    response
+}
+
+fn stable_popup_selectable_value<'a, Value: PartialEq>(
+    ui: &mut egui::Ui,
+    current_value: &mut Value,
+    selected_value: Value,
+    text: impl egui::IntoAtoms<'a>,
+) -> egui::Response {
+    let mut style = (**ui.style()).clone();
+    style.visuals.widgets.inactive.bg_stroke =
+        Stroke::new(0.0, style.visuals.widgets.inactive.bg_stroke.color);
+    ui.scope(|ui| {
+        ui.set_style(style);
+        ui.selectable_value(current_value, selected_value, text)
+    })
+    .inner
+}
+
+fn file_display_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("所选文件")
+        .to_owned()
+}
+
+fn confirmation_content(action: &ConfirmationAction) -> (&'static str, String, &'static str) {
+    match action {
+        ConfirmationAction::StartLive => (
+            "确认开始",
+            "开始实时抓包会清空当前统计并重新检测游戏连接。".to_owned(),
+            "开始",
+        ),
+        ConfirmationAction::ResetSession => (
+            "确认重置",
+            "将停止当前任务并清空本次统计、深渊状态和明细缓存。".to_owned(),
+            "重置",
+        ),
+        ConfirmationAction::ImportPcapng(path) => (
+            "确认导入",
+            format!(
+                "导入 {} 会停止当前任务并清空现有统计。",
+                file_display_name(path)
+            ),
+            "导入",
+        ),
+        ConfirmationAction::ImportCaptureJson(path) => (
+            "确认导入",
+            format!(
+                "导入 {} 会停止当前任务并清空现有统计。",
+                file_display_name(path)
+            ),
+            "导入",
+        ),
+        ConfirmationAction::ClearEncryptedIni => (
+            "确认清空",
+            "当前 INI 有未保存修改，清空后这些修改会丢失。".to_owned(),
+            "清空",
+        ),
+        ConfirmationAction::ReloadEncryptedIni(path) => (
+            "确认重新载入",
+            format!(
+                "当前 INI 有未保存修改，重新载入 {} 后这些修改会丢失。",
+                file_display_name(path)
+            ),
+            "重新载入",
+        ),
+    }
+}
+
+fn error_action_label(action: ErrorAction) -> &'static str {
+    match action {
+        ErrorAction::RefreshNetwork => "重新检测",
+        ErrorAction::OpenPcapng => "重新选择 PCAPNG",
+        ErrorAction::OpenCaptureJson => "重新选择 JSON",
+        ErrorAction::OpenEncryptedIni => "重新选择 INI",
+        ErrorAction::OpenTeamDpsImport => "重新选择 DPS 数据",
+        ErrorAction::OpenConsole => "打开控制台",
+    }
+}
+
+fn import_error_action(error: &str) -> Option<ErrorAction> {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("pcapng") {
+        Some(ErrorAction::OpenPcapng)
+    } else if lower.contains("json") {
+        Some(ErrorAction::OpenCaptureJson)
+    } else {
+        None
+    }
+}
+
+fn humanize_engine_error(error: &str) -> String {
+    let lower = error.to_ascii_lowercase();
+    const PCAPNG_PREFIX: &str = "pcapng import failed:";
+    const JSON_PREFIX: &str = "json import failed:";
+    if lower.starts_with(PCAPNG_PREFIX) {
+        let reason = error[PCAPNG_PREFIX.len()..].trim();
+        return format!("PCAPNG 导入失败：{}", reason.trim());
+    }
+    if lower.starts_with(JSON_PREFIX) {
+        let reason = error[JSON_PREFIX.len()..].trim();
+        return format!("抓包 JSON 导入失败：{}", reason.trim());
+    }
+    error.to_owned()
 }
 
 /// System CJK fonts tried in order. The whole UI is Chinese, so without a CJK face every label
@@ -5203,7 +5832,8 @@ fn draw_abyss_floor_nav(
                 if ui
                     .add_sized(
                         egui::vec2(ui.available_width(), 28.0),
-                        egui::Button::selectable(selected_in_season || expanded, season_label),
+                        egui::Button::selectable(selected_in_season || expanded, season_label)
+                            .frame_when_inactive(true),
                     )
                     .clicked()
                 {
@@ -9199,12 +9829,14 @@ mod tests {
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
+            ..UiConfig::default()
         };
         let current = UiConfig {
             opacity: 0.9,
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
+            ..UiConfig::default()
         };
         match DpsApp::ui_config_save_plan(&current, &saved, None, now) {
             UiConfigSavePlan::SetPending((pending, save_at)) => {
@@ -9223,12 +9855,14 @@ mod tests {
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
+            ..UiConfig::default()
         };
         let current = UiConfig {
             opacity: 0.9,
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
+            ..UiConfig::default()
         };
         let future = now + Duration::from_millis(500);
         let pending = Some((current.clone(), future));
