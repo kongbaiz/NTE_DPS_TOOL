@@ -375,9 +375,7 @@ impl TimeStopTracker {
                 ..
             } => self.push_interval(*timestamp, *timestamp + duration_seconds),
             TimeStopEvent::ExtraStart { timestamp, reason } => {
-                self.active_extra_starts
-                    .entry(reason.clone())
-                    .or_insert(*timestamp);
+                self.active_extra_starts.insert(reason.clone(), *timestamp);
             }
             TimeStopEvent::ExtraEnd { timestamp, reason } => {
                 let Some(start) = self.active_extra_starts.remove(reason) else {
@@ -1320,6 +1318,27 @@ mod tests {
         state.push_hit(test_hit(10.0, 1052, "outgoing", 100.0));
 
         assert!((state.duration_with_time_stop(true) - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn repeated_extra_time_stop_start_replaces_stale_start() {
+        let mut state = CombatState::default();
+        state.push_hit(test_hit(0.0, 1052, "outgoing", 100.0));
+        state.apply_time_stop_event(TimeStopEvent::ExtraStart {
+            timestamp: 1.0,
+            reason: "Event.Montage.Player.UltraSkill.Jin".to_owned(),
+        });
+        state.apply_time_stop_event(TimeStopEvent::ExtraStart {
+            timestamp: 10.0,
+            reason: "Event.Montage.Player.UltraSkill.Jin".to_owned(),
+        });
+        state.apply_time_stop_event(TimeStopEvent::ExtraEnd {
+            timestamp: 12.0,
+            reason: "Event.Montage.Player.UltraSkill.Jin".to_owned(),
+        });
+        state.push_hit(test_hit(20.0, 1052, "outgoing", 100.0));
+
+        assert!((state.duration_with_time_stop(true) - 18.0).abs() < 1e-9);
     }
 
     #[test]

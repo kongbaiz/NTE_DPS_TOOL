@@ -2745,6 +2745,16 @@ fn send_export_packet(
     } else {
         packet.decoded_text
     };
+    for event in ultra_time_stop.events_from_packet(
+        packet.timestamp_unix,
+        &decoded_text,
+        &declared_ids,
+        ultra_time_stops,
+    ) {
+        sender
+            .send(EngineEvent::TimeStop(event))
+            .map_err(|error| error.to_string())?;
+    }
     if !should_keep_debug_packet(&payload, &declared_ids, packet.parsed_hits, &decoded_text) {
         return Ok(false);
     }
@@ -2770,16 +2780,6 @@ fn send_export_packet(
     for event in abyss_events_from_text(packet.timestamp, &packet.decoded_text) {
         sender
             .send(EngineEvent::Abyss(event))
-            .map_err(|error| error.to_string())?;
-    }
-    for event in ultra_time_stop.events_from_packet(
-        packet.timestamp,
-        &packet.decoded_text,
-        &packet.declared_ids,
-        ultra_time_stops,
-    ) {
-        sender
-            .send(EngineEvent::TimeStop(event))
             .map_err(|error| error.to_string())?;
     }
     sender
@@ -3313,6 +3313,71 @@ mod tests {
             }
             _ => panic!("expected packet event"),
         }
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn send_export_packet_emits_pending_time_stop_end_before_filtering() {
+        let (sender, receiver) = unbounded();
+        let table = HashMap::from([(
+            1010,
+            UltraTimeStopEntry {
+                ability_id: "GA_Nanally_UltraSkill".to_owned(),
+                end_ability_event_seconds: 3.584608,
+                source: "test".to_owned(),
+                confidence: "high".to_owned(),
+            },
+        )]);
+        let mut tracker = UltraTimeStopTracker::default();
+        let start_packet = ExportPacket {
+            timestamp_unix: 10.0,
+            source: "127.0.0.1:1234".to_owned(),
+            destination: "127.0.0.1:5678".to_owned(),
+            direction: "C2S".to_owned(),
+            payload_len: 0,
+            declared_ids: serde_json::json!([]),
+            parsed_hits: 0,
+            note: String::new(),
+            payload_preview: String::new(),
+            payload_hex: String::new(),
+            decoded_text: "CoolDown.Player.UltraSkill.F".to_owned(),
+        };
+        assert!(send_export_packet(start_packet, &sender, &table, &mut tracker).unwrap());
+        assert!(matches!(
+            receiver
+                .try_recv()
+                .expect("pending start should be emitted"),
+            EngineEvent::TimeStop(TimeStopEvent::ExtraStart {
+                timestamp: 10.0,
+                ..
+            })
+        ));
+        assert!(matches!(
+            receiver.try_recv().expect("debug packet should be emitted"),
+            EngineEvent::Packet(_)
+        ));
+
+        let ignored_packet = ExportPacket {
+            timestamp_unix: 15.0,
+            source: "127.0.0.1:1234".to_owned(),
+            destination: "127.0.0.1:5678".to_owned(),
+            direction: "C2S".to_owned(),
+            payload_len: 4,
+            declared_ids: serde_json::json!([]),
+            parsed_hits: 0,
+            note: String::new(),
+            payload_preview: "00000000".to_owned(),
+            payload_hex: "00000000".to_owned(),
+            decoded_text: String::new(),
+        };
+        assert!(!send_export_packet(ignored_packet, &sender, &table, &mut tracker).unwrap());
+        assert!(matches!(
+            receiver.try_recv().expect("pending end should be emitted"),
+            EngineEvent::TimeStop(TimeStopEvent::ExtraEnd {
+                timestamp: 10.0,
+                ..
+            })
+        ));
         assert!(receiver.try_recv().is_err());
     }
 
