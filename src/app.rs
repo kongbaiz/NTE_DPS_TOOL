@@ -3363,7 +3363,10 @@ impl DpsApp {
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
-                .with_inner_size(TEAM_HIT_DETAIL_WINDOW_BASE_SIZE)
+                .with_inner_size(scaled_window_size(
+                    TEAM_HIT_DETAIL_WINDOW_BASE_SIZE,
+                    self.team_hit_detail_window_scale,
+                ))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
                 // Not transparent and not resizable on purpose — see
@@ -3484,7 +3487,10 @@ impl DpsApp {
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title("深渊怪物数值")
-                .with_inner_size(ABYSS_WINDOW_BASE_SIZE)
+                .with_inner_size(scaled_window_size(
+                    ABYSS_WINDOW_BASE_SIZE,
+                    self.abyss_window_scale,
+                ))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
                 // Not transparent and not resizable on purpose — see
@@ -4018,7 +4024,10 @@ impl DpsApp {
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
-                .with_inner_size(HIT_DETAIL_WINDOW_BASE_SIZE)
+                .with_inner_size(scaled_window_size(
+                    HIT_DETAIL_WINDOW_BASE_SIZE,
+                    self.hit_detail_window_scale,
+                ))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
                 // Not transparent and not resizable on purpose — see
@@ -4271,7 +4280,10 @@ impl DpsApp {
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title("NTE 控制台")
-                .with_inner_size(CONSOLE_WINDOW_BASE_SIZE)
+                .with_inner_size(scaled_window_size(
+                    CONSOLE_WINDOW_BASE_SIZE,
+                    self.console_window_scale,
+                ))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
                 // Not transparent and not resizable on purpose — see
@@ -5323,9 +5335,10 @@ impl eframe::App for DpsApp {
                 self.hud_size_key = Some(size_key);
             }
         } else if self.hud_size_key.take().is_some() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
-                MAIN_WINDOW_BASE_SIZE * self.main_window_scale,
-            ));
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(scaled_window_size(
+                MAIN_WINDOW_BASE_SIZE,
+                self.main_window_scale,
+            )));
         }
     }
 
@@ -5631,9 +5644,8 @@ fn install_fonts(ctx: &egui::Context) {
 fn window_scale_stepper(ui: &mut egui::Ui, scale: &mut f32, base_size: egui::Vec2) {
     let apply = |ui: &egui::Ui, scale: f32| {
         ui.ctx()
-            .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                (base_size.x * scale).round(),
-                (base_size.y * scale).round(),
+            .send_viewport_cmd(egui::ViewportCommand::InnerSize(scaled_window_size(
+                base_size, scale,
             )));
     };
     // right-to-left: ＋ is added first (rightmost), then the readout, then －.
@@ -5672,6 +5684,15 @@ fn window_scale_stepper(ui: &mut egui::Ui, scale: &mut f32, base_size: egui::Vec
         *scale = (*scale - WINDOW_SCALE_STEP).max(WINDOW_SCALE_MIN);
         apply(ui, *scale);
     }
+}
+
+pub(crate) fn scaled_window_size(base_size: egui::Vec2, scale: f32) -> egui::Vec2 {
+    let scale = if scale.is_finite() {
+        scale.clamp(WINDOW_SCALE_MIN, WINDOW_SCALE_MAX)
+    } else {
+        1.0
+    };
+    egui::vec2((base_size.x * scale).round(), (base_size.y * scale).round())
 }
 
 fn secondary_title_bar(
@@ -9199,7 +9220,7 @@ mod tests {
         follow_up_damage_digit_key_for_hit, hit_detail_filter_available, hit_type_label,
         is_party_member_row, mixed_damage_digit_key, qte_type_filter_label,
         reaction_text_key_for_hit, reaction_text_key_from_trigger_attack_type, resolve_cached_hit,
-        snapshot_team_from_stats, summarize_qte_type_filters,
+        scaled_window_size, snapshot_team_from_stats, summarize_qte_type_filters,
     };
     use crate::config::UiConfig;
     use crate::encrypted_ini::{
@@ -9210,6 +9231,7 @@ mod tests {
     use crate::model::{CharacterInfo, CharacterStats, CombatState, Hit, TeamDps, TeamDpsMember};
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD as BASE64;
+    use eframe::egui;
     use std::collections::{HashMap, VecDeque};
     use std::time::{Duration, Instant};
 
@@ -9659,6 +9681,22 @@ mod tests {
         assert!(export.single.is_none());
         assert_eq!(export.upper.unwrap().members[0].id, 10);
         assert_eq!(export.lower.unwrap().members[0].id, 20);
+    }
+
+    #[test]
+    fn scaled_window_size_applies_saved_scale() {
+        assert_eq!(
+            scaled_window_size(egui::vec2(520.0, 420.0), 1.5),
+            egui::vec2(780.0, 630.0)
+        );
+        assert_eq!(
+            scaled_window_size(egui::vec2(101.0, 99.0), 1.25),
+            egui::vec2(126.0, 124.0)
+        );
+        assert_eq!(
+            scaled_window_size(egui::vec2(520.0, 420.0), f32::NAN),
+            egui::vec2(520.0, 420.0)
+        );
     }
 
     #[test]
