@@ -854,32 +854,32 @@
       },
       "GE_Player_Lacrimosa_Melee1_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程1"
+          "CultureInvariantString": "安魂曲普攻1"
         }
       },
       "GE_Player_Lacrimosa_Melee2_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程2"
+          "CultureInvariantString": "安魂曲普攻2"
         }
       },
       "GE_Player_Lacrimosa_Melee3_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程3"
+          "CultureInvariantString": "安魂曲普攻3"
         }
       },
       "GE_Player_Lacrimosa_Melee4_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程4_1"
+          "CultureInvariantString": "安魂曲普攻4_1"
         }
       },
       "GE_Player_Lacrimosa_Melee6_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程4_2"
+          "CultureInvariantString": "安魂曲普攻4_2"
         }
       },
       "GE_Player_Lacrimosa_Melee5_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻远程5"
+          "CultureInvariantString": "安魂曲普攻5"
         }
       },
       "GE_Player_Lacrimosa_AirAttack_Damage": {
@@ -899,12 +899,12 @@
       },
       "GE_Player_Lacrimosa_UltraSkill1_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲大招远程1"
+          "CultureInvariantString": "安魂曲大招1"
         }
       },
       "GE_Player_Lacrimosa_UltraSkill2_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲大招远程2"
+          "CultureInvariantString": "安魂曲大招2"
         }
       },
       "GE_Player_Lacrimosa_Blood_Damage": {
@@ -914,52 +914,52 @@
       },
       "GE_Player_Lacrimosa_Blood_Damage_LV6": {
         "Desc": {
-          "CultureInvariantString": "安魂曲流血伤害·觉醒强化"
+          "CultureInvariantString": "安魂曲流血伤害L6"
         }
       },
       "GE_Player_Lacrimosa_B_Melee1_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战1_1"
+          "CultureInvariantString": "安魂曲普攻B1_1"
         }
       },
       "GE_Player_Lacrimosa_B_Melee2_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战1_2"
+          "CultureInvariantString": "安魂曲普攻B1_2"
         }
       },
       "GE_Player_Lacrimosa_B_Melee3_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战2"
+          "CultureInvariantString": "安魂曲普攻B2"
         }
       },
       "GE_Player_Lacrimosa_B_Melee4_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战3_1"
+          "CultureInvariantString": "安魂曲普攻B3_1"
         }
       },
       "GE_Player_Lacrimosa_B_Melee3_1_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战3_2"
+          "CultureInvariantString": "安魂曲普攻B3_2"
         }
       },
       "GE_Player_Lacrimosa_B_Melee5_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战4_1"
+          "CultureInvariantString": "安魂曲普攻B4_1"
         }
       },
       "GE_Player_Lacrimosa_B_Melee6_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战4_2"
+          "CultureInvariantString": "安魂曲普攻B4_2"
         }
       },
       "GE_Player_Lacrimosa_B_Melee7_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战5_1"
+          "CultureInvariantString": "安魂曲普攻B5_1"
         }
       },
       "GE_Player_Lacrimosa_B_Melee8_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲普攻近战5_2"
+          "CultureInvariantString": "安魂曲普攻B5_2"
         }
       },
       "GE_Player_Lacrimosa_Pan_Damage": {
@@ -974,17 +974,17 @@
       },
       "GE_Player_Lacrimosa_UltraSkillModB_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲大招近战1"
+          "CultureInvariantString": "安魂曲大招B1"
         }
       },
       "GE_Player_Lacrimosa_UltraSkillModB2_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲大招近战2"
+          "CultureInvariantString": "安魂曲大招B2"
         }
       },
       "GE_Player_Lacrimosa_UltraSkillModB3_Damage": {
         "Desc": {
-          "CultureInvariantString": "安魂曲大招近战3"
+          "CultureInvariantString": "安魂曲大招B3"
         }
       },
       "GE_Player_Skia_QTE1_Damage": {

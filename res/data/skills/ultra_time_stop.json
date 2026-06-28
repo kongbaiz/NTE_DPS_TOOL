@@ -122,6 +122,18 @@
       "ga_asset": "/Game/Blueprints/Abilities/Player/Ability_033_Adler/GA_Adler_UltraSkill",
       "montage_asset": "/Game/Characters/Player/033_adler_new/animation/Skill/Adler_UltralSkill.Adler_UltralSkill"
     },
+    "1036": {
+      "ability_id": "GA_Zankou_UltraSkill",
+      "end_ability_event_seconds": 4.161653,
+      "trigger_end_event_tags": [
+        "Event.Montage.Player.Common.EndAbilitySkill"
+      ],
+      "matched_trigger_end_event_tag": "Event.Montage.Player.Common.EndAbilitySkill",
+      "source": "ability_game_paused_trigger_end_tag",
+      "confidence": "high",
+      "ga_asset": "/Game/Blueprints/Abilities/Player/Ability_036_Zankou/GA_Zankou_UltraSkill",
+      "montage_asset": "/Game/Characters/Player/051_female/animation/Skill/char_f_skill_utraskill_Montage.char_f_skill_utraskill_Montage"
+    },
     "1039": {
       "ability_id": "GA_Fadia_UltraSkill",
       "end_ability_event_seconds": 4.417366,
@@ -160,7 +172,7 @@
     },
     "1054": {
       "ability_id": "GA_Daffodill_UltraSkill",
-      "end_ability_event_seconds": 4.798081,
+      "end_ability_event_seconds": 5.099006,
       "trigger_end_event_tags": [
         "Event.Montage.Player.Common.EndAbilitySkill"
       ],
@@ -217,6 +229,40 @@
       "confidence": "high",
       "ga_asset": "/Game/Blueprints/Abilities/Player/Ability_073_Chiichan/GA_Chiichan073_UltraSkill",
       "montage_asset": "/Game/Characters/Player/073_rabbit/animation/Skill/char_rabbit_ultraskill_1_Montage.char_rabbit_ultraskill_1_Montage"
+    },
+    "1075": {
+      "ability_id": "GA_Oneiroi_UltraSkill",
+      "end_ability_event_seconds": 4.349373,
+      "trigger_end_event_tags": [
+        "Event.Montage.Player.Common.EndAbilitySkill"
+      ],
+      "matched_trigger_end_event_tag": "Event.Montage.Player.Common.EndAbilitySkill",
+      "source": "ability_game_paused_trigger_end_tag",
+      "confidence": "high",
+      "ga_asset": "/Game/Blueprints/Abilities/Player/Ability_075_Oneiroi/GA_Oneiroi_UltraSkill",
+      "montage_asset": "/Game/Characters/Player/075_oneir/animation/Skill/Oneiroi_UltraSkill.Oneiroi_UltraSkill"
+    },
+    "1076": {
+      "ability_id": "GA_Shinku_UltraSkill",
+      "end_ability_event_seconds": 7.300015,
+      "trigger_end_event_tags": [
+        "Event.Montage.Player.UltraSkill.6"
+      ],
+      "matched_trigger_end_event_tag": "Event.Montage.Player.UltraSkill.6",
+      "source": "shinku_enter_rage_plus_intro_tag",
+      "confidence": "high",
+      "ga_asset": "/Game/Blueprints/Abilities/Player/Ability_076_Shinku/GA_Shinku_UltraSkill",
+      "montage_asset": "/Game/Characters/Player/076_shinku/animation/skill/Shinku_UltraSkill.Shinku_UltraSkill",
+      "ignored_cooldown_tags": [
+        "CoolDown.Player.UltraSkill.Shinku.UltraPre"
+      ],
+      "extra_cooldowns": [
+        {
+          "cooldown_tag": "CoolDown.Player.UltraSkill.Shinku.UltraRage",
+          "ability_id": "GA_Shinku_UltraSkill_Rage",
+          "duration_seconds": 5.300056
+        }
+      ]
     }
   }
 }

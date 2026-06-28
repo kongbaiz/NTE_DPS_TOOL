@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
@@ -30,25 +33,67 @@ jobs:
       - name: Run tests
         run: cargo test
 
-      - name: Build release executable
-        run: cargo build --release
-
-      - name: Prepare release package
+      - name: Build release variants
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target/release/nte-dps-tool.exe dist/
-          Copy-Item README.md, LICENSE, NOTICE.md, THIRD_PARTY_LICENSES.md dist/
-          Compress-Archive -Path dist/* -DestinationPath nte-dps-tool-windows.zip -Force
+          cargo build --release
+          New-Item -ItemType Directory -Force dist/nte-dps-tool-windows-debug | Out-Null
+          Copy-Item target/release/nte-dps-tool.exe dist/nte-dps-tool-windows-debug/
 
-      - name: Upload executable artifact
+          cargo build --release --features no_debug
+          New-Item -ItemType Directory -Force dist/nte-dps-tool-windows-nodebug | Out-Null
+          Copy-Item target/release/nte-dps-tool.exe dist/nte-dps-tool-windows-nodebug/
+
+          cargo build --release --features "no_debug external_resources"
+          New-Item -ItemType Directory -Force dist/nte-dps-tool-windows-external-resources | Out-Null
+          Copy-Item target/release/nte-dps-tool.exe dist/nte-dps-tool-windows-external-resources/
+          Copy-Item res dist/nte-dps-tool-windows-external-resources/res -Recurse
+
+      - name: Prepare release packages
+        shell: pwsh
+        run: |
+          $variantNotes = @{
+            "nte-dps-tool-windows-debug" = @"
+          # NTE DPS Tool - Windows Debug Variant
+
+          - Release optimization build with diagnostics and debug panels enabled.
+          - Runtime resources are embedded in the executable.
+          - JSON resources are minified during embedding, and PNG resources may be embedded as smaller WebP bytes.
+          - Use this build when validating capture, resource coverage, imports, and diagnostics.
+          "@
+            "nte-dps-tool-windows-nodebug" = @"
+          # NTE DPS Tool - Windows No-Debug Variant
+
+          - Release optimization build with the no_debug feature enabled.
+          - Runtime resources are embedded in the executable.
+          - JSON resources are minified during embedding, and PNG resources may be embedded as smaller WebP bytes.
+          - Use this as the normal end-user standalone executable.
+          "@
+            "nte-dps-tool-windows-external-resources" = @"
+          # NTE DPS Tool - Windows External Resources Variant
+
+          - Release optimization build with no_debug and external_resources enabled.
+          - Runtime resources are not embedded in the executable.
+          - Keep the bundled res directory beside nte-dps-tool.exe.
+          - Use this build when minimizing executable size or updating resources without rebuilding the binary.
+          "@
+          }
+
+          foreach ($variant in $variantNotes.Keys) {
+            Copy-Item README.md, LICENSE, NOTICE.md, THIRD_PARTY_LICENSES.md "dist/$variant/"
+            $variantNotes[$variant] | Set-Content -Encoding UTF8 "dist/$variant/BUILD_VARIANT.md"
+            Compress-Archive -Path "dist/$variant/*" -DestinationPath "$variant.zip" -Force
+          }
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nte-dps-tool-windows-${{ github.sha }}
           if-no-files-found: error
           path: |
-            nte-dps-tool-windows.zip
-            target/release/nte-dps-tool.exe
+            nte-dps-tool-windows-debug.zip
+            nte-dps-tool-windows-nodebug.zip
+            nte-dps-tool-windows-external-resources.zip
 
       - name: Publish GitHub Release
         if: github.ref == 'refs/heads/master'
@@ -73,9 +118,22 @@ jobs:
             "自动构建：$env:GITHUB_SHA"
             ""
             "中文更新内容："
-            "- DPS 时间支持扣除大招时停：大招动画时停按资源表中的 end_ability_event_seconds 计算。"
-            "- 支持额外时停机制，固定大招动画时停和额外时停会按区间并集扣除，重叠部分只扣一次。"
-            "- 控制台新增 DPS 时间口径切换，可在'扣除时停'和'现实时间'之间切换。"
-            "- 改进深渊下半场直接开始抓包、当前半场重开后的统计归属。"
+            "- 完成 future_plan 第三阶段：新增资源覆盖诊断、自动诊断报告和 HUD 配置入口。"
+            "- 诊断页改为可滚动布局，避免窗口较小时内容被裁切。"
+            "- 更新资源表、角色/技能/反应数据和深渊数据，深渊支持到第 7 期。"
+            "- 修正第 5/6 期深渊中文名，并统一同一怪物在不同期的显示名。"
+            "- 优化内嵌资源体积：跳过非运行必需资源，JSON 内嵌前压缩，PNG 内嵌前按需转换为 WebP。"
+            "- 新增 external_resources 构建，资源不内嵌，程序与 res 目录一起打包。"
+            ""
+            "构建产物："
+            "- nte-dps-tool-windows-debug.zip：带诊断/调试入口，资源内嵌。"
+            "- nte-dps-tool-windows-nodebug.zip：关闭调试入口，资源内嵌，推荐普通使用。"
+            "- nte-dps-tool-windows-external-resources.zip：关闭调试入口，资源外置，需保持 res 目录与 exe 同级。"
           ) -join "`n"
-          gh release create $releaseTag nte-dps-tool-windows.zip target/release/nte-dps-tool.exe --title $env:RELEASE_TITLE --notes $notes --latest
+          gh release create $releaseTag `
+            nte-dps-tool-windows-debug.zip `
+            nte-dps-tool-windows-nodebug.zip `
+            nte-dps-tool-windows-external-resources.zip `
+            --title $env:RELEASE_TITLE `
+            --notes $notes `
+            --latest

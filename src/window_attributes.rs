@@ -1,13 +1,14 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use windows_sys::Win32::Foundation::{HWND, LPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows_sys::Win32::Graphics::Dwm::{
     DWMNCRP_DISABLED, DWMNCRP_ENABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, HWND_NOTOPMOST,
-    HWND_TOPMOST, IsWindowVisible, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+    EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
+    HWND_NOTOPMOST, HWND_TOPMOST, IsWindowVisible, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED,
+    WS_EX_TRANSPARENT,
 };
 
 /// DWM border-color sentinels (see `DWMWA_BORDER_COLOR`): suppress the 1px window
@@ -111,8 +112,12 @@ pub(crate) fn apply_window_attributes(
 
         if config.hud_overlay {
             // HUD transparency comes from the transparent swapchain/clear colour,
-            // not a colour key. Force the uniform-alpha path to re-run when we
-            // leave HUD mode.
+            // not layered uniform alpha. If click-through keeps WS_EX_LAYERED
+            // enabled, reset any opacity slider alpha left from normal mode.
+            if (new_style & WS_EX_LAYERED as isize) != 0 {
+                let _ = SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+            }
+            // Force the uniform-alpha path to re-run when we leave HUD mode.
             *applied_opacity = None;
             return;
         }
@@ -139,6 +144,9 @@ pub(crate) fn apply_rounding_to_process_windows() {
         if window_process_id != process_id as u32 {
             return 1;
         }
+        if !is_visible_content_window(hwnd) {
+            return 1;
+        }
         // SAFETY: hwnd belongs to this process and the attribute pointer is valid
         // for the duration of the synchronous DwmSetWindowAttribute call.
         unsafe {
@@ -156,6 +164,28 @@ pub(crate) fn apply_rounding_to_process_windows() {
     // current process id cast through LPARAM for the duration of EnumWindows.
     unsafe {
         EnumWindows(Some(apply_rounding), std::process::id() as LPARAM);
+    }
+}
+
+fn is_visible_content_window(hwnd: HWND) -> bool {
+    // SAFETY: hwnd is supplied by EnumWindows. GetWindowRect writes into a valid
+    // stack RECT, and IsWindowVisible only queries window state.
+    unsafe {
+        if IsWindowVisible(hwnd) == 0 {
+            return false;
+        }
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if GetWindowRect(hwnd, &mut rect) == 0 {
+            return false;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        width >= 160 && height >= 120
     }
 }
 

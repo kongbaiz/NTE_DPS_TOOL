@@ -873,7 +873,22 @@ fn fixed_ultra_time_stop_event(
     recent_ultra_time_stops: &mut HashMap<u32, f64>,
 ) -> Option<TimeStopEvent> {
     let entry = ultra_time_stops.get(&char_id)?;
-    let duration = entry.end_ability_event_seconds;
+    fixed_ultra_time_stop_event_with_duration(
+        timestamp,
+        char_id,
+        &entry.ability_id,
+        entry.end_ability_event_seconds,
+        recent_ultra_time_stops,
+    )
+}
+
+fn fixed_ultra_time_stop_event_with_duration(
+    timestamp: f64,
+    char_id: u32,
+    ability_id: &str,
+    duration: f64,
+    recent_ultra_time_stops: &mut HashMap<u32, f64>,
+) -> Option<TimeStopEvent> {
     if !duration.is_finite() || duration <= 0.0 {
         return None;
     }
@@ -888,9 +903,49 @@ fn fixed_ultra_time_stop_event(
     Some(TimeStopEvent::UltraAnimation {
         timestamp,
         char_id,
-        ability_id: entry.ability_id.clone(),
+        ability_id: ability_id.to_owned(),
         duration_seconds: duration,
     })
+}
+
+fn special_ultra_cooldown_events(
+    timestamp: f64,
+    decoded_text: &str,
+    ultra_time_stops: &HashMap<u32, UltraTimeStopEntry>,
+    recent_ultra_time_stops: &mut HashMap<u32, f64>,
+) -> (Vec<TimeStopEvent>, bool) {
+    let mut events = Vec::new();
+    let mut handled_special_cooldown = false;
+    for (char_id, entry) in ultra_time_stops {
+        if entry
+            .ignored_cooldown_tags
+            .iter()
+            .any(|tag| !tag.is_empty() && decoded_text.contains(tag))
+        {
+            handled_special_cooldown = true;
+        }
+        for cooldown in &entry.extra_cooldowns {
+            if cooldown.cooldown_tag.is_empty() || !decoded_text.contains(&cooldown.cooldown_tag) {
+                continue;
+            }
+            handled_special_cooldown = true;
+            let ability_id = if cooldown.ability_id.is_empty() {
+                entry.ability_id.as_str()
+            } else {
+                cooldown.ability_id.as_str()
+            };
+            if let Some(event) = fixed_ultra_time_stop_event_with_duration(
+                timestamp,
+                *char_id,
+                ability_id,
+                cooldown.duration_seconds,
+                recent_ultra_time_stops,
+            ) {
+                events.push(event);
+            }
+        }
+    }
+    (events, handled_special_cooldown)
 }
 
 fn extra_time_stop_events_from_text(timestamp: f64, decoded_text: &str) -> Vec<TimeStopEvent> {
@@ -932,8 +987,15 @@ impl UltraTimeStopTracker {
     ) -> Vec<TimeStopEvent> {
         let mut events = extra_time_stop_events_from_text(timestamp, decoded_text);
         self.resolve_finished_cooldowns(timestamp, decoded_text, ultra_time_stops, &mut events);
+        let (mut special_events, handled_special_cooldown) = special_ultra_cooldown_events(
+            timestamp,
+            decoded_text,
+            ultra_time_stops,
+            &mut self.recent_emitted,
+        );
+        events.append(&mut special_events);
 
-        if !decoded_text.contains(ULTRA_COOLDOWN_TAG_PREFIX) {
+        if handled_special_cooldown || !decoded_text.contains(ULTRA_COOLDOWN_TAG_PREFIX) {
             return events;
         }
         match declared_ids {
@@ -2874,6 +2936,8 @@ mod tests {
     use super::*;
     use crossbeam_channel::unbounded;
 
+    use crate::parser::{CHARACTER_DATA_PATH, UltraTimeStopCooldown, load_characters};
+
     #[test]
     fn follow_up_pending_hits_are_bounded_and_recent_hits_still_resolve() {
         let characters = HashMap::from([
@@ -3332,6 +3396,7 @@ mod tests {
                 end_ability_event_seconds: 3.584608,
                 source: "test".to_owned(),
                 confidence: "high".to_owned(),
+                ..UltraTimeStopEntry::default()
             },
         )]);
         let mut tracker = UltraTimeStopTracker::default();
@@ -3396,6 +3461,7 @@ mod tests {
                 end_ability_event_seconds: 2.183333,
                 source: "test".to_owned(),
                 confidence: "high".to_owned(),
+                ..UltraTimeStopEntry::default()
             },
         )]);
         let mut tracker = UltraTimeStopTracker::default();
@@ -3419,6 +3485,80 @@ mod tests {
     }
 
     #[test]
+    fn shinku_special_cooldowns_emit_two_distinct_time_stop_segments() {
+        let table = HashMap::from([(
+            1076,
+            UltraTimeStopEntry {
+                ability_id: "GA_Shinku_UltraSkill".to_owned(),
+                end_ability_event_seconds: 7.300015,
+                extra_cooldowns: vec![UltraTimeStopCooldown {
+                    cooldown_tag: "CoolDown.Player.UltraSkill.Shinku.UltraRage".to_owned(),
+                    ability_id: "GA_Shinku_UltraSkill_Rage".to_owned(),
+                    duration_seconds: 5.300056,
+                }],
+                ignored_cooldown_tags: vec![
+                    "CoolDown.Player.UltraSkill.Shinku.UltraPre".to_owned(),
+                ],
+                source: "test".to_owned(),
+                confidence: "high".to_owned(),
+            },
+        )]);
+        let mut tracker = UltraTimeStopTracker::default();
+        assert_eq!(
+            tracker.events_from_packet(10.0, "CoolDown.Player.UltraSkill.F", &[], &table),
+            vec![TimeStopEvent::ExtraStart {
+                timestamp: 10.0,
+                reason: PENDING_ULTRA_TIME_STOP_REASON.to_owned(),
+            }]
+        );
+
+        let mut hit = targetless_hit();
+        hit.timestamp = 10.2;
+        hit.char_id = 1076;
+        hit.ability_name = Some("GA_Shinku_UltraSkill".to_owned());
+        assert_eq!(
+            tracker.events_from_hits(&[hit], &table),
+            vec![
+                TimeStopEvent::ExtraEnd {
+                    timestamp: 17.300015000000002,
+                    reason: PENDING_ULTRA_TIME_STOP_REASON.to_owned(),
+                },
+                TimeStopEvent::UltraAnimation {
+                    timestamp: 10.0,
+                    char_id: 1076,
+                    ability_id: "GA_Shinku_UltraSkill".to_owned(),
+                    duration_seconds: 7.300015,
+                },
+            ]
+        );
+
+        assert!(
+            tracker
+                .events_from_packet(
+                    20.0,
+                    "CoolDown.Player.UltraSkill.Shinku.UltraPre",
+                    &[],
+                    &table,
+                )
+                .is_empty()
+        );
+        assert_eq!(
+            tracker.events_from_packet(
+                21.2,
+                "CoolDown.Player.UltraSkill.Shinku.UltraRage",
+                &[],
+                &table,
+            ),
+            vec![TimeStopEvent::UltraAnimation {
+                timestamp: 21.2,
+                char_id: 1076,
+                ability_id: "GA_Shinku_UltraSkill_Rage".to_owned(),
+                duration_seconds: 5.300056,
+            }]
+        );
+    }
+
+    #[test]
     fn pending_ultra_cooldown_is_claimed_by_later_ultra_damage_hit() {
         let table = HashMap::from([(
             1010,
@@ -3427,6 +3567,7 @@ mod tests {
                 end_ability_event_seconds: 3.584608,
                 source: "test".to_owned(),
                 confidence: "high".to_owned(),
+                ..UltraTimeStopEntry::default()
             },
         )]);
         let mut tracker = UltraTimeStopTracker::default();
@@ -3470,6 +3611,7 @@ mod tests {
                     end_ability_event_seconds: 3.584608,
                     source: "test".to_owned(),
                     confidence: "high".to_owned(),
+                    ..UltraTimeStopEntry::default()
                 },
             ),
             (
@@ -3479,6 +3621,7 @@ mod tests {
                     end_ability_event_seconds: 2.183333,
                     source: "test".to_owned(),
                     confidence: "high".to_owned(),
+                    ..UltraTimeStopEntry::default()
                 },
             ),
         ]);
@@ -3530,6 +3673,7 @@ mod tests {
                 end_ability_event_seconds: 3.584608,
                 source: "test".to_owned(),
                 confidence: "high".to_owned(),
+                ..UltraTimeStopEntry::default()
             },
         )]);
         let mut tracker = UltraTimeStopTracker::default();
@@ -3588,6 +3732,7 @@ mod tests {
                 end_ability_event_seconds: 3.584608,
                 source: "test".to_owned(),
                 confidence: "high".to_owned(),
+                ..UltraTimeStopEntry::default()
             },
         )]);
         let characters = HashMap::new();
@@ -4421,5 +4566,90 @@ mod tests {
             resolve_damage_name("GE_Test_Skill3_Damage", &skills, &names),
             None
         );
+    }
+
+    #[test]
+    #[ignore = "set NTE_TEST_CAPTURE to a local pcapng path for capture diagnostics"]
+    fn diagnose_capture_time_stop_events() {
+        let path = std::env::var("NTE_TEST_CAPTURE").expect("NTE_TEST_CAPTURE must be set");
+        let characters = Arc::new(
+            load_characters(Path::new(CHARACTER_DATA_PATH))
+                .expect("character resource table should load"),
+        );
+        let (sender, receiver) = unbounded();
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = import_pcapng(
+            PathBuf::from(path),
+            characters,
+            None,
+            true,
+            true,
+            sender,
+            stop,
+        );
+        handle.join().expect("pcapng import thread should finish");
+
+        let mut shinku_hits = Vec::new();
+        let mut time_stops = Vec::new();
+        let mut relevant_packets = Vec::new();
+        let mut statuses = Vec::new();
+        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
+        for event in receiver.try_iter() {
+            match event {
+                EngineEvent::Hit(hit) if hit.char_id == 1076 => shinku_hits.push(*hit),
+                EngineEvent::Packet(packet)
+                    if packet.decoded_text.contains("Shinku")
+                        || packet.decoded_text.contains("UltraSkill")
+                        || packet.decoded_text.contains("1076") =>
+                {
+                    relevant_packets.push(*packet);
+                }
+                EngineEvent::TimeStop(event) => time_stops.push(event),
+                EngineEvent::Status(status) => statuses.push(status),
+                EngineEvent::Warning(warning) => warnings.push(warning),
+                EngineEvent::Error(error) => errors.push(error),
+                _ => {}
+            }
+        }
+
+        println!("statuses: {statuses:#?}");
+        println!("warnings: {warnings:#?}");
+        println!("errors: {errors:#?}");
+        println!("shinku hit count: {}", shinku_hits.len());
+        for hit in &shinku_hits {
+            println!(
+                "shinku hit t={:.6} damage={:.1} ability={:?} effect={:?} attack={:?}",
+                hit.timestamp,
+                hit.damage,
+                hit.ability_name,
+                hit.gameplay_effect_name,
+                hit.attack_type
+            );
+        }
+        println!("time stop count: {}", time_stops.len());
+        for event in &time_stops {
+            println!("time stop: {event:?}");
+        }
+        println!("relevant packet count: {}", relevant_packets.len());
+        for packet in &relevant_packets {
+            let text = packet
+                .decoded_text
+                .lines()
+                .filter(|line| {
+                    line.contains("Shinku")
+                        || line.contains("UltraSkill")
+                        || line.contains("TimeStop")
+                        || line.contains("EndAbility")
+                        || line.contains("CoolDown")
+                })
+                .take(12)
+                .collect::<Vec<_>>()
+                .join(" | ");
+            println!(
+                "packet t={:.6} dir={} ids={:?} hits={} text={}",
+                packet.timestamp, packet.direction, packet.declared_ids, packet.parsed_hits, text
+            );
+        }
     }
 }

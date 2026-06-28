@@ -4,7 +4,7 @@
       "attribute": "咒",
       "avatar": "res/images/characters/player_003_256.png",
       "codename": "Sagiri",
-      "name_en": "Sagiri",
+      "name_en": "早雾",
       "name_zh": "早雾",
       "verified": true
     },
@@ -12,7 +12,7 @@
       "attribute": "暗",
       "avatar": "res/images/characters/player_004_256.png",
       "codename": "Lacrimosa",
-      "name_en": "Lacrimosa",
+      "name_en": "安魂曲",
       "name_zh": "安魂曲",
       "verified": true
     },
@@ -20,7 +20,7 @@
       "attribute": "相",
       "avatar": "res/images/characters/player_008_256.png",
       "codename": "Skia",
-      "name_en": "Skia",
+      "name_en": "翳",
       "name_zh": "翳",
       "verified": true
     },
@@ -28,7 +28,7 @@
       "attribute": "灵",
       "avatar": "res/images/characters/player_010_256.png",
       "codename": "Nanally",
-      "name_en": "Nanally",
+      "name_en": "娜娜莉",
       "name_zh": "娜娜莉",
       "verified": true
     },
@@ -36,7 +36,7 @@
       "attribute": "灵",
       "avatar": "res/images/characters/player_019_256.png",
       "codename": "Mint",
-      "name_en": "Mint",
+      "name_en": "薄荷",
       "name_zh": "薄荷",
       "verified": true
     },
@@ -44,7 +44,7 @@
       "attribute": "魂",
       "avatar": "res/images/characters/player_020_256.png",
       "codename": "Haniel",
-      "name_en": "Haniel",
+      "name_en": "哈尼娅",
       "name_zh": "哈尼娅",
       "verified": true
     },
@@ -52,7 +52,7 @@
       "attribute": "光",
       "avatar": "res/images/characters/player_021_256.png",
       "codename": "Edgar",
-      "name_en": "Edgar",
+      "name_en": "埃德嘉",
       "name_zh": "埃德嘉",
       "verified": true
     },
@@ -60,7 +60,7 @@
       "attribute": "咒",
       "avatar": "res/images/characters/player_028_256.png",
       "codename": "Cang",
-      "name_en": "Baicang",
+      "name_en": "白藏",
       "name_zh": "白藏",
       "verified": true
     },
@@ -68,7 +68,7 @@
       "attribute": "相",
       "avatar": "res/images/characters/player_012_256.png",
       "codename": "Hathor",
-      "name_en": "Hathor",
+      "name_en": "哈索尔",
       "name_zh": "哈索尔",
       "verified": true
     },
@@ -76,7 +76,7 @@
       "attribute": "咒",
       "avatar": "res/images/characters/player_015_256.png",
       "codename": "Adler",
-      "name_en": "Adler",
+      "name_en": "阿德勒",
       "name_zh": "阿德勒",
       "verified": true
     },
@@ -84,7 +84,7 @@
       "attribute": "魂",
       "avatar": "res/images/characters/player_027_256.png",
       "codename": "Fadia",
-      "name_en": "Fadia",
+      "name_en": "法帝娅",
       "name_zh": "法帝娅",
       "verified": true
     },
@@ -92,23 +92,23 @@
       "attribute": "光",
       "avatar": "res/images/characters/player_046_256.png",
       "codename": "Male",
-      "name_en": "Zero M",
-      "name_zh": "零(男)",
+      "name_en": "「零」",
+      "name_zh": "「零」",
       "verified": true
     },
     "1051": {
       "attribute": "光",
       "avatar": "res/images/characters/player_009_256.png",
       "codename": "Female",
-      "name_en": "Zero F",
-      "name_zh": "零(女)",
+      "name_en": "「零」",
+      "name_zh": "「零」",
       "verified": true
     },
     "1052": {
       "attribute": "光",
-      "avatar": "res/images/characters/player_052_256.png",
+      "avatar": "res/images/characters/player_013_256.png",
       "codename": "Jin",
-      "name_en": "Hotori",
+      "name_en": "浔",
       "name_zh": "浔",
       "verified": true
     },
@@ -116,7 +116,7 @@
       "attribute": "暗",
       "avatar": "res/images/characters/player_005_256.png",
       "codename": "Daffodill",
-      "name_en": "Daffodill",
+      "name_en": "达芙蒂尔",
       "name_zh": "达芙蒂尔",
       "verified": true
     },
@@ -124,15 +124,23 @@
       "attribute": "灵",
       "avatar": "res/images/characters/player_104_256.png",
       "codename": "Kuhara",
-      "name_en": "Jiuyuan",
+      "name_en": "九原",
       "name_zh": "九原",
+      "verified": true
+    },
+    "1056": {
+      "attribute": "暗",
+      "avatar": "res/images/characters/player_004_256.png",
+      "codename": "bat",
+      "name_en": "安魂曲",
+      "name_zh": "安魂曲",
       "verified": true
     },
     "1070": {
       "attribute": "魂",
       "avatar": "res/images/characters/player_haiyue_256.png",
       "codename": "mitsuki",
-      "name_en": "Mitsuki",
+      "name_en": "海月",
       "name_zh": "海月",
       "verified": true
     },
@@ -140,7 +148,7 @@
       "attribute": "相",
       "avatar": "res/images/characters/player_kaesi1_256.png",
       "codename": "Chaos",
-      "name_en": "Chaos",
+      "name_en": "卡厄斯",
       "name_zh": "卡厄斯",
       "verified": true
     },
@@ -148,8 +156,24 @@
       "attribute": "光",
       "avatar": "res/images/characters/player_073_256.png",
       "codename": "chiichan",
-      "name_en": "Chiz",
+      "name_en": "小吱",
       "name_zh": "小吱",
+      "verified": true
+    },
+    "1075": {
+      "attribute": "灵",
+      "avatar": "res/images/characters/player_yiluoyi_256.png",
+      "codename": "Oneiroi",
+      "name_en": "伊洛伊",
+      "name_zh": "伊洛伊",
+      "verified": true
+    },
+    "1076": {
+      "attribute": "光",
+      "avatar": "res/images/characters/player_zhenhong_256.png",
+      "codename": "shinku",
+      "name_en": "真红",
+      "name_zh": "真红",
       "verified": true
     }
   }

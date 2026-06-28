@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::model::{CharacterInfo, Hit};
+use crate::resource::{read_resource_text, resource_exists, resource_file_path};
 
 const RECORD_FIELD_TYPES: [u8; 10] = [12, 12, 12, 13, 12, 12, 6, 6, 6, 12];
 const RECORD_FIELD_LENGTHS: [usize; 10] = [4, 4, 4, 8, 4, 4, 4, 4, 4, 4];
@@ -86,39 +86,33 @@ pub struct UltraTimeStopEntry {
     #[serde(default)]
     pub end_ability_event_seconds: f64,
     #[serde(default)]
+    pub extra_cooldowns: Vec<UltraTimeStopCooldown>,
+    #[serde(default)]
+    pub ignored_cooldown_tags: Vec<String>,
+    #[serde(default)]
     pub source: String,
     #[serde(default)]
     pub confidence: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct UltraTimeStopCooldown {
+    #[serde(default)]
+    pub cooldown_tag: String,
+    #[serde(default)]
+    pub ability_id: String,
+    #[serde(default)]
+    pub duration_seconds: f64,
+}
+
 pub fn find_data_file(relative_path: &Path) -> Option<PathBuf> {
-    if relative_path.is_file() {
-        return Some(relative_path.to_path_buf());
-    }
-
-    if let Ok(current_dir) = std::env::current_dir() {
-        let candidate = current_dir.join(relative_path);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-
-    if let Ok(executable) = std::env::current_exe() {
-        for ancestor in executable.ancestors().skip(1) {
-            let candidate = ancestor.join(relative_path);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-
-    let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    manifest_candidate.is_file().then_some(manifest_candidate)
+    resource_file_path(relative_path)
+        .or_else(|| resource_exists(relative_path).then(|| relative_path.to_path_buf()))
 }
 
 pub fn load_characters(path: &Path) -> Result<HashMap<u32, CharacterInfo>> {
     let text =
-        fs::read_to_string(path).with_context(|| format!("无法读取角色表 {}", path.display()))?;
+        read_resource_text(path).with_context(|| format!("无法读取角色表 {}", path.display()))?;
     let document: CharacterDocument = serde_json::from_str(&text).context("角色表 JSON 无效")?;
     Ok(document
         .characters
@@ -128,10 +122,25 @@ pub fn load_characters(path: &Path) -> Result<HashMap<u32, CharacterInfo>> {
 }
 
 pub fn load_gameplay_effect_mapping(path: &Path) -> Result<HashMap<u32, String>> {
-    let text = fs::read_to_string(path)
+    let text = read_resource_text(path)
         .with_context(|| format!("无法读取 GameplayEffect 映射表 {}", path.display()))?;
     let document: serde_json::Value =
         serde_json::from_str(&text).context("GameplayEffect 映射表 JSON 无效")?;
+    if let Some(effects) = document
+        .get("effects")
+        .and_then(serde_json::Value::as_object)
+    {
+        return Ok(effects
+            .iter()
+            .filter_map(|(index, name)| {
+                index.parse::<u32>().ok().and_then(|index| {
+                    name.as_str()
+                        .filter(|name| index != 0 && !name.is_empty())
+                        .map(|name| (index, name.to_owned()))
+                })
+            })
+            .collect());
+    }
     let rows = document
         .as_array()
         .and_then(|entries| entries.first())
@@ -152,10 +161,40 @@ pub fn load_gameplay_effect_mapping(path: &Path) -> Result<HashMap<u32, String>>
 }
 
 pub fn load_gameplay_effect_skills(path: &Path) -> Result<HashMap<String, GameplayEffectSkill>> {
-    let text = fs::read_to_string(path)
+    let text = read_resource_text(path)
         .with_context(|| format!("无法读取技能伤害表 {}", path.display()))?;
     let document: serde_json::Value =
         serde_json::from_str(&text).context("技能伤害表 JSON 无效")?;
+    if let Some(skills) = document
+        .get("skills")
+        .and_then(serde_json::Value::as_object)
+    {
+        return Ok(skills
+            .iter()
+            .map(|(effect_name, row)| {
+                let category = row
+                    .get("category")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned);
+                let ability_name = row
+                    .get("ability")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.is_empty() && *value != "None")
+                    .map(str::to_owned);
+                let attack_type =
+                    classify_attack_type(category.as_deref(), effect_name, ability_name.as_deref());
+                (
+                    effect_name.clone(),
+                    GameplayEffectSkill {
+                        damage_source_category: category,
+                        ability_name,
+                        attack_type,
+                    },
+                )
+            })
+            .collect());
+    }
     let rows = document
         .as_array()
         .and_then(|entries| entries.first())
@@ -196,7 +235,7 @@ struct UltraTimeStopDocument {
 }
 
 pub fn load_ultra_time_stops(path: &Path) -> Result<HashMap<u32, UltraTimeStopEntry>> {
-    let text = fs::read_to_string(path)
+    let text = read_resource_text(path)
         .with_context(|| format!("无法读取大招时停表 {}", path.display()))?;
     let document: UltraTimeStopDocument =
         serde_json::from_str(&text).context("大招时停表 JSON 无效")?;
@@ -216,10 +255,20 @@ pub fn load_ultra_time_stops(path: &Path) -> Result<HashMap<u32, UltraTimeStopEn
 }
 
 pub fn load_wooden_damage_names(path: &Path) -> Result<HashMap<String, String>> {
-    let text = fs::read_to_string(path)
+    let text = read_resource_text(path)
         .with_context(|| format!("无法读取木桩伤害描述表 {}", path.display()))?;
     let document: serde_json::Value =
         serde_json::from_str(&text).context("木桩伤害描述表 JSON 无效")?;
+    if let Some(names) = document.get("names").and_then(serde_json::Value::as_object) {
+        return Ok(names
+            .iter()
+            .filter_map(|(effect_name, name)| {
+                name.as_str()
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| (effect_name.clone(), name.to_owned()))
+            })
+            .collect());
+    }
     let rows = document
         .as_array()
         .and_then(|entries| entries.first())
@@ -822,6 +871,10 @@ pub fn parse_damage_payload(
 #[cfg(test)]
 mod character_tests {
     use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEMP_JSON_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     fn encoded_damage_record_with_flags(
         damage: f32,
@@ -854,6 +907,18 @@ mod character_tests {
         encoded_damage_record_with_flags(damage, target_hp_before, target_max_hp, [0, 0, 0])
     }
 
+    fn write_temp_json(name: &str, content: &str) -> PathBuf {
+        let unique = TEMP_JSON_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "nte_dps_tool_{}_{}_{}",
+            std::process::id(),
+            unique,
+            name
+        ));
+        fs::write(&path, content).expect("temp json should be writable");
+        path
+    }
+
     #[test]
     fn character_attribute_is_optional_and_loaded_when_present() {
         let document: CharacterDocument = serde_json::from_str(
@@ -871,6 +936,16 @@ mod character_tests {
             document.characters["1010"].attribute.as_deref(),
             Some("curse")
         );
+    }
+
+    #[test]
+    fn load_characters_falls_back_to_bundled_resource() {
+        let characters = load_characters(Path::new(
+            "missing-root/res/data/characters/characters.json",
+        ))
+        .expect("bundled characters should load");
+
+        assert!(!characters.is_empty());
     }
 
     #[test]
@@ -899,6 +974,21 @@ mod character_tests {
     fn loads_gameplay_effect_names_from_assets() {
         let mapping =
             load_gameplay_effect_mapping(Path::new(GAMEPLAY_EFFECT_MAPPING_PATH)).unwrap();
+
+        assert_eq!(
+            mapping.get(&1012).map(String::as_str),
+            Some("GE_Player_Sagiri_QTE1_Damage")
+        );
+    }
+
+    #[test]
+    fn loads_compact_gameplay_effect_names() {
+        let path = write_temp_json(
+            "compact_ge_mapping.json",
+            r#"{"effects":{"1012":"GE_Player_Sagiri_QTE1_Damage"}}"#,
+        );
+
+        let mapping = load_gameplay_effect_mapping(&path).unwrap();
 
         assert_eq!(
             mapping.get(&1012).map(String::as_str),
@@ -950,6 +1040,21 @@ mod character_tests {
     }
 
     #[test]
+    fn loads_compact_skill_damage_index() {
+        let path = write_temp_json(
+            "compact_skill_damage.json",
+            r#"{"skills":{"GE_Player_Nanally_Skill1_Damage":{"category":"E","ability":"GA_Nanally_Skill"}}}"#,
+        );
+
+        let skills = load_gameplay_effect_skills(&path).unwrap();
+        let skill = skills.get("GE_Player_Nanally_Skill1_Damage").unwrap();
+
+        assert_eq!(skill.damage_source_category.as_deref(), Some("E"));
+        assert_eq!(skill.ability_name.as_deref(), Some("GA_Nanally_Skill"));
+        assert_eq!(skill.attack_type, "E技能");
+    }
+
+    #[test]
     fn classifies_qte_as_utf8_huanhe() {
         assert_eq!(
             classify_attack_type(None, "GE_Player_Test_QTE_Damage", Some("GA_Test_QTE")),
@@ -976,6 +1081,23 @@ mod character_tests {
         assert_eq!(
             classify_attack_type_from_description("早雾大招1").as_deref(),
             Some("Q技能")
+        );
+    }
+
+    #[test]
+    fn loads_compact_wooden_damage_names() {
+        let path = write_temp_json(
+            "compact_wooden_names.json",
+            r#"{"names":{"GE_Player_Sagiri_QTE1_Damage":"早雾环合"}}"#,
+        );
+
+        let names = load_wooden_damage_names(&path).unwrap();
+
+        assert_eq!(
+            names
+                .get("GE_Player_Sagiri_QTE1_Damage")
+                .map(String::as_str),
+            Some("早雾环合")
         );
     }
 

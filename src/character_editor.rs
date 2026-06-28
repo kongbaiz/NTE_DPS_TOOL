@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::resource::read_resource_text;
+
 pub(crate) const CHARACTER_ATTRIBUTES: [&str; 6] = ["灵", "咒", "光", "魂", "暗", "相"];
 
 #[derive(Clone, Default)]
@@ -27,7 +29,7 @@ pub(crate) struct CharacterEditorState {
 
 impl CharacterEditorState {
     pub(crate) fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
+        let text = read_resource_text(path)
             .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
         let document: serde_json::Value =
             serde_json::from_str(&text).map_err(|error| format!("角色表 JSON 无效: {error}"))?;

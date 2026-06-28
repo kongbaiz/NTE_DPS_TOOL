@@ -3,16 +3,11 @@
 /data/
 /NTE_Assets/
 /Dumper-7/
-/tools/external/
-/tools/cue4parse_probe/bin/
-/tools/cue4parse_probe/obj/
+/nte-resource-exporter/
 *.usmap
 .env
-/tools/.venv/
-/tools/.python-version
 __pycache__/
 *.py[cod]
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
-/tools/uv.lock

@@ -1,13 +1,15 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde_json::Value;
 
 use crate::parser::find_data_file;
+use crate::resource::read_resource_text;
 
 const ABYSS_MONSTER_STATIC_PATH: &str = "res/data/abyss/DT_MonsterStaticData_Abyss.json";
 const MONSTER_PACK_DATA_PATH: &str = "res/data/abyss/DT_MonsterPackData.json";
+const ABYSS_MONSTER_DATASET_PATH: &str = "res/data/abyss/abyss_monsters.json";
 const ABYSS_FLOOR_MONSTER_SUMMARY_PATH: &str = "res/data/abyss/abyss_floor_monster_summary.json";
 const ABYSS_SEASON_NAMES_PATH: &str = "res/data/abyss/season_names_zh_cn.json";
 const LEGACY_ABYSS_MONSTER_STATIC_PATH: &str =
@@ -15,7 +17,7 @@ const LEGACY_ABYSS_MONSTER_STATIC_PATH: &str =
 const LEGACY_MONSTER_PACK_DATA_PATH: &str = "NTE_Assets/DataTable/PackData/DT_MonsterPackData.json";
 const LEGACY_ABYSS_LOCALIZATION_PATH: &str = "NTE_Assets/Localization/zh-CN/game.json";
 type AbyssPackIdParts = (u32, u32, Option<u32>, Option<u32>, String);
-const SUPPORTED_ABYSS_SEASONS: std::ops::RangeInclusive<u32> = 1..=4;
+const SUPPORTED_ABYSS_SEASONS: std::ops::RangeInclusive<u32> = 1..=7;
 
 #[derive(Clone, Debug, Default)]
 pub struct AbyssMonsterDataset {
@@ -59,6 +61,21 @@ pub struct AbyssMonsterStats {
     pub raw_props: Vec<(String, f64)>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AbyssWaveHp {
+    pub wave: Option<u32>,
+    pub hp: f64,
+    pub monster_count: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AbyssWaveClearPrediction {
+    pub wave: Option<u32>,
+    pub hp: f64,
+    pub seconds: f64,
+    pub cumulative_seconds: f64,
+}
+
 #[derive(Clone, Debug, Default)]
 struct StaticMonsterInfo {
     name: Option<String>,
@@ -66,6 +83,14 @@ struct StaticMonsterInfo {
 
 impl AbyssMonsterDataset {
     pub fn load() -> Result<Self> {
+        if let Some(compact_path) = find_data_file(ABYSS_MONSTER_DATASET_PATH.as_ref()) {
+            let dataset = load_compact_dataset(&compact_path)
+                .with_context(|| format!("无法读取 {}", compact_path.display()))?;
+            if !dataset.seasons.is_empty() {
+                return Ok(dataset);
+            }
+        }
+
         let static_path = find_data_file(ABYSS_MONSTER_STATIC_PATH.as_ref())
             .or_else(|| find_data_file(LEGACY_ABYSS_MONSTER_STATIC_PATH.as_ref()))
             .with_context(|| format!("找不到深渊怪物静态表 {ABYSS_MONSTER_STATIC_PATH}"))?;
@@ -135,6 +160,63 @@ impl AbyssFloor {
             .collect::<std::collections::HashSet<_>>()
             .len()
     }
+}
+
+pub fn abyss_monster_total_hp(monster: &AbyssMonsterEntry) -> f64 {
+    monster.stats.hp_max_base * f64::from(monster.count)
+}
+
+pub fn abyss_line_hp_total<'a>(monsters: impl IntoIterator<Item = &'a AbyssMonsterEntry>) -> f64 {
+    monsters.into_iter().map(abyss_monster_total_hp).sum()
+}
+
+pub fn line_hp_by_wave<'a>(
+    monsters: impl IntoIterator<Item = &'a AbyssMonsterEntry>,
+) -> Vec<AbyssWaveHp> {
+    let mut waves = HashMap::<Option<u32>, AbyssWaveHp>::new();
+    for monster in monsters {
+        let entry = waves.entry(monster.wave).or_insert_with(|| AbyssWaveHp {
+            wave: monster.wave,
+            ..Default::default()
+        });
+        entry.hp += abyss_monster_total_hp(monster);
+        entry.monster_count = entry.monster_count.saturating_add(monster.count);
+    }
+    let mut waves = waves.into_values().collect::<Vec<_>>();
+    waves.sort_by(|left, right| match (left.wave, right.wave) {
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    waves
+}
+
+pub fn required_dps_for_target_time(line_hp: f64, target_seconds: f64) -> Option<f64> {
+    (line_hp > 0.0 && target_seconds > 0.0).then(|| line_hp / target_seconds)
+}
+
+pub fn predict_wave_clear_times(
+    waves: &[AbyssWaveHp],
+    team_dps: f64,
+) -> Vec<AbyssWaveClearPrediction> {
+    if team_dps <= 0.0 {
+        return Vec::new();
+    }
+    let mut cumulative_seconds = 0.0;
+    waves
+        .iter()
+        .map(|wave| {
+            let seconds = wave.hp / team_dps;
+            cumulative_seconds += seconds;
+            AbyssWaveClearPrediction {
+                wave: wave.wave,
+                hp: wave.hp,
+                seconds,
+                cumulative_seconds,
+            }
+        })
+        .collect()
 }
 
 fn build_dataset_from_pack_rows(
@@ -311,8 +393,8 @@ fn is_supported_abyss_season(season: u32) -> bool {
     SUPPORTED_ABYSS_SEASONS.contains(&season)
 }
 
-fn load_rows(path: &PathBuf) -> Result<HashMap<String, Value>> {
-    let text = std::fs::read_to_string(path)?;
+fn load_rows(path: &Path) -> Result<HashMap<String, Value>> {
+    let text = read_resource_text(path)?;
     let document: Value = serde_json::from_str(&text)?;
     let rows = document
         .as_array()
@@ -326,8 +408,8 @@ fn load_rows(path: &PathBuf) -> Result<HashMap<String, Value>> {
         .collect())
 }
 
-fn load_summary_rows(path: &PathBuf) -> Result<Vec<Value>> {
-    let text = std::fs::read_to_string(path)?;
+fn load_summary_rows(path: &Path) -> Result<Vec<Value>> {
+    let text = read_resource_text(path)?;
     let document: Value = serde_json::from_str(&text)?;
     let rows = document
         .get("rows")
@@ -336,13 +418,99 @@ fn load_summary_rows(path: &PathBuf) -> Result<Vec<Value>> {
     Ok(rows.clone())
 }
 
+fn load_compact_dataset(path: &Path) -> Result<AbyssMonsterDataset> {
+    let text = read_resource_text(path)?;
+    let document: Value = serde_json::from_str(&text)?;
+    let seasons = document
+        .get("seasons")
+        .and_then(Value::as_array)
+        .context("深渊怪物数据缺少 seasons 数组")?;
+    let mut parsed_seasons = Vec::new();
+    for season_row in seasons {
+        let Some(season) = u32_value(season_row, "season") else {
+            continue;
+        };
+        if !is_supported_abyss_season(season) {
+            continue;
+        }
+        let season_name = string(season_row, "name").map(str::to_owned);
+        let mut floors = Vec::new();
+        let Some(floor_rows) = season_row.get("floors").and_then(Value::as_array) else {
+            continue;
+        };
+        for floor_row in floor_rows {
+            let Some(floor) = u32_value(floor_row, "floor") else {
+                continue;
+            };
+            let mut monsters = Vec::new();
+            let Some(monster_rows) = floor_row.get("monsters").and_then(Value::as_array) else {
+                continue;
+            };
+            for monster_row in monster_rows {
+                let Some(pack_id) = string(monster_row, "pack_id") else {
+                    continue;
+                };
+                let Some(monster_id) = string(monster_row, "monster_id") else {
+                    continue;
+                };
+                monsters.push(AbyssMonsterEntry {
+                    pack_id: pack_id.to_owned(),
+                    attribute_id: string(monster_row, "attribute_id")
+                        .unwrap_or(pack_id)
+                        .to_owned(),
+                    monster_pool_id: string(monster_row, "monster_pool_id").map(str::to_owned),
+                    monster_id: monster_id.to_owned(),
+                    name: string(monster_row, "name")
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or(monster_id)
+                        .to_owned(),
+                    count: u32_value(monster_row, "count").unwrap_or(1).max(1),
+                    level: u32_value(monster_row, "level"),
+                    half: u32_value(monster_row, "half"),
+                    wave: u32_value(monster_row, "wave"),
+                    is_boss: bool_value(monster_row, "is_boss"),
+                    stats: monster_row
+                        .get("stats")
+                        .map(monster_stats)
+                        .unwrap_or_default(),
+                });
+            }
+            monsters.sort_by(|left, right| {
+                left.half
+                    .cmp(&right.half)
+                    .then_with(|| left.wave.cmp(&right.wave))
+                    .then_with(|| left.monster_pool_id.cmp(&right.monster_pool_id))
+                    .then_with(|| left.name.cmp(&right.name))
+                    .then_with(|| left.pack_id.cmp(&right.pack_id))
+            });
+            floors.push(AbyssFloor {
+                season,
+                season_name: season_name.clone(),
+                floor,
+                name: string(floor_row, "name").map(str::to_owned),
+                monsters,
+            });
+        }
+        floors.sort_by_key(|floor| floor.floor);
+        parsed_seasons.push(AbyssSeason {
+            season,
+            name: season_name,
+            floors,
+        });
+    }
+    parsed_seasons.sort_by_key(|season| season.season);
+    Ok(AbyssMonsterDataset {
+        seasons: parsed_seasons,
+    })
+}
+
 fn load_abyss_season_names() -> HashMap<u32, String> {
     let Some(path) = find_data_file(ABYSS_SEASON_NAMES_PATH.as_ref())
         .or_else(|| find_data_file(LEGACY_ABYSS_LOCALIZATION_PATH.as_ref()))
     else {
         return HashMap::new();
     };
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(text) = read_resource_text(&path) else {
         return HashMap::new();
     };
     let Ok(document) = serde_json::from_str::<Value>(&text) else {
@@ -705,7 +873,7 @@ mod tests {
             .iter()
             .map(|season| season.season)
             .collect::<Vec<_>>();
-        assert_eq!(seasons, [1, 2, 3, 4]);
+        assert_eq!(seasons, [1, 2, 3, 4, 5, 6, 7]);
 
         let floor = dataset
             .floor(4, 1)
@@ -717,6 +885,68 @@ mod tests {
                 .monsters
                 .iter()
                 .any(|monster| monster.monster_id == "mon_14_BP")
+        );
+
+        let latest_floor = dataset
+            .floor(7, 1)
+            .expect("latest abyss floor should exist");
+        assert_eq!(latest_floor.wave_count(), 2);
+        assert_eq!(latest_floor.monster_count(), 4);
+    }
+
+    #[test]
+    fn loads_compact_abyss_dataset_shape() {
+        let path = std::env::temp_dir().join(format!(
+            "nte_dps_tool_compact_abyss_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            r#"{
+                "seasons": [{
+                    "season": 4,
+                    "name": "测试赛季",
+                    "floors": [{
+                        "floor": 2,
+                        "name": "第二站",
+                        "monsters": [{
+                            "pack_id": "Abyss_4_2_0_1:0:1:Abyss_4_2_0_1_mon_35_Blue_BP:0",
+                            "attribute_id": "Abyss_4_2_0_1_mon_35_Blue_BP",
+                            "monster_pool_id": "Abyss_4_2_0_1",
+                            "monster_id": "mon_35_Blue_BP",
+                            "name": "罐头锡兵",
+                            "count": 2,
+                            "level": 46,
+                            "half": 0,
+                            "wave": 1,
+                            "stats": {
+                                "HPMaxBase": 1000.0,
+                                "AttackBase": 50.0
+                            }
+                        }]
+                    }]
+                }]
+            }"#,
+        )
+        .expect("compact abyss temp file should be writable");
+
+        let dataset = super::load_compact_dataset(&path).expect("compact abyss should load");
+        let floor = dataset.floor(4, 2).expect("compact floor should exist");
+        let monster = floor
+            .monsters
+            .first()
+            .expect("compact monster should exist");
+
+        assert_eq!(floor.name.as_deref(), Some("第二站"));
+        assert_eq!(monster.monster_id, "mon_35_Blue_BP");
+        assert_eq!(monster.count, 2);
+        assert_eq!(monster.stats.hp_max_base, 1000.0);
+        assert!(
+            monster
+                .stats
+                .raw_props
+                .iter()
+                .any(|(key, value)| key == "AttackBase" && *value == 50.0)
         );
     }
 
@@ -776,5 +1006,53 @@ mod tests {
 
         assert_eq!(names.get(&4).map(String::as_str), Some("晦冥环线"));
         assert_eq!(names.get(&5).map(String::as_str), Some("晦冥环线"));
+    }
+
+    #[test]
+    fn predicts_wave_clear_times_from_static_hp() {
+        let monsters = vec![
+            super::AbyssMonsterEntry {
+                pack_id: "a".to_owned(),
+                attribute_id: "a".to_owned(),
+                monster_pool_id: None,
+                monster_id: "m1".to_owned(),
+                name: "一号".to_owned(),
+                count: 2,
+                level: None,
+                half: Some(0),
+                wave: Some(1),
+                is_boss: false,
+                stats: super::AbyssMonsterStats {
+                    hp_max_base: 100.0,
+                    raw_props: Vec::new(),
+                },
+            },
+            super::AbyssMonsterEntry {
+                pack_id: "b".to_owned(),
+                attribute_id: "b".to_owned(),
+                monster_pool_id: None,
+                monster_id: "m2".to_owned(),
+                name: "二号".to_owned(),
+                count: 1,
+                level: None,
+                half: Some(0),
+                wave: Some(2),
+                is_boss: false,
+                stats: super::AbyssMonsterStats {
+                    hp_max_base: 300.0,
+                    raw_props: Vec::new(),
+                },
+            },
+        ];
+
+        let waves = super::line_hp_by_wave(&monsters);
+        let predictions = super::predict_wave_clear_times(&waves, 100.0);
+
+        assert_eq!(super::abyss_line_hp_total(&monsters), 500.0);
+        assert_eq!(super::required_dps_for_target_time(500.0, 10.0), Some(50.0));
+        assert_eq!(waves.len(), 2);
+        assert_eq!(waves[0].hp, 200.0);
+        assert_eq!(predictions[0].seconds, 2.0);
+        assert_eq!(predictions[1].cumulative_seconds, 5.0);
     }
 }

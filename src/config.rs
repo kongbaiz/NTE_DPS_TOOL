@@ -7,6 +7,11 @@ const CONFIG_DIRECTORY: &str = "NTE DPS Tool";
 const CONFIG_FILENAME: &str = "config.json";
 pub const WINDOW_SCALE_MIN: f32 = 0.7;
 pub const WINDOW_SCALE_MAX: f32 = 1.5;
+pub const TIMELINE_BUCKET_SECONDS_DEFAULT: f32 = 1.0;
+pub const TIMELINE_BUCKET_SECONDS_MIN: f32 = 0.2;
+pub const TIMELINE_BUCKET_SECONDS_MAX: f32 = 10.0;
+pub const HUD_MAX_CHARACTERS_MIN: usize = 1;
+pub const HUD_MAX_CHARACTERS_MAX: usize = 8;
 
 const PASSTHROUGH_HOTKEYS: [PassthroughHotkey; 4] = [
     PassthroughHotkey::Home,
@@ -15,6 +20,8 @@ const PASSTHROUGH_HOTKEYS: [PassthroughHotkey; 4] = [
     PassthroughHotkey::F9,
 ];
 const DPS_TIME_MODES: [DpsTimeMode; 2] = [DpsTimeMode::TimeStopAdjusted, DpsTimeMode::RealTime];
+const TIMELINE_DPS_VIEW_MODES: [TimelineDpsViewMode; 2] =
+    [TimelineDpsViewMode::Team, TimelineDpsViewMode::Characters];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -69,6 +76,72 @@ impl DpsTimeMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimelineDpsViewMode {
+    #[default]
+    Team,
+    Characters,
+}
+
+impl TimelineDpsViewMode {
+    pub fn all() -> &'static [Self] {
+        &TIMELINE_DPS_VIEW_MODES
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Team => "整队",
+            Self::Characters => "按角色",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HudConfig {
+    pub show_title: bool,
+    pub show_team_dps: bool,
+    pub show_duration: bool,
+    pub show_total_damage: bool,
+    pub show_character_rows: bool,
+    pub show_damage_taken: bool,
+    pub show_abyss_half: bool,
+    pub show_passthrough_state: bool,
+    pub show_mini_timeline: bool,
+    pub max_characters: usize,
+}
+
+impl Default for HudConfig {
+    fn default() -> Self {
+        Self {
+            show_title: false,
+            show_team_dps: true,
+            show_duration: true,
+            show_total_damage: true,
+            show_character_rows: true,
+            show_damage_taken: false,
+            show_abyss_half: false,
+            show_passthrough_state: false,
+            show_mini_timeline: false,
+            max_characters: 4,
+        }
+    }
+}
+
+impl HudConfig {
+    pub fn sanitized(mut self) -> Self {
+        self.max_characters = self
+            .max_characters
+            .clamp(HUD_MAX_CHARACTERS_MIN, HUD_MAX_CHARACTERS_MAX);
+        self
+    }
+
+    pub fn has_summary_row(&self) -> bool {
+        self.show_team_dps || self.show_duration || self.show_total_damage || self.show_damage_taken
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
@@ -77,6 +150,9 @@ pub struct UiConfig {
     pub always_on_top: bool,
     pub server_damage_calibration: bool,
     pub dps_time_mode: DpsTimeMode,
+    pub timeline_bucket_seconds: f32,
+    pub timeline_dps_view_mode: TimelineDpsViewMode,
+    pub hud: HudConfig,
     pub passthrough_hotkey: PassthroughHotkey,
     pub main_window_scale: f32,
     pub abyss_window_scale: f32,
@@ -93,6 +169,9 @@ impl Default for UiConfig {
             always_on_top: true,
             server_damage_calibration: false,
             dps_time_mode: DpsTimeMode::default(),
+            timeline_bucket_seconds: TIMELINE_BUCKET_SECONDS_DEFAULT,
+            timeline_dps_view_mode: TimelineDpsViewMode::default(),
+            hud: HudConfig::default(),
             passthrough_hotkey: PassthroughHotkey::default(),
             main_window_scale: 1.0,
             abyss_window_scale: 1.0,
@@ -116,7 +195,18 @@ impl UiConfig {
         self.team_hit_detail_window_scale =
             sanitized_window_scale(self.team_hit_detail_window_scale);
         self.console_window_scale = sanitized_window_scale(self.console_window_scale);
+        self.timeline_bucket_seconds =
+            sanitize_timeline_bucket_seconds(self.timeline_bucket_seconds);
+        self.hud = self.hud.sanitized();
         self
+    }
+}
+
+pub fn sanitize_timeline_bucket_seconds(seconds: f32) -> f32 {
+    if seconds.is_finite() {
+        seconds.clamp(TIMELINE_BUCKET_SECONDS_MIN, TIMELINE_BUCKET_SECONDS_MAX)
+    } else {
+        TIMELINE_BUCKET_SECONDS_DEFAULT
     }
 }
 
@@ -209,6 +299,67 @@ mod tests {
             .sanitized()
             .console_window_scale,
             1.0
+        );
+    }
+
+    #[test]
+    fn sanitizes_invalid_timeline_bucket_seconds() {
+        assert_eq!(
+            UiConfig {
+                timeline_bucket_seconds: 0.05,
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .timeline_bucket_seconds,
+            TIMELINE_BUCKET_SECONDS_MIN
+        );
+        assert_eq!(
+            UiConfig {
+                timeline_bucket_seconds: 99.0,
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .timeline_bucket_seconds,
+            TIMELINE_BUCKET_SECONDS_MAX
+        );
+        assert_eq!(
+            UiConfig {
+                timeline_bucket_seconds: f32::NAN,
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .timeline_bucket_seconds,
+            TIMELINE_BUCKET_SECONDS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn sanitizes_hud_config() {
+        assert_eq!(
+            UiConfig {
+                hud: HudConfig {
+                    max_characters: 0,
+                    ..HudConfig::default()
+                },
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .hud
+            .max_characters,
+            HUD_MAX_CHARACTERS_MIN
+        );
+        assert_eq!(
+            UiConfig {
+                hud: HudConfig {
+                    max_characters: 99,
+                    ..HudConfig::default()
+                },
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .hud
+            .max_characters,
+            HUD_MAX_CHARACTERS_MAX
         );
     }
 }

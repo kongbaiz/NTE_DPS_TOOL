@@ -6,11 +6,11 @@
 
 ## 项目定位
 
-`NTE DPS TOOL` 是 Windows 桌面实时 DPS 工具。主程序使用 Rust 2024 + `eframe/egui`；通过 Npcap 抓取本机 UDP 流量，解析 NTE/UE 网络载荷，并在本地展示队伍、角色、技能、深渊上下行线等统计。`tools/` 是资源维护区，包含 Python 数据管线和 C# CUE4Parse probe；普通运行不依赖这些工具。
+`NTE DPS TOOL` 是 Windows 桌面实时 DPS 工具。主程序使用 Rust 2024 + `eframe/egui`；通过 Npcap 抓取本机 UDP 流量，解析 NTE/UE 网络载荷，并在本地展示队伍、角色、技能、深渊上下行线等统计。资源导出和离线维护工具位于独立私有仓库 `kongbaiz/nte-resource-exporter`；普通运行不依赖这些工具。
 
 ## 不可破坏的约束
 
-- 不提交 `target/`、`logs/`、`data/`、`NTE_Assets/`、`tools/external/`、C# `bin/obj`、`.env`、资源导出 AES key、`*.usmap`、完整解包数据或抓包样本。
+- 不提交 `target/`、`logs/`、`data/`、`NTE_Assets/`、资源工具外部依赖目录、C# `bin/obj`、`.env`、资源导出 AES key、`*.usmap`、完整解包数据或抓包样本。
 - 不把资源导出 AES key、授权资源路径、完整载荷、PCAP 内容、用户本机路径写入日志、报告或提交说明。
 - `src/encrypted_ini.rs` 中用于 NTE 加密 INI 读写的固定 key 属于长期稳定的协议兼容常量，可保留；不得把资源解包/导出 AES key 或用户授权 key 写入源码。
 - 不绕过现有 debug 回放链路：实时抓包、JSON 导出导入、PCAPNG 导入必须尽量复用同一稳定解析流程。
@@ -33,7 +33,7 @@
 - `src/window_attributes.rs`：Win32 窗口圆角、透明度和进程窗口属性处理。平台相关 `unsafe` 必须有 `SAFETY:` 注释。
 - `build.rs`：资源内嵌和 Windows 图标。输出必须确定，新增资源路径需保持大小写和分隔符稳定。
 - `res/`：稳定运行资源。手工字段优先保留，批量生成必须说明来源。
-- `tools/`：离线资源维护工具。不得成为主程序运行时依赖。
+- 资源导出、CUE4Parse probe 和离线资源维护工具已迁出到独立私有仓库 `kongbaiz/nte-resource-exporter`。主程序仓库不得依赖这些工具运行。
 - `Dumper-7/`：本地忽略的第三方或生成 SDK 参考区。主程序和工具不得依赖该目录；除非明确要求引入可审查生成物，不提交该目录内容。
 
 ## 开发流程
@@ -60,14 +60,6 @@ cargo run --release
 ```powershell
 $env:NTE_TEST_CAPTURE = "<pcapng-path>"
 cargo test -- --ignored
-```
-
-资源工具验证：
-
-```powershell
-python -m pip install -r tools/requirements.txt
-python tools/nte_asset_pipeline.py --help
-dotnet build tools/cue4parse_probe/Cue4ParseProbe.csproj
 ```
 
 最终回复必须列出改动文件、已运行命令、未运行命令及原因。
@@ -104,25 +96,10 @@ dotnet build tools/cue4parse_probe/Cue4ParseProbe.csproj
 ## 资源维护规范
 
 - 普通运行只依赖 Rust、Npcap 和仓库内 `res/`。
-- 更新 `res/` 优先走 `tools/export_nte_res.py` 或 `tools/nte_asset_pipeline.py`；手工编辑只允许小范围修正，并保留已有人工颜色、头像、别名等字段。
+- 更新 `res/` 优先走独立资源工具仓库的导出管线；手工编辑只允许小范围修正，并保留已有人工颜色、头像、别名等字段。
 - 生成或更新资源时，检查 `asset_report.json`、`asset_manifest.json` 与 README/工具文档是否需要同步。
 - 不提交原始客户端容器、授权密钥、usmap、第三方工具目录或中间导出树。
 - 新增图片资源要考虑 `build.rs` 会内嵌图片，避免无意义大文件进入二进制。
-
-## Python 工具规范
-
-- Python 工具要求 Python 3.14+；依赖只写入 `tools/pyproject.toml` 和 `tools/requirements.txt`。
-- 遵循 PEP 8 基本风格：4 空格缩进，标准库/第三方/本地导入分组，函数和变量使用 `snake_case`。
-- CLI 使用 `argparse`，错误信息必须能指导下一步操作。
-- 文件路径使用 `pathlib.Path`；输出默认写入 `target/` 或用户显式指定目录。
-- JSON 输出使用稳定结构和缩进；不得把资源导出 AES key、完整本机路径或敏感载荷写入报告。
-
-## C# probe 规范
-
-- `tools/cue4parse_probe` 使用 `net10.0`，`ImplicitUsings` 与 `Nullable` 保持启用。
-- Probe 只负责资源定位、解密授权输入、CUE4Parse 导出和报告生成；不要加入主程序业务逻辑。
-- 命名遵循 .NET 常规：类型/属性/方法 `PascalCase`，局部变量和参数 `camelCase`。
-- 资源导出 AES key 只能从环境变量或显式 key 文件读取；不得打印、落盘或进入异常详情。
 
 ## 依赖策略
 

@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-06-28T11:55:11.465274+00:00",
+  "assets_root_name": "nte-assets",
+  "paths_redacted": true,
+  "assets_git_revision": "1b8f7d51835065b282c14a7f7edc37ae292190e8",
+  "inputs": {
+    "characters": {
+      "path": "DataTable/Character/DT_Character.json",
+      "sha256": "f78c80e86c1cb2c610a815d9eddb9e8a3d80a05aa703965d1a749c3c7b9264c9"
+    },
+    "gameplay_effect_mapping": {
+      "path": "DataTable/Skill/DT_GameplayEffectMappingData.json",
+      "sha256": "dfb10f87166123934a468380d22a03f9bcdc1ab5a2cf28b0a50dbc93c55d2ace"
+    },
+    "skill_damage": {
+      "path": "DataTable/Skill/DT_SkillDamageData.json",
+      "sha256": "7ac2cbbc0c1d7c7aa5ea2612cf1c6b75a18848fe4c7280c09d615d30dee5d288"
+    },
+    "wooden_damage_descriptions": {
+      "path": "DataTable/Skill/Wooden/DT_WoodenStructData.json",
+      "sha256": "1e0482543d9159e8528e5a7ed7551d15f84c0f68c8e0ca9fc86c57476bf7c64b"
+    },
+    "ability_tips": {
+      "path": "DataTable/Skill/DT_GameplayAbilityTipsData.json",
+      "sha256": "5a583f886f977d1d06962aed2d180901ea11fa92ba411ed37010eb33e0ca7de9"
+    },
+    "abyss_monster_static": {
+      "path": "DataTable/Monster/DT_MonsterStaticData_Abyss.json",
+      "sha256": "f31fdfaf6da6553251ebdecf60d90dd0d996b232c422cc64590a62afb35ce840"
+    },
+    "abyss_monster_pack": {
+      "path": "DataTable/PackData/DT_MonsterPackData.json",
+      "sha256": "8232f935ea9bd2247fbd18cbdccb834affd98580fa241a1cadb34dba55d9df7c"
+    },
+    "abyss_combat_award_quest": {
+      "path": "DataTable/SimpleQuest/DT_CombatAwardQuest.json",
+      "sha256": "d29617ea31d30e262a520b33f7e1dc322308726e6046a496c03bafed2456aba3"
+    },
+    "reaction_data": {
+      "path": "DataTable/Reaction/DT_ReactionData.json",
+      "sha256": "cff5109a224e53a1cd26b00bb80fac8354ca7485b074fe31f396675f69498fdd"
+    },
+    "reaction_detail": {
+      "path": "DataTable/Reaction/DT_ReactionDetailUIData.json",
+      "sha256": "64530b2ecfb12794df5ccfc01e45ec2509724772cb48070d78c1be76efc93f03"
+    },
+    "reaction_damage": {
+      "path": "DataTable/Reaction/DT_ReactionDamageData.json",
+      "sha256": "32207289915fec1b04fab34b3c33bd171dd3227ad05380b2a92dd2019a5ca57e"
+    },
+    "reaction_elements": {
+      "path": "DataTable/Reaction/DT_ReactionElementTypeData.json",
+      "sha256": "514f9b8f625fbb0a8909b76a222a74ffc1b6b786d4bf938fa217817b47832486"
+    },
+    "reaction_extensions": {
+      "path": "DataTable/Reaction/DT_ReactionExtendDataTable.json",
+      "sha256": "aee200e6413e41559a7eabf0736f69ea26eaac58adc7c2e80fbe12f27517405a"
+    },
+    "zh_cn_localization": {
+      "path": "Localization/Game/zh-CN/game.json",
+      "sha256": "c013a6d42a5fcac06800461b6ceee07d8eea8098a314d2ebfe77eeb07cdde2a4"
+    }
+  },
+  "outputs": {
+    "program_tables": {
+      "gameplay_effect_mapping": "data/skills/gameplay_effect_mapping.json",
+      "skill_damage": "data/skills/skill_damage.json",
+      "wooden_damage_descriptions": "data/skills/wooden_damage_descriptions.json"
+    },
+    "characters": "data/characters/characters.json",
+    "ability_tips": "data/skills/ability_tips.json",
+    "reactions": "data/reactions/reactions.json",
+    "abyss_monsters": "data/abyss/abyss_monsters.json",
+    "abyss_season_names": "data/abyss/season_names_zh_cn.json",
+    "coverage_report": "data/asset_report.json"
+  }
+}

@@ -8,6 +8,7 @@ license = "PolyForm-Noncommercial-1.0.0"
 
 [features]
 default = []
+external_resources = []
 no_debug = []
 
 [dependencies]
@@ -46,5 +47,6 @@ strip = true
 debug = false
 
 [build-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 serde_json = "1.0"
 winresource = "0.1.31"
