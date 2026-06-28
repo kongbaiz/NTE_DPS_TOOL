@@ -20,6 +20,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", resource_dir.display());
     println!("cargo:rerun-if-changed={}", icon_path.display());
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_EXTERNAL_RESOURCES");
 
     generate_embedded_resources(&manifest_dir, &resource_dir, &output_dir);
 
@@ -31,6 +32,17 @@ fn main() {
 }
 
 fn generate_embedded_resources(manifest_dir: &Path, resource_dir: &Path, output_dir: &Path) {
+    if env::var_os("CARGO_FEATURE_EXTERNAL_RESOURCES").is_some() {
+        let generated = concat!(
+            "fn embedded_resource(_path: &str) -> Option<&'static [u8]> {\n",
+            "    None\n",
+            "}\n",
+        );
+        let output_path = output_dir.join("embedded_resources.rs");
+        fs::write(output_path, generated).expect("failed to generate embedded resource map");
+        return;
+    }
+
     let mut resources = Vec::new();
     collect_resources(resource_dir, &mut resources);
     resources.sort();

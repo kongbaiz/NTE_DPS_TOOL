@@ -8,6 +8,7 @@ license = "PolyForm-Noncommercial-1.0.0"
 
 [features]
 default = []
+external_resources = []
 no_debug = []
 
 [dependencies]
