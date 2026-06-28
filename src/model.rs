@@ -1753,9 +1753,10 @@ fn push_timeline_marker(
     let Some(timestamp) = timestamp else {
         return;
     };
-    if !timestamp.is_finite() || timestamp < start || timestamp > end {
+    if !timestamp.is_finite() {
         return;
     }
+    let timestamp = timestamp.clamp(start, end);
     markers.push(TimelineMarker {
         offset: timestamp - start,
         label: label.to_owned(),
@@ -2062,6 +2063,42 @@ mod tests {
         assert!((timeline.time_stop_intervals[0].start_offset - 0.25).abs() < 1e-9);
         assert!((timeline.time_stop_intervals[0].end_offset - 0.75).abs() < 1e-9);
         assert!((timeline.buckets[0].dps - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn timeline_clamps_abyss_markers_to_chart_edges() {
+        let mut state = CombatState::default();
+        state.apply_abyss_event(AbyssEvent::Stage {
+            timestamp: 0.0,
+            cycle: Some(1),
+            floor: Some(1),
+            half: AbyssHalf::First,
+            allow_late_backfill: false,
+        });
+        state.push_hit(test_hit(1.0, 1, "outgoing", 100.0));
+        state.push_hit(test_hit(2.0, 1, "outgoing", 100.0));
+        state.apply_abyss_event(AbyssEvent::Success { timestamp: 3.0 });
+        state.apply_abyss_event(AbyssEvent::Exit { timestamp: 4.0 });
+
+        let timeline = state.timeline(1.0, false);
+
+        assert_eq!(timeline.start_timestamp, Some(1.0));
+        assert_eq!(timeline.end_timestamp, Some(2.0));
+        assert!(timeline.markers.iter().any(|marker| {
+            marker.label == "上行线"
+                && marker.kind == TimelineMarkerKind::HalfStart
+                && marker.offset == 0.0
+        }));
+        assert!(timeline.markers.iter().any(|marker| {
+            marker.label == "通关"
+                && marker.kind == TimelineMarkerKind::Clear
+                && (marker.offset - 1.0).abs() < 1e-9
+        }));
+        assert!(timeline.markers.iter().any(|marker| {
+            marker.label == "离开"
+                && marker.kind == TimelineMarkerKind::Exit
+                && (marker.offset - 1.0).abs() < 1e-9
+        }));
     }
 
     #[test]

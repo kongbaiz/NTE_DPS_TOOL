@@ -467,15 +467,23 @@ fn load_mapped_effect_names(
     let Some(document) = read_json_object(reader, GAMEPLAY_EFFECT_MAPPING_PATH, audit) else {
         return HashSet::new();
     };
-    document
-        .get("effects")
-        .and_then(Value::as_object)
-        .map(|effects| {
-            effects
-                .values()
-                .filter_map(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_owned)
+    if let Some(effects) = document.get("effects").and_then(Value::as_object) {
+        return effects
+            .values()
+            .filter_map(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
+    data_table_rows(&document)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|(name, row)| {
+                    row.get("UniqueIndex")
+                        .and_then(Value::as_u64)
+                        .filter(|index| *index != 0)
+                        .map(|_| name.clone())
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -488,12 +496,15 @@ fn load_skill_rows(
     let Some(document) = read_json_object(reader, SKILL_DAMAGE_DATA_PATH, audit) else {
         return HashMap::new();
     };
-    document
-        .get("skills")
-        .and_then(Value::as_object)
-        .map(|skills| {
-            skills
-                .iter()
+    if let Some(skills) = document.get("skills").and_then(Value::as_object) {
+        return skills
+            .iter()
+            .map(|(name, row)| (name.clone(), row.clone()))
+            .collect();
+    }
+    data_table_rows(&document)
+        .map(|rows| {
+            rows.iter()
                 .map(|(name, row)| (name.clone(), row.clone()))
                 .collect()
         })
@@ -507,21 +518,38 @@ fn load_wooden_names(
     let Some(document) = read_json_object(reader, WOODEN_DAMAGE_DESCRIPTIONS_PATH, audit) else {
         return HashSet::new();
     };
-    document
-        .get("names")
-        .and_then(Value::as_object)
-        .map(|names| {
-            names
-                .iter()
-                .filter_map(|(name, value)| {
-                    value
-                        .as_str()
-                        .filter(|label| !label.trim().is_empty())
+    if let Some(names) = document.get("names").and_then(Value::as_object) {
+        return names
+            .iter()
+            .filter_map(|(name, value)| {
+                value
+                    .as_str()
+                    .filter(|label| !label.trim().is_empty())
+                    .map(|_| name.clone())
+            })
+            .collect();
+    }
+    data_table_rows(&document)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|(name, row)| {
+                    row.get("Desc")
+                        .and_then(|desc| desc.get("CultureInvariantString"))
+                        .and_then(Value::as_str)
+                        .filter(|description| !description.trim().is_empty())
                         .map(|_| name.clone())
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn data_table_rows(document: &Value) -> Option<&serde_json::Map<String, Value>> {
+    document
+        .as_array()
+        .and_then(|entries| entries.first())
+        .and_then(|entry| entry.get("Rows"))
+        .and_then(Value::as_object)
 }
 
 fn read_json_object(
@@ -740,6 +768,43 @@ mod tests {
                 .redacted_text()
                 .contains(&root.display().to_string())
         );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn audits_legacy_skill_resource_tables() {
+        let root = temp_root("legacy-skill-tables");
+        write(
+            &root,
+            GAMEPLAY_EFFECT_MAPPING_PATH,
+            r#"[{"Rows":{"GE_Known":{"UniqueIndex":1001}}}]"#,
+        );
+        write(
+            &root,
+            SKILL_DAMAGE_DATA_PATH,
+            r#"[{"Rows":{"GE_Known":{"DamageSourceCategory":"EDamageSourceCategory::Normal","GAName":"GA_Test"},"GE_Missing":{"DamageSourceCategory":"EDamageSourceCategory::Normal"}}}]"#,
+        );
+        write(
+            &root,
+            WOODEN_DAMAGE_DESCRIPTIONS_PATH,
+            r#"[{"Rows":{"GE_Known":{"Desc":{"CultureInvariantString":"普攻1段"}}}}]"#,
+        );
+
+        let summary = audit_resource_root(&root);
+
+        assert_eq!(summary.counts.skill_damage, 2);
+        assert_eq!(summary.counts.mapped_effects, 1);
+        assert!(summary.items.iter().any(|item| {
+            item.category == ResourceAuditCategory::Skill
+                && item.resource_id == "GE_Missing"
+                && item.message == "缺少中文伤害名"
+        }));
+        assert!(summary.items.iter().any(|item| {
+            item.category == ResourceAuditCategory::GameplayEffect
+                && item.resource_id == "GE_Missing"
+                && item.message == "技能表存在但 GE index 映射缺失"
+        }));
 
         let _ = std::fs::remove_dir_all(root);
     }
