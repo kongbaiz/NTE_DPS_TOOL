@@ -12,3 +12,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+
+# C# / MSBuild build artifacts (contain local user paths)
+**/bin/
+**/obj/
