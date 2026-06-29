@@ -4,8 +4,8 @@ NTE DPS TOOL is an independent, community-maintained diagnostics tool. It is not
 
 ## Use Scope
 
-- Use this project only for local diagnostics, personal research, and noncommercial maintenance.
-- Do not use this project to operate a paid service, sell builds, bundle it into a commercial product, or provide commercial analytics without a separate written license.
+- This project is licensed under the GNU AGPL v3.0. You may use, modify, and redistribute it (including commercially) provided you comply with the AGPL's copyleft and network-use source-disclosure requirements. See [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md).
+- To use this project in a closed-source product or proprietary hosted service (i.e. without disclosing your source under the AGPL), obtain a separate commercial license from the copyright holder. See [LICENSING.md](LICENSING.md).
 - Do not publish private traffic captures, decrypted payloads, resource export keys, usmap files, unpacked client assets, or user-specific local paths.
 
 ## Game Data And Assets
