@@ -492,6 +492,76 @@ pub fn summarize_timeline<'a>(
     )
 }
 
+/// Default idle span (no outgoing damage) that separates one capture into
+/// distinct combat segments.
+pub const COMBAT_SEGMENT_GAP_SECONDS: f64 = 5.0;
+
+/// One detected stretch of sustained combat within a capture. Offsets are
+/// relative to the timeline start, matching [`TimelineSeries`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CombatSegment {
+    pub start_offset: f64,
+    pub end_offset: f64,
+    pub duration: f64,
+    pub total_damage: f64,
+    pub hits: u64,
+    pub dps: f64,
+}
+
+/// Split a [`TimelineSeries`] into combat segments separated by idle gaps longer
+/// than `gap_seconds`. Derived from the already-aggregated buckets, so per-segment
+/// damage matches the chart and the team totals exactly. This is purely
+/// read-only — it never resets or mutates live combat state.
+pub fn summarize_combat_segments(series: &TimelineSeries, gap_seconds: f64) -> Vec<CombatSegment> {
+    let bucket_seconds = if series.bucket_seconds.is_finite() && series.bucket_seconds > 0.0 {
+        series.bucket_seconds
+    } else {
+        1.0
+    };
+    let gap_seconds = if gap_seconds.is_finite() && gap_seconds > 0.0 {
+        gap_seconds
+    } else {
+        COMBAT_SEGMENT_GAP_SECONDS
+    };
+    let gap_buckets = (gap_seconds / bucket_seconds).ceil().max(1.0) as usize;
+
+    let mut segments: Vec<CombatSegment> = Vec::new();
+    let mut current: Option<CombatSegment> = None;
+    let mut empty_run = 0usize;
+    for bucket in &series.buckets {
+        let active = bucket.hits > 0 && bucket.damage > 0.0;
+        if active {
+            if empty_run >= gap_buckets
+                && let Some(segment) = current.take()
+            {
+                segments.push(segment);
+            }
+            empty_run = 0;
+            let segment = current.get_or_insert(CombatSegment {
+                start_offset: bucket.start_offset,
+                ..CombatSegment::default()
+            });
+            segment.end_offset = bucket.end_offset;
+            segment.total_damage += bucket.damage;
+            segment.hits += bucket.hits;
+        } else {
+            empty_run += 1;
+        }
+    }
+    if let Some(segment) = current.take() {
+        segments.push(segment);
+    }
+    for segment in &mut segments {
+        segment.duration = (segment.end_offset - segment.start_offset).max(0.0);
+        segment.dps = if segment.duration > 0.0 {
+            segment.total_damage / segment.duration
+        } else {
+            0.0
+        };
+    }
+    segments
+}
+
 pub fn summarize_skill_breakdown<'a>(
     hits: impl IntoIterator<Item = &'a Hit>,
     char_filter: Option<u32>,
@@ -2628,5 +2698,57 @@ mod tests {
         assert_eq!(state.total_damage, 100.0);
         assert_eq!(state.abyss.first_half.total_damage, 0.0);
         assert!(state.abyss.first_half.hits.is_empty());
+    }
+
+    fn timeline_from_pattern(pattern: &[bool]) -> TimelineSeries {
+        let buckets = pattern
+            .iter()
+            .enumerate()
+            .map(|(index, &active)| TimelineBucket {
+                start_offset: index as f64,
+                end_offset: (index + 1) as f64,
+                damage: if active { 100.0 } else { 0.0 },
+                hits: u64::from(active),
+                ..Default::default()
+            })
+            .collect();
+        TimelineSeries {
+            bucket_seconds: 1.0,
+            buckets,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn combat_segments_split_on_long_idle_gap() {
+        // 3 active buckets, a 6s idle gap (> 5s), then 2 active buckets.
+        let series = timeline_from_pattern(&[
+            true, true, true, false, false, false, false, false, false, true, true,
+        ]);
+        let segments = summarize_combat_segments(&series, 5.0);
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].start_offset, 0.0);
+        assert_eq!(segments[0].end_offset, 3.0);
+        assert_eq!(segments[0].total_damage, 300.0);
+        assert_eq!(segments[0].hits, 3);
+        assert_eq!(segments[0].duration, 3.0);
+        assert_eq!(segments[0].dps, 100.0);
+        assert_eq!(segments[1].start_offset, 9.0);
+        assert_eq!(segments[1].total_damage, 200.0);
+    }
+
+    #[test]
+    fn combat_segments_keep_short_gaps_together() {
+        // A 2s gap (< 5s) does not split the fight.
+        let series = timeline_from_pattern(&[true, false, false, true]);
+        let segments = summarize_combat_segments(&series, 5.0);
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].total_damage, 200.0);
+        assert_eq!(segments[0].hits, 2);
+    }
+
+    #[test]
+    fn combat_segments_empty_series_has_no_segments() {
+        assert!(summarize_combat_segments(&TimelineSeries::default(), 5.0).is_empty());
     }
 }

@@ -196,6 +196,27 @@ impl DpsApp {
             );
         });
         ui.add_space(8.0);
+        // Read-only combat segmentation: the capture's outgoing damage split into
+        // separate fights wherever an idle gap exceeds the threshold. Derived from
+        // the same timeline buckets the chart uses, so it never touches live state.
+        let segments = summarize_combat_segments(&timeline, COMBAT_SEGMENT_GAP_SECONDS);
+        if segments.len() > 1 {
+            let dark_mode = self.dark_mode;
+            ui.horizontal_wrapped(|ui| {
+                ui.label(inline_text(
+                    format!(
+                        "战斗分段 · {} 段（间隔 >{:.0}s 自动切分）",
+                        segments.len(),
+                        COMBAT_SEGMENT_GAP_SECONDS
+                    ),
+                    ui.visuals().weak_text_color(),
+                ));
+                for (index, segment) in segments.iter().enumerate() {
+                    draw_combat_segment_chip(ui, index + 1, segment, dark_mode);
+                }
+            });
+            ui.add_space(6.0);
+        }
         let chart_height = (ui.available_height() - 30.0).max(260.0);
         draw_timeline_chart(
             ui,
@@ -2054,4 +2075,29 @@ impl DpsApp {
             self.pending_confirmation_viewport = to;
         }
     }
+}
+
+/// Compact chip for one detected combat segment in the timeline page.
+fn draw_combat_segment_chip(
+    ui: &mut egui::Ui,
+    index: usize,
+    segment: &CombatSegment,
+    dark_mode: bool,
+) {
+    egui::Frame::popup(ui.style())
+        .fill(shadcn_card(dark_mode))
+        .stroke(Stroke::new(1.0, shadcn_border(dark_mode)))
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(format!(
+                    "段{index} · {}~{} · {} · {} DPS",
+                    format_timeline_seconds(segment.start_offset),
+                    format_timeline_seconds(segment.end_offset),
+                    format_number(segment.total_damage),
+                    format_number(segment.dps),
+                ))
+                .size(11.0),
+            );
+        });
 }

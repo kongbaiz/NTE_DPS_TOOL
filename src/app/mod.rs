@@ -24,11 +24,12 @@ use crate::engine::capture::{
     list_devices, start_capture,
 };
 use crate::engine::model::{
-    AbyssEvent, AbyssHalf, CaptureQualitySource, CaptureQualitySummary, CharacterInfo,
-    CharacterStats, CombatSessionAbyssHalfSummary, CombatSessionCharacterSummary,
-    CombatSessionSkillSummary, CombatState, EngineEvent, HitDirectionSummary, PartyCombatState,
-    SkillBreakdown, SkillBreakdownRow, TEAM_DPS_EXPORT_VERSION, TEAM_DPS_MAX_MEMBERS, TeamDps,
-    TeamDpsExport, TeamDpsMember, TimelineMarkerKind, TimelineSeries, summarize_hit_directions,
+    AbyssEvent, AbyssHalf, COMBAT_SEGMENT_GAP_SECONDS, CaptureQualitySource, CaptureQualitySummary,
+    CharacterInfo, CharacterStats, CombatSegment, CombatSessionAbyssHalfSummary,
+    CombatSessionCharacterSummary, CombatSessionSkillSummary, CombatState, EngineEvent,
+    HitDirectionSummary, PartyCombatState, SkillBreakdown, SkillBreakdownRow,
+    TEAM_DPS_EXPORT_VERSION, TEAM_DPS_MAX_MEMBERS, TeamDps, TeamDpsExport, TeamDpsMember,
+    TimelineMarkerKind, TimelineSeries, summarize_combat_segments, summarize_hit_directions,
 };
 use crate::engine::parser::{CHARACTER_DATA_PATH, find_data_file, load_characters};
 use crate::platform::file_drop::NativeFileDrop;
