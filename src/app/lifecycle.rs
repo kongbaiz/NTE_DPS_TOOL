@@ -82,60 +82,33 @@ impl DpsApp {
                     cancel_selection: None,
                 }
             });
-        let (devices, device_error) = match list_devices() {
-            Ok(devices) => (devices, None),
-            Err(error) => (Vec::new(), Some(error)),
-        };
-        let (mut selected_device, mut game_network, mut status, mut diagnostic) = match device_error
-        {
-            Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
-            None => match detect_game_device(&devices) {
-                Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
-                Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
-            },
-        };
-        // Apply the persisted manual NIC override (VPN fallback). The saved choice is kept even when
-        // the interface is momentarily absent, so it re-engages once the adapter is back.
+        // Probe the capture environment (Npcap device list + HTGame.exe NIC) on a
+        // background thread so the window appears immediately instead of blocking on
+        // device enumeration. `start_live` re-runs `refresh_game_network` on every
+        // capture start, so this startup probe only seeds the initial status and
+        // device dropdown and can never gate capturing. Results arrive via
+        // `drain_device_detection`, guarded so a late result never clobbers a live
+        // capture or a user-initiated refresh.
         let manual_capture_device = ui_config.manual_capture_device.clone();
-        if let Some(name) = manual_capture_device
-            .as_deref()
-            .filter(|_| !devices.is_empty())
+        let devices: Vec<CaptureDevice> = Vec::new();
+        let selected_device: usize = 0;
+        let game_network: Option<GameNetwork> = None;
+        let local_ip = String::new();
+        let status = "正在检测采集环境…".to_owned();
+        let diagnostic: Option<String> = None;
+        let (device_detection_sender, device_detection_receiver) = unbounded();
         {
-            match devices.iter().position(|device| device.name == name) {
-                Some(index) => {
-                    selected_device = index;
-                    match detect_game_network() {
-                        Ok(network) => {
-                            game_network = Some(network);
-                            status = "已就绪（手动网卡）".to_owned();
-                            diagnostic = None;
-                        }
-                        Err(error) => {
-                            game_network = None;
-                            status = "已手动选定网卡（未检测到游戏连接）".to_owned();
-                            diagnostic = Some(error);
-                        }
-                    }
+            let ctx = cc.egui_ctx.clone();
+            let manual = manual_capture_device.clone();
+            let character_error = character_load_error.clone();
+            thread::spawn(move || {
+                let detection =
+                    detect_capture_environment(manual.as_deref(), character_error.as_deref());
+                if device_detection_sender.send(detection).is_ok() {
+                    ctx.request_repaint();
                 }
-                None => {
-                    game_network = None;
-                    status = "手动网卡不可用".to_owned();
-                    diagnostic = Some(format!(
-                        "手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动"
-                    ));
-                }
-            }
-        }
-        if let Some(error) = &character_load_error {
-            diagnostic = Some(match diagnostic {
-                Some(existing) => format!("{error}\n{existing}"),
-                None => error.clone(),
             });
         }
-        let local_ip = game_network
-            .as_ref()
-            .map(|network| network.local_ip.to_string())
-            .unwrap_or_default();
         let startup_error = match (config_warning, character_load_error) {
             (Some(config_error), Some(character_error)) => {
                 Some(format!("{config_error}\n{character_error}"))
@@ -205,6 +178,8 @@ impl DpsApp {
             diagnostics_report: None,
             diagnostics_running: false,
             texture_load_receiver,
+            device_detection_receiver,
+            awaiting_device_detection: true,
             paused_events: VecDeque::new(),
             dropped_debug_packets: 0,
             status,
@@ -799,6 +774,9 @@ impl DpsApp {
     }
 
     pub(crate) fn refresh_game_network(&mut self) -> Result<(), String> {
+        // A user-initiated refresh owns the device state from here on; drop any
+        // still-pending startup probe so it can't clobber this result.
+        self.awaiting_device_detection = false;
         self.devices = list_devices().inspect_err(|error| {
             self.diagnostic = Some(error.clone());
         })?;
@@ -2104,6 +2082,28 @@ impl DpsApp {
         }
     }
 
+    /// Apply the startup capture-environment probe once it completes on its
+    /// background thread. Guarded so a late result never overwrites a capture/replay
+    /// already in flight or a device list a user-initiated refresh has populated.
+    pub(crate) fn drain_device_detection(&mut self) {
+        if !self.awaiting_device_detection {
+            return;
+        }
+        let Ok(detection) = self.device_detection_receiver.try_recv() else {
+            return;
+        };
+        self.awaiting_device_detection = false;
+        if self.capture.is_some() || self.replay_thread.is_some() {
+            return;
+        }
+        self.devices = detection.devices;
+        self.selected_device = detection.selected_device;
+        self.game_network = detection.game_network;
+        self.local_ip = detection.local_ip;
+        self.status = detection.status;
+        self.diagnostic = detection.diagnostic;
+    }
+
     pub(crate) fn drain_resource_audit(&mut self) {
         while let Ok(summary) = self.resource_audit_receiver.try_recv() {
             let error_count = summary.error_count();
@@ -2159,5 +2159,73 @@ impl DpsApp {
             server_damage_calibration: self.server_damage_calibration,
             last_diagnostic: self.diagnostic.clone(),
         }
+    }
+}
+
+/// Probe the capture environment: enumerate Npcap devices, then either honor the
+/// persisted manual NIC override or auto-detect the HTGame.exe NIC. Folds in any
+/// character-load error so the seeded status diagnostic matches the previous
+/// synchronous startup behavior exactly. Pure aside from the OS queries, so it is
+/// safe to run on the startup background thread.
+fn detect_capture_environment(
+    manual_capture_device: Option<&str>,
+    character_load_error: Option<&str>,
+) -> DeviceDetection {
+    let (devices, device_error) = match list_devices() {
+        Ok(devices) => (devices, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    let (mut selected_device, mut game_network, mut status, mut diagnostic) = match device_error {
+        Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
+        None => match detect_game_device(&devices) {
+            Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
+            Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
+        },
+    };
+    // Apply the persisted manual NIC override (VPN fallback). The saved choice is kept even when
+    // the interface is momentarily absent, so it re-engages once the adapter is back.
+    if let Some(name) = manual_capture_device.filter(|_| !devices.is_empty()) {
+        match devices.iter().position(|device| device.name == name) {
+            Some(index) => {
+                selected_device = index;
+                match detect_game_network() {
+                    Ok(network) => {
+                        game_network = Some(network);
+                        status = "已就绪（手动网卡）".to_owned();
+                        diagnostic = None;
+                    }
+                    Err(error) => {
+                        game_network = None;
+                        status = "已手动选定网卡（未检测到游戏连接）".to_owned();
+                        diagnostic = Some(error);
+                    }
+                }
+            }
+            None => {
+                game_network = None;
+                status = "手动网卡不可用".to_owned();
+                diagnostic = Some(format!(
+                    "手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动"
+                ));
+            }
+        }
+    }
+    if let Some(error) = character_load_error {
+        diagnostic = Some(match diagnostic {
+            Some(existing) => format!("{error}\n{existing}"),
+            None => error.to_owned(),
+        });
+    }
+    let local_ip = game_network
+        .as_ref()
+        .map(|network| network.local_ip.to_string())
+        .unwrap_or_default();
+    DeviceDetection {
+        devices,
+        selected_device,
+        game_network,
+        local_ip,
+        status,
+        diagnostic,
     }
 }

@@ -733,6 +733,19 @@ enum TextureLoad {
     Monsters(HashMap<String, egui::TextureHandle>),
 }
 
+/// Result of the startup capture-environment probe (Npcap device list + the
+/// HTGame.exe NIC), computed on a background thread so `DpsApp::new` need not
+/// block on device enumeration. `start_live` re-runs this on every capture
+/// start, so this only seeds the initial status and device dropdown.
+struct DeviceDetection {
+    devices: Vec<CaptureDevice>,
+    selected_device: usize,
+    game_network: Option<GameNetwork>,
+    local_ip: String,
+    status: String,
+    diagnostic: Option<String>,
+}
+
 pub struct DpsApp {
     characters: Arc<HashMap<u32, CharacterInfo>>,
     avatar_textures: HashMap<String, egui::TextureHandle>,
@@ -800,6 +813,8 @@ pub struct DpsApp {
     diagnostics_report: Option<DiagnosticReport>,
     diagnostics_running: bool,
     texture_load_receiver: Receiver<TextureLoad>,
+    device_detection_receiver: Receiver<DeviceDetection>,
+    awaiting_device_detection: bool,
     paused_events: VecDeque<EngineEvent>,
     dropped_debug_packets: u64,
     status: String,
@@ -896,6 +911,7 @@ impl eframe::App for DpsApp {
         self.drain_resource_audit();
         self.drain_capture_diagnostics();
         self.drain_texture_loads();
+        self.drain_device_detection();
         self.drain_hotkeys(ctx);
         self.process_file_drops(ctx, frame);
         self.process_debug_import_dialog(ctx);
