@@ -139,7 +139,7 @@ The program looks for `res` in the current directory or the executable's parent 
 
 | Team hit details | Character hit details |
 |---|---|
-| <img src="images/team_battle_detail.png" alt="Team hit details" width="520"> | <img src="images/char_battle_detail.png" alt="Character hit details" width="520"> |
+| <img src="images/team_battle_detail.png" alt="Team hit details" width="520"> | <img src="images/character_battle_detail.png" alt="Character hit details" width="520"> |
 
 ### Verifying a build
 
