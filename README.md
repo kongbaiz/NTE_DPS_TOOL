@@ -9,6 +9,8 @@
 
 **中文** | [English](README_EN.md)
 
+**[官网 / 项目主页 →](https://dps.o-na-ni.com/)**
+
 <!-- Shields 徽章 -->
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Commercial license available](https://img.shields.io/badge/commercial%20license-available-orange.svg)](LICENSING.md)
@@ -140,6 +142,14 @@ res/
 | 队伍命中明细 | 角色命中明细 |
 |---|---|
 | <img src="images/team_battle_detail.png" alt="队伍命中明细" width="520"> | <img src="images/character_battle_detail.png" alt="角色命中明细" width="520"> |
+
+| 战斗时间轴 | 历史记录 |
+|---|---|
+| <img src="images/timeline.png" alt="战斗时间轴" width="520"> | <img src="images/history.png" alt="历史记录" width="520"> |
+
+| 可定制 HUD |
+|---|
+| <img src="images/HUD.png" alt="可定制 HUD" width="520"> |
 
 ### 验证构建
 
