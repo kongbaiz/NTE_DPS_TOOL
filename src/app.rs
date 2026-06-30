@@ -883,7 +883,10 @@ impl DpsApp {
         // Apply the persisted manual NIC override (VPN fallback). The saved choice is kept even when
         // the interface is momentarily absent, so it re-engages once the adapter is back.
         let manual_capture_device = ui_config.manual_capture_device.clone();
-        if let Some(name) = manual_capture_device.as_deref().filter(|_| !devices.is_empty()) {
+        if let Some(name) = manual_capture_device
+            .as_deref()
+            .filter(|_| !devices.is_empty())
+        {
             match devices.iter().position(|device| device.name == name) {
                 Some(index) => {
                     selected_device = index;
