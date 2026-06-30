@@ -3871,17 +3871,19 @@ mod tests {
     #[test]
     fn ignored_packet_still_emits_pending_ultra_time_stop_end() {
         let (sender, receiver) = unbounded();
-        let mut decoder = PacketDecoder::default();
-        decoder.ultra_time_stops = HashMap::from([(
-            1010,
-            UltraTimeStopEntry {
-                ability_id: "GA_Nanally_UltraSkill".to_owned(),
-                end_ability_event_seconds: 3.584608,
-                source: "test".to_owned(),
-                confidence: "high".to_owned(),
-                ..UltraTimeStopEntry::default()
-            },
-        )]);
+        let mut decoder = PacketDecoder {
+            ultra_time_stops: HashMap::from([(
+                1010,
+                UltraTimeStopEntry {
+                    ability_id: "GA_Nanally_UltraSkill".to_owned(),
+                    end_ability_event_seconds: 3.584608,
+                    source: "test".to_owned(),
+                    confidence: "high".to_owned(),
+                    ..UltraTimeStopEntry::default()
+                },
+            )]),
+            ..PacketDecoder::default()
+        };
         let characters = HashMap::new();
         let local_ip = Ipv4Addr::new(10, 0, 0, 2);
         let remote_ip = Ipv4Addr::new(10, 0, 0, 3);

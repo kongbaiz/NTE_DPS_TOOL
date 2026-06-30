@@ -13553,15 +13553,17 @@ mod tests {
         state.abyss.first_half.push_hit(upper_hit);
         state.abyss.second_half.push_hit(lower_hit);
 
-        let mut overview = AbyssOverviewState::default();
-        overview.upper_team = Some(TeamDps {
-            dps: 1.0,
-            members: vec![TeamDpsMember {
-                id: 99,
+        let overview = AbyssOverviewState {
+            upper_team: Some(TeamDps {
                 dps: 1.0,
-                name: "旧预测".to_owned(),
-            }],
-        });
+                members: vec![TeamDpsMember {
+                    id: 99,
+                    dps: 1.0,
+                    name: "旧预测".to_owned(),
+                }],
+            }),
+            ..AbyssOverviewState::default()
+        };
 
         let export = build_team_dps_export(&state, &overview, true).unwrap();
 
