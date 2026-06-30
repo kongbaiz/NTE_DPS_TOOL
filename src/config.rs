@@ -149,6 +149,9 @@ pub struct UiConfig {
     pub dark_mode: bool,
     pub always_on_top: bool,
     pub server_damage_calibration: bool,
+    /// Manual capture-NIC override (the Npcap device `name`, e.g. `\Device\NPF_{GUID}`). `None`
+    /// keeps automatic detection; `Some(name)` pins capture to that interface as a VPN fallback.
+    pub manual_capture_device: Option<String>,
     pub dps_time_mode: DpsTimeMode,
     pub timeline_bucket_seconds: f32,
     pub timeline_dps_view_mode: TimelineDpsViewMode,
@@ -168,6 +171,7 @@ impl Default for UiConfig {
             dark_mode: false,
             always_on_top: true,
             server_damage_calibration: false,
+            manual_capture_device: None,
             dps_time_mode: DpsTimeMode::default(),
             timeline_bucket_seconds: TIMELINE_BUCKET_SECONDS_DEFAULT,
             timeline_dps_view_mode: TimelineDpsViewMode::default(),
@@ -197,6 +201,10 @@ impl UiConfig {
         self.console_window_scale = sanitized_window_scale(self.console_window_scale);
         self.timeline_bucket_seconds =
             sanitize_timeline_bucket_seconds(self.timeline_bucket_seconds);
+        self.manual_capture_device = self
+            .manual_capture_device
+            .take()
+            .filter(|name| !name.trim().is_empty());
         self.hud = self.hud.sanitized();
         self
     }
@@ -330,6 +338,28 @@ mod tests {
             .sanitized()
             .timeline_bucket_seconds,
             TIMELINE_BUCKET_SECONDS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn sanitizes_blank_manual_capture_device() {
+        assert_eq!(
+            UiConfig {
+                manual_capture_device: Some("   ".to_owned()),
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .manual_capture_device,
+            None
+        );
+        assert_eq!(
+            UiConfig {
+                manual_capture_device: Some(r"\Device\NPF_{abc}".to_owned()),
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .manual_capture_device,
+            Some(r"\Device\NPF_{abc}".to_owned())
         );
     }
 

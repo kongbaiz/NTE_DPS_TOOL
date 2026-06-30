@@ -49,7 +49,7 @@ use crate::model::{
     SkillBreakdown, SkillBreakdownRow, TEAM_DPS_EXPORT_VERSION, TEAM_DPS_MAX_MEMBERS, TeamDps,
     TeamDpsExport, TeamDpsMember, TimelineMarkerKind, TimelineSeries, summarize_hit_directions,
 };
-use crate::network::{GameNetwork, detect_game_device};
+use crate::network::{GameNetwork, detect_game_device, detect_game_network};
 use crate::parser::{CHARACTER_DATA_PATH, find_data_file, load_characters};
 use crate::resource::{read_resource_bytes, read_resource_text};
 use crate::resource_audit::{
@@ -745,6 +745,9 @@ pub struct DpsApp {
     detail_last_scroll_activity: Option<Instant>,
     devices: Vec<CaptureDevice>,
     selected_device: usize,
+    /// Manual capture-NIC override (Npcap device `name`). `None` = automatic detection;
+    /// `Some(name)` pins capture to that interface as a VPN fallback. Persisted in `UiConfig`.
+    manual_capture_device: Option<String>,
     local_ip: String,
     game_network: Option<GameNetwork>,
     filter: String,
@@ -869,13 +872,43 @@ impl DpsApp {
             Ok(devices) => (devices, None),
             Err(error) => (Vec::new(), Some(error)),
         };
-        let (selected_device, game_network, status, mut diagnostic) = match device_error {
+        let (mut selected_device, mut game_network, mut status, mut diagnostic) = match device_error
+        {
             Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
             None => match detect_game_device(&devices) {
                 Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
                 Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
             },
         };
+        // Apply the persisted manual NIC override (VPN fallback). The saved choice is kept even when
+        // the interface is momentarily absent, so it re-engages once the adapter is back.
+        let manual_capture_device = ui_config.manual_capture_device.clone();
+        if let Some(name) = manual_capture_device.as_deref().filter(|_| !devices.is_empty()) {
+            match devices.iter().position(|device| device.name == name) {
+                Some(index) => {
+                    selected_device = index;
+                    match detect_game_network() {
+                        Ok(network) => {
+                            game_network = Some(network);
+                            status = "已就绪（手动网卡）".to_owned();
+                            diagnostic = None;
+                        }
+                        Err(error) => {
+                            game_network = None;
+                            status = "已手动选定网卡（未检测到游戏连接）".to_owned();
+                            diagnostic = Some(error);
+                        }
+                    }
+                }
+                None => {
+                    game_network = None;
+                    status = "手动网卡不可用".to_owned();
+                    diagnostic = Some(format!(
+                        "手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动"
+                    ));
+                }
+            }
+        }
         if let Some(error) = &character_load_error {
             diagnostic = Some(match diagnostic {
                 Some(existing) => format!("{error}\n{existing}"),
@@ -929,6 +962,7 @@ impl DpsApp {
             detail_last_scroll_activity: None,
             devices,
             selected_device,
+            manual_capture_device,
             local_ip,
             game_network,
             filter: "udp".to_owned(),
@@ -1542,6 +1576,9 @@ impl DpsApp {
         self.devices = list_devices().inspect_err(|error| {
             self.diagnostic = Some(error.clone());
         })?;
+        if let Some(name) = self.manual_capture_device.clone() {
+            return self.apply_manual_capture_device(&name);
+        }
         let (index, network) = detect_game_device(&self.devices).inspect_err(|error| {
             self.diagnostic = Some(error.clone());
         })?;
@@ -1550,6 +1587,37 @@ impl DpsApp {
         self.status = "已检测到游戏，准备就绪".to_owned();
         self.diagnostic = None;
         self.game_network = Some(network);
+        Ok(())
+    }
+
+    /// Manual capture mode: pin capture to the chosen NIC and best-effort resolve the game's local
+    /// IP for direction inference. A missing game connection is non-fatal — capture still proceeds
+    /// and `infer_outgoing` falls back to its public/private heuristic. Only a vanished NIC aborts.
+    fn apply_manual_capture_device(&mut self, name: &str) -> Result<(), String> {
+        let Some(index) = self.devices.iter().position(|device| device.name == name) else {
+            let message =
+                format!("手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动");
+            self.diagnostic = Some(message.clone());
+            self.game_network = None;
+            self.local_ip.clear();
+            self.status = "手动网卡不可用".to_owned();
+            return Err(message);
+        };
+        self.selected_device = index;
+        match detect_game_network() {
+            Ok(network) => {
+                self.local_ip = network.local_ip.to_string();
+                self.game_network = Some(network);
+                self.status = "已就绪（手动网卡）".to_owned();
+                self.diagnostic = None;
+            }
+            Err(error) => {
+                self.local_ip.clear();
+                self.game_network = None;
+                self.status = "已手动选定网卡（未检测到游戏连接）".to_owned();
+                self.diagnostic = Some(error);
+            }
+        }
         Ok(())
     }
 
@@ -1655,6 +1723,7 @@ impl DpsApp {
             dark_mode: self.dark_mode,
             always_on_top: self.always_on_top,
             server_damage_calibration: self.server_damage_calibration,
+            manual_capture_device: self.manual_capture_device.clone(),
             dps_time_mode: self.dps_time_mode,
             timeline_bucket_seconds: self.timeline_bucket_seconds,
             timeline_dps_view_mode: self.timeline_dps_view_mode,
@@ -2008,17 +2077,18 @@ impl DpsApp {
 
         let color = status_color(&toast.text, self.paused, self.dark_mode);
         let text = toast.text.clone();
-        let anchor_y = if self.hud_mode {
-            14.0
-        } else {
-            MAIN_TITLE_BAR_HEIGHT + 14.0
-        };
+        // Bottom-anchored, click-through toast: it never covers the top controls/metric cards, and
+        // `interactable(false)` means clicks always pass through to the UI beneath even while it is
+        // visible. A touch of translucency keeps any content underneath legible.
+        let card = shadcn_card(self.dark_mode);
+        let fill = Color32::from_rgba_unmultiplied(card.r(), card.g(), card.b(), 235);
         egui::Area::new(egui::Id::new("status_toast"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-14.0, anchor_y))
+            .interactable(false)
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -14.0))
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(shadcn_card(self.dark_mode))
+                    .fill(fill)
                     .stroke(Stroke::new(1.0, color.gamma_multiply(0.85)))
                     .corner_radius(8)
                     .inner_margin(egui::Margin::symmetric(12, 8))
@@ -5788,21 +5858,32 @@ impl DpsApp {
                 )
             })
             .collect::<Vec<_>>();
-        ui.horizontal(|ui| {
-            history_record_combo(
-                ui,
-                "history_compare_left",
-                &mut self.history.compare_left_id,
-                &choices,
-            );
-            ui.label("vs");
-            history_record_combo(
-                ui,
-                "history_compare_right",
-                &mut self.history.compare_right_id,
-                &choices,
-            );
-        });
+        // Stack the two selectors so they never overflow the panel horizontally; each combo's width
+        // tracks the available width (clamped) and truncates long labels.
+        let combo_width = (ui.available_width() - 56.0).clamp(180.0, 460.0);
+        egui::Grid::new("history_compare_selectors")
+            .num_columns(2)
+            .spacing([8.0, 6.0])
+            .show(ui, |ui| {
+                ui.label(RichText::new("基准").color(ui.visuals().weak_text_color()));
+                history_record_combo(
+                    ui,
+                    "history_compare_left",
+                    &mut self.history.compare_left_id,
+                    &choices,
+                    combo_width,
+                );
+                ui.end_row();
+                ui.label(RichText::new("对比").color(ui.visuals().weak_text_color()));
+                history_record_combo(
+                    ui,
+                    "history_compare_right",
+                    &mut self.history.compare_right_id,
+                    &choices,
+                    combo_width,
+                );
+                ui.end_row();
+            });
         let Some((left, right, comparison)) = self.history.compare_records() else {
             ui.label(RichText::new("请选择两条不同记录").color(ui.visuals().weak_text_color()));
             return;
@@ -6118,6 +6199,100 @@ impl DpsApp {
         self.clear_last_error();
     }
 
+    /// Manual capture-NIC override UI (Settings tab). Automatic detection is the default; checking
+    /// the box pins capture to a chosen interface as a VPN fallback. The choice persists via
+    /// `UiConfig` and re-applies the game network through `refresh_game_network` so it takes effect
+    /// on the next capture.
+    fn capture_device_selector(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            if self.devices.is_empty() {
+                let mut unchecked = false;
+                ui.add_enabled(
+                    false,
+                    egui::Checkbox::new(&mut unchecked, "手动指定网卡（VPN 兜底）"),
+                );
+                ui.colored_label(
+                    semantic_warning(self.dark_mode),
+                    "未发现可用网卡，请确认已安装 Npcap 后点击刷新",
+                );
+                if ui.button("刷新网卡列表").clicked() {
+                    let _ = self.refresh_game_network();
+                }
+                return;
+            }
+
+            let mut manual = self.manual_capture_device.is_some();
+            if ui
+                .checkbox(&mut manual, "手动指定网卡")
+                .on_hover_text(
+                    "开启 VPN 时自动识别可能选错网卡；勾选后固定使用所选网卡，重新抓包后生效",
+                )
+                .changed()
+            {
+                // A non-empty device list guarantees a default, so manual mode is never left
+                // checked-but-empty.
+                self.manual_capture_device = manual
+                    .then(|| {
+                        self.devices
+                            .get(self.selected_device)
+                            .or_else(|| self.devices.first())
+                            .map(|device| device.name.clone())
+                    })
+                    .flatten();
+                let _ = self.refresh_game_network();
+            }
+
+            if self.manual_capture_device.is_none() {
+                return;
+            }
+
+            let mut chosen = self.manual_capture_device.clone();
+            let selected_text = chosen
+                .as_deref()
+                .and_then(|name| self.devices.iter().find(|device| device.name == name))
+                .map_or_else(|| "请选择网卡".to_owned(), capture_device_label);
+            egui::ComboBox::from_id_salt("manual_capture_device")
+                .width(300.0)
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    ui.set_min_width(300.0);
+                    for device in &self.devices {
+                        ui.selectable_value(
+                            &mut chosen,
+                            Some(device.name.clone()),
+                            capture_device_label(device),
+                        );
+                    }
+                });
+            if chosen != self.manual_capture_device {
+                self.manual_capture_device = chosen;
+                let _ = self.refresh_game_network();
+            }
+
+            if ui
+                .button("刷新网卡列表")
+                .on_hover_text("重新枚举网卡")
+                .clicked()
+            {
+                let _ = self.refresh_game_network();
+            }
+
+            // Self-contained status hint, independent of the shared diagnostic field.
+            let resolved = self
+                .manual_capture_device
+                .as_deref()
+                .is_some_and(|name| self.devices.iter().any(|device| device.name == name));
+            if !resolved {
+                ui.colored_label(
+                    semantic_warning(self.dark_mode),
+                    "所选网卡当前不可用，请重新选择或点击刷新",
+                );
+            } else if self.game_network.is_none() {
+                ui.weak("未检测到游戏连接，将按公网/内网方向启发式解析");
+            }
+        });
+    }
+
     /// First-class settings promoted out of the old debug "环境" tab: parse
     /// options, team DPS import/export, and an entry to the abyss value tables.
     /// Always available (not gated behind the debug feature).
@@ -6133,6 +6308,9 @@ impl DpsApp {
                         ui.label("BPF 过滤");
                         ui.add(egui::TextEdit::singleline(&mut self.filter).desired_width(260.0))
                             .on_hover_text("抓包过滤表达式，重新抓包后生效");
+                        ui.end_row();
+                        ui.label("采集网卡");
+                        self.capture_device_selector(ui);
                         ui.end_row();
                         ui.label("伤害来源");
                         ui.checkbox(
@@ -6439,18 +6617,23 @@ impl DpsApp {
                     .spacing([14.0, 5.0])
                     .show(ui, |ui| {
                         ui.label("网卡");
-                        ui.monospace(
-                            self.devices
-                                .get(self.selected_device)
-                                .map(|device| {
-                                    if device.description.is_empty() {
-                                        device.name.as_str()
-                                    } else {
-                                        device.description.as_str()
-                                    }
-                                })
-                                .unwrap_or("未检测到"),
-                        );
+                        let device_label = self
+                            .devices
+                            .get(self.selected_device)
+                            .map(|device| {
+                                if device.description.is_empty() {
+                                    device.name.as_str()
+                                } else {
+                                    device.description.as_str()
+                                }
+                            })
+                            .unwrap_or("未检测到");
+                        let mode_suffix = if self.manual_capture_device.is_some() {
+                            "（手动）"
+                        } else {
+                            "（自动）"
+                        };
+                        ui.monospace(format!("{device_label}{mode_suffix}"));
                         ui.end_row();
                         ui.label("本机 IP");
                         ui.monospace(if self.local_ip.is_empty() {
@@ -7346,17 +7529,21 @@ fn history_record_combo(
     id: &str,
     selected_id: &mut Option<String>,
     choices: &[(String, String)],
+    width: f32,
 ) {
     let selected_text = selected_id
         .as_deref()
         .and_then(|id| choices.iter().find(|(choice_id, _)| choice_id == id))
         .map(|(_, label)| label.as_str())
         .unwrap_or("未选择");
+    // `truncate` keeps the button pinned to `width` and ellipsizes long record labels instead of
+    // letting the button grow and overflow the panel.
     egui::ComboBox::from_id_salt(id)
-        .width(260.0)
+        .width(width)
+        .truncate()
         .selected_text(selected_text)
         .show_ui(ui, |ui| {
-            ui.set_min_width(260.0);
+            ui.set_min_width(width.max(260.0));
             for (choice_id, label) in choices {
                 stable_popup_selectable_value(ui, selected_id, Some(choice_id.clone()), label);
             }
@@ -12637,6 +12824,27 @@ fn status_color(status: &str, paused: bool, dark_mode: bool) -> Color32 {
         semantic_warning(dark_mode)
     } else {
         semantic_success(dark_mode)
+    }
+}
+
+/// Human-readable label for a capture NIC: its description (or raw name) plus any IPv4 addresses,
+/// so users can disambiguate adapters — especially a VPN interface vs. the physical one.
+fn capture_device_label(device: &CaptureDevice) -> String {
+    let base = if device.description.is_empty() {
+        device.name.as_str()
+    } else {
+        device.description.as_str()
+    };
+    if device.ipv4.is_empty() {
+        base.to_owned()
+    } else {
+        let addresses = device
+            .ipv4
+            .iter()
+            .map(|address| address.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{base} · {addresses}")
     }
 }
 

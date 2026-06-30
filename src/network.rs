@@ -27,18 +27,25 @@ pub struct GameNetwork {
     pub remote_port: u16,
 }
 
-pub fn detect_game_device(devices: &[CaptureDevice]) -> Result<(usize, GameNetwork), String> {
+/// Locate the game's active IPv4 TCP connection (PID + local/remote endpoints) without requiring a
+/// matching Npcap device. Manual capture mode uses this to recover `local_ip` for direction
+/// inference even when auto device matching would fail (e.g. the game routes over a VPN adapter).
+pub fn detect_game_network() -> Result<GameNetwork, String> {
     let pid =
         find_process_id(GAME_PROCESS)?.ok_or_else(|| format!("未检测到游戏进程 {GAME_PROCESS}"))?;
     let connections = tcp_connections_for_pid(pid)?;
-    let network = connections
+    connections
         .iter()
         .find(|row| row.remote_port == GAME_TCP_PORT)
         .or_else(|| connections.first())
         .cloned()
         .ok_or_else(|| {
             format!("已检测到 {GAME_PROCESS} (PID {pid})，但尚未建立可用于定位网卡的 IPv4 TCP 连接")
-        })?;
+        })
+}
+
+pub fn detect_game_device(devices: &[CaptureDevice]) -> Result<(usize, GameNetwork), String> {
+    let network = detect_game_network()?;
     let device_index = devices
         .iter()
         .position(|device| device.ipv4.contains(&network.local_ip))
