@@ -82,7 +82,7 @@ pub(crate) fn draw_abyss_floor_nav(
     expanded_season: &mut Option<u32>,
 ) {
     ui.label(
-        RichText::new("站点")
+        RichText::new(t("Sites"))
             .strong()
             .color(ui.visuals().weak_text_color()),
     );
@@ -96,10 +96,10 @@ pub(crate) fn draw_abyss_floor_nav(
                 let expanded = *expanded_season == Some(*season);
                 let selected_in_season = *selected_season == Some(*season);
                 let season_label = format!(
-                    "{} {} ·  {} 站",
+                    "{} {} ·  {}",
                     if expanded { "▼" } else { "▶" },
                     abyss_season_label(*season, name.as_deref()),
-                    floors.len()
+                    tf("{} floors", &[&floors.len().to_string()])
                 );
                 if ui
                     .add_sized(
@@ -169,20 +169,48 @@ pub(crate) fn draw_abyss_floor_nav_row(
     } else {
         visuals.weak_text_color()
     };
-    ui.painter().text(
-        rect.left_center() + egui::vec2(8.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        abyss_floor_nav_label(floor, floor_name),
-        egui::FontId::proportional(13.0),
-        text_color,
+    // Two-column row (name left, count right) inside a narrow nav. Text length
+    // varies by language, so measure the count and clip each side to its own
+    // region — this keeps them from overlapping regardless of width.
+    let name_text = abyss_floor_nav_label(floor, floor_name);
+    let count_text = tf(
+        "{} monsters · {} waves",
+        &[&monster_count.to_string(), &wave_count.to_string()],
     );
-    ui.painter().text(
-        rect.right_center() - egui::vec2(8.0, 0.0),
-        egui::Align2::RIGHT_CENTER,
-        format!("{monster_count} 怪 · {wave_count} 波"),
-        egui::FontId::proportional(12.0),
-        weak_color,
-    );
+    let name_font = egui::FontId::proportional(13.0);
+    let count_font = egui::FontId::proportional(12.0);
+    let count_width = ui
+        .painter()
+        .layout_no_wrap(count_text.clone(), count_font.clone(), weak_color)
+        .size()
+        .x
+        .clamp(0.0, (rect.width() - 44.0).max(0.0));
+    let count_left = rect.right() - 8.0 - count_width;
+    let painter = ui.painter();
+    painter
+        .with_clip_rect(egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 8.0, rect.top()),
+            egui::pos2((count_left - 6.0).max(rect.left() + 8.0), rect.bottom()),
+        ))
+        .text(
+            rect.left_center() + egui::vec2(8.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            name_text,
+            name_font,
+            text_color,
+        );
+    painter
+        .with_clip_rect(egui::Rect::from_min_max(
+            egui::pos2(count_left, rect.top()),
+            egui::pos2(rect.right() - 8.0, rect.bottom()),
+        ))
+        .text(
+            rect.right_center() - egui::vec2(8.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            count_text,
+            count_font,
+            weak_color,
+        );
 
     response.clicked()
 }
@@ -190,7 +218,7 @@ pub(crate) fn draw_abyss_floor_nav_row(
 pub(crate) fn abyss_season_label(season: u32, name: Option<&str>) -> String {
     name.filter(|value| !value.trim().is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| format!("第 {season} 期"))
+        .unwrap_or_else(|| tf("Season {}", &[&season.to_string()]))
 }
 
 pub(crate) fn abyss_floor_label(floor: &AbyssFloor) -> String {
@@ -199,13 +227,13 @@ pub(crate) fn abyss_floor_label(floor: &AbyssFloor) -> String {
         .as_deref()
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| format!("第 {} 站", floor.floor))
+        .unwrap_or_else(|| tf("Floor {}", &[&floor.floor.to_string()]))
 }
 
 pub(crate) fn abyss_floor_nav_label(floor: u32, name: Option<&str>) -> String {
     name.filter(|value| !value.trim().is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| format!("第 {floor} 站"))
+        .unwrap_or_else(|| tf("Floor {}", &[&floor.to_string()]))
 }
 
 /// What a line section's prediction control was clicked to do this frame.
@@ -252,9 +280,12 @@ pub(crate) fn format_clear_seconds(seconds: f64) -> String {
     if seconds >= 60.0 {
         let minutes = (seconds / 60.0).floor();
         let rest = seconds - minutes * 60.0;
-        format!("{minutes:.0}分{rest:04.1}秒")
+        tf(
+            "{}m{}s",
+            &[&format!("{minutes:.0}"), &format!("{rest:04.1}")],
+        )
     } else {
-        format!("{seconds:.1}秒")
+        tf("{}s", &[&format!("{seconds:.1}")])
     }
 }
 
@@ -324,8 +355,8 @@ pub(crate) fn draw_line_prediction_header(
         }
         ui.add_space(4.0);
         let time_text = match predicted_clear_seconds(view.line_hp, team) {
-            Some(seconds) => format!("预计 {}", format_clear_seconds(seconds)),
-            None => "预计 —".to_owned(),
+            Some(seconds) => tf("Est. {}", &[&format_clear_seconds(seconds)]),
+            None => t("Est. —"),
         };
         ui.label(
             RichText::new(time_text)
@@ -337,12 +368,11 @@ pub(crate) fn draw_line_prediction_header(
             format!("· {} DPS", format_number(team.dps)),
             weak_color,
         ));
+        // Auto-sized to its (localized) label instead of a fixed pixel width — a
+        // width tuned for the Chinese text clips the longer English translation.
         if ui
-            .add_sized(
-                egui::vec2(56.0, INLINE_CONTROL_HEIGHT),
-                egui::Button::new("清除"),
-            )
-            .on_hover_text("清除该行预测队伍")
+            .button(t("Clear"))
+            .on_hover_text(t("Clear this line's prediction team"))
             .clicked()
         {
             action = LinePredictionAction::Clear;
@@ -350,21 +380,23 @@ pub(crate) fn draw_line_prediction_header(
     } else {
         if view.can_import
             && ui
-                .add_sized(
-                    egui::vec2(128.0, INLINE_CONTROL_HEIGHT),
-                    egui::Button::new("用当前队伍预测"),
-                )
-                .on_hover_text("把当前会话测得的队伍设为该行预测队伍")
+                .button(t("Predict with Current Team"))
+                .on_hover_text(t(
+                    "Set the team measured this session as this line's prediction team",
+                ))
                 .clicked()
         {
             action = LinePredictionAction::ImportCurrent;
         }
         if !view.can_import {
-            ui.label(inline_text("导入数据预测通关时间", weak_color));
+            ui.label(inline_text(
+                t("Import data to predict clear time"),
+                weak_color,
+            ));
         }
     }
     ui.add_space(4.0);
-    ui.label(inline_text("目标", weak_color));
+    ui.label(inline_text(t("Target"), weak_color));
     ui.add_sized(
         egui::vec2(72.0, INLINE_CONTROL_HEIGHT),
         egui::DragValue::new(&mut target_seconds)
@@ -372,21 +404,18 @@ pub(crate) fn draw_line_prediction_header(
             .speed(1.0)
             .suffix("s"),
     )
-    .on_hover_text("按该目标时间反推所需 DPS");
+    .on_hover_text(t("Back-calculate the DPS needed for this target time"));
     if let Some(required_dps) = required_dps_for_target_time(view.line_hp, target_seconds) {
         ui.label(inline_text(
-            format!("需 {} DPS", format_number(required_dps)),
+            tf("Need {} DPS", &[&format_number(required_dps)]),
             weak_color,
         ));
     }
-    // Per-line file import is always available (the "单独导入" button): load a
-    // DPS data file into just this line.
+    // Per-line file import is always available (the "Import Separately" button): load a
+    // DPS data file into just this line. Auto-sized — see the Clear/Predict buttons above.
     if ui
-        .add_sized(
-            egui::vec2(96.0, INLINE_CONTROL_HEIGHT),
-            egui::Button::new("单独导入"),
-        )
-        .on_hover_text("为该行单独导入 DPS 数据文件")
+        .button(t("Import Separately"))
+        .on_hover_text(t("Import a DPS data file for this line only"))
         .clicked()
     {
         action = LinePredictionAction::ImportFile;
@@ -426,18 +455,26 @@ pub(crate) fn draw_abyss_wave_prediction(
             let prediction = predictions.get(index);
             let label = wave
                 .wave
-                .map_or_else(|| "未分波".to_owned(), |wave| format!("第 {wave} 波"));
-            let mut hover = format!(
-                "{label}\n{} 只敌人\nHP {}",
-                wave.monster_count,
-                format_number(wave.hp)
+                .map_or_else(|| t("Unwaved"), |wave| tf("Wave {}", &[&wave.to_string()]));
+            let mut hover = tf(
+                "{}\n{} enemies\nHP {}",
+                &[
+                    &label,
+                    &wave.monster_count.to_string(),
+                    &format_number(wave.hp),
+                ],
             );
             if let Some(prediction) = prediction {
                 let _ = write!(
                     hover,
-                    "\n预计 {}，累计 {}",
-                    format_clear_seconds(prediction.seconds),
-                    format_clear_seconds(prediction.cumulative_seconds)
+                    "\n{}",
+                    tf(
+                        "Est. {}, cumulative {}",
+                        &[
+                            &format_clear_seconds(prediction.seconds),
+                            &format_clear_seconds(prediction.cumulative_seconds),
+                        ],
+                    )
                 );
             }
             response.on_hover_text(hover);
@@ -482,10 +519,12 @@ pub(crate) fn draw_abyss_line_section(
                         .color(shadcn_foreground(dark_mode)),
                 );
                 ui.label(
-                    RichText::new(format!(
-                        "{} 只敌人 · {} 类",
-                        abyss_monster_count(monsters),
-                        monsters.len()
+                    RichText::new(tf(
+                        "{} enemies · {} kinds",
+                        &[
+                            &abyss_monster_count(monsters).to_string(),
+                            &monsters.len().to_string(),
+                        ],
                     ))
                     .size(INLINE_CONTROL_TEXT_SIZE)
                     .color(ui.visuals().weak_text_color()),
@@ -603,7 +642,7 @@ pub(crate) fn draw_abyss_more_chip(ui: &mut egui::Ui, count: usize, width: f32, 
         egui::FontId::proportional(12.0),
         ui.visuals().weak_text_color(),
     );
-    response.on_hover_text(format!("还有 {count} 个敌人未显示"));
+    response.on_hover_text(tf("{} more enemies not shown", &[&count.to_string()]));
 }
 
 pub(crate) fn draw_monster_portrait(
@@ -728,20 +767,20 @@ pub(crate) fn draw_abyss_monster_detail(
             ui.add_space(10.0);
             ui.horizontal_wrapped(|ui| {
                 ui.label(
-                    RichText::new(format!("数量 ×{}", monster.count))
+                    RichText::new(tf("Count ×{}", &[&monster.count.to_string()]))
                         .strong()
                         .color(shadcn_foreground(dark_mode)),
                 );
                 if let Some(level) = monster.level {
                     ui.label(
-                        RichText::new(format!("等级 {level}"))
+                        RichText::new(tf("Level {}", &[&level.to_string()]))
                             .color(ui.visuals().weak_text_color()),
                     );
                 }
                 ui.label(
-                    RichText::new(format!(
-                        "总 HP {}",
-                        format_stat_value(abyss_monster_total_hp(monster))
+                    RichText::new(tf(
+                        "Total HP {}",
+                        &[&format_stat_value(abyss_monster_total_hp(monster))],
                     ))
                     .color(theme_accent(dark_mode)),
                 );
@@ -751,7 +790,7 @@ pub(crate) fn draw_abyss_monster_detail(
             });
             ui.add_space(10.0);
             ui.label(
-                RichText::new("单体数值字段")
+                RichText::new(t("Per-enemy stat fields"))
                     .strong()
                     .color(shadcn_foreground(dark_mode)),
             );
@@ -1032,16 +1071,18 @@ pub(crate) fn monster_color(monster_id: &str, dark_mode: bool) -> Color32 {
 
 pub(crate) fn monster_line_label(monster: &AbyssMonsterEntry) -> String {
     let half = monster.half.map(|value| match value {
-        0 => "上行线".to_owned(),
-        1 => "下行线".to_owned(),
-        other => format!("线路 {other}"),
+        0 => t("Ascending Line"),
+        1 => t("Descending Line"),
+        other => tf("Line {}", &[&other.to_string()]),
     });
-    let wave = monster.wave.map(|value| format!("第 {value} 波"));
+    let wave = monster
+        .wave
+        .map(|value| tf("Wave {}", &[&value.to_string()]));
     match (half, wave) {
         (Some(half), Some(wave)) => format!("{half} · {wave}"),
         (Some(half), None) => half,
         (None, Some(wave)) => wave,
-        (None, None) => "整层配置".to_owned(),
+        (None, None) => t("Full floor config"),
     }
 }
 

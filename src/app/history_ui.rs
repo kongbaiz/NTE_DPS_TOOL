@@ -10,8 +10,8 @@ pub(crate) fn history_record_combo(
     let selected_text = selected_id
         .as_deref()
         .and_then(|id| choices.iter().find(|(choice_id, _)| choice_id == id))
-        .map(|(_, label)| label.as_str())
-        .unwrap_or("未选择");
+        .map(|(_, label)| label.clone())
+        .unwrap_or_else(|| t("Not selected"));
     // `truncate` keeps the button pinned to `width` and ellipsizes long record labels instead of
     // letting the button grow and overflow the panel.
     egui::ComboBox::from_id_salt(id)
@@ -82,7 +82,7 @@ pub(crate) fn draw_history_abyss_half(
                 history_metric_chip(ui, "DPS", format_number(half.total_dps), accent, dark_mode);
                 history_metric_chip(
                     ui,
-                    "伤害",
+                    &t("Damage"),
                     format_number(half.total_damage),
                     ui.visuals().text_color(),
                     dark_mode,
@@ -91,9 +91,9 @@ pub(crate) fn draw_history_abyss_half(
             ui.add_space(10.0);
             draw_history_summary_rows(
                 ui,
-                "角色贡献",
+                &t("Character Contribution"),
                 &half.characters,
-                "技能构成",
+                &t("Skill Composition"),
                 &half.skills,
                 visual,
             );
@@ -397,7 +397,7 @@ pub(crate) fn draw_history_skill_rows(
                             .color(shadcn_foreground(dark_mode)),
                     );
                     ui.label(
-                        RichText::new(format!("{} 次命中", row.hits))
+                        RichText::new(tf("{} hits", &[&row.hits.to_string()]))
                             .size(11.0)
                             .color(ui.visuals().weak_text_color()),
                     );

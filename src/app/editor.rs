@@ -236,11 +236,11 @@ pub(crate) fn character_editor_card_hover_text(
     let mut text = format!("{primary_name}\nID {id}");
     let name_en = name_en.trim();
     if !name_en.is_empty() && name_en != primary_name {
-        write!(&mut text, "\n英文名 {name_en}").ok();
+        write!(&mut text, "\n{}", tf("English Name {}", &[name_en])).ok();
     }
     let attribute = attribute.trim();
     if !attribute.is_empty() {
-        write!(&mut text, "\n属性 {attribute}").ok();
+        write!(&mut text, "\n{}", tf("Attribute {}", &[attribute])).ok();
     }
     text
 }

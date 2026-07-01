@@ -10,11 +10,10 @@ impl DpsApp {
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
                 ui.spacing_mut().interact_size.y = 28.0;
-                let floor = self
-                    .state
-                    .abyss
-                    .floor
-                    .map_or_else(|| "深渊".to_owned(), |floor| format!("深渊 {floor} 层"));
+                let floor = self.state.abyss.floor.map_or_else(
+                    || t("Abyss"),
+                    |floor| tf("Abyss Floor {}", &[&floor.to_string()]),
+                );
                 ui.add(
                     egui::Label::new(
                         RichText::new(floor)
@@ -29,21 +28,24 @@ impl DpsApp {
                     ui,
                     &mut self.selected_abyss_half,
                     AbyssHalf::First,
-                    RichText::new(AbyssHalf::First.label()).size(13.0),
+                    RichText::new(t(AbyssHalf::First.label())).size(13.0),
                 );
                 stable_selectable_value(
                     ui,
                     &mut self.selected_abyss_half,
                     AbyssHalf::Second,
-                    RichText::new(AbyssHalf::Second.label()).size(13.0),
+                    RichText::new(t(AbyssHalf::Second.label())).size(13.0),
                 );
                 if self.state.abyss.success_at.is_some() {
                     ui.separator();
-                    ui.label(RichText::new("挑战成功").color(semantic_success(self.dark_mode)));
+                    ui.label(
+                        RichText::new(t("Challenge Cleared"))
+                            .color(semantic_success(self.dark_mode)),
+                    );
                 }
                 if self.abyss_compact_mode {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("展开").clicked() {
+                        if ui.button(t("Expand")).clicked() {
                             self.abyss_compact_mode = false;
                         }
                     });
@@ -74,7 +76,7 @@ impl DpsApp {
         ui.columns(4, |columns| {
             compact_metric(
                 &mut columns[0],
-                "队伍 DPS",
+                &t("Team DPS"),
                 format_number(dps),
                 theme_accent(self.dark_mode),
                 true,
@@ -82,14 +84,14 @@ impl DpsApp {
             let total_color = columns[1].visuals().text_color();
             compact_metric(
                 &mut columns[1],
-                "总伤害",
+                &t("Total Damage"),
                 format_number(total_damage),
                 total_color,
                 true,
             );
             compact_metric(
                 &mut columns[2],
-                "总受击",
+                &t("Total Damage Taken"),
                 format_number(total_damage_taken),
                 semantic_danger(self.dark_mode),
                 false,
@@ -97,7 +99,7 @@ impl DpsApp {
             let time_color = columns[3].visuals().text_color();
             compact_metric(
                 &mut columns[3],
-                "时间",
+                &t("Time"),
                 format!("{duration:.1}s"),
                 time_color,
                 false,
@@ -118,8 +120,10 @@ impl DpsApp {
     pub(crate) fn control_buttons(&mut self, ui: &mut egui::Ui) {
         if self.capture.is_none() && self.replay_thread.is_none() {
             if ui
-                .add(primary_button("开始", self.dark_mode))
-                .on_hover_text("自动检测 HTGame.exe 连接和网卡后开始实时抓包")
+                .add(primary_button(t("Start"), self.dark_mode))
+                .on_hover_text(t(
+                    "Auto-detect the HTGame.exe connection and NIC, then start live capture",
+                ))
                 .clicked()
             {
                 self.request_start_live();
@@ -127,53 +131,62 @@ impl DpsApp {
         } else if ui
             .add(
                 egui::Button::new(
-                    RichText::new("停止")
+                    RichText::new(t("Stop"))
                         .strong()
                         .color(semantic_danger(self.dark_mode)),
                 )
                 .stroke(Stroke::new(1.0, semantic_danger(self.dark_mode))),
             )
-            .on_hover_text("停止当前实时抓包或导入回放")
+            .on_hover_text(t("Stop the current live capture or import replay"))
             .clicked()
         {
             self.stop_engine();
             self.drain_pending_events();
         }
         if ui
-            .button("重置")
-            .on_hover_text("清空当前统计，执行前会确认")
+            .button(t("Reset"))
+            .on_hover_text(t(
+                "Clear the current stats; you will be asked to confirm first",
+            ))
             .clicked()
         {
             self.request_reset_combat_session();
         }
         if ui
             .add(
-                egui::Button::selectable(self.paused, if self.paused { "继续" } else { "暂停" })
-                    .frame_when_inactive(true),
+                egui::Button::selectable(
+                    self.paused,
+                    if self.paused { t("Resume") } else { t("Pause") },
+                )
+                .frame_when_inactive(true),
             )
-            .on_hover_text("暂停 UI 处理；继续后会补处理已缓存的命中事件")
+            .on_hover_text(t(
+                "Pause UI processing; resuming catches up on buffered hit events",
+            ))
             .clicked()
         {
             self.paused = !self.paused;
         }
         if self.state.abyss.is_active()
             && ui
-                .button("折叠")
-                .on_hover_text("折叠深渊上下行线选择和工具栏")
+                .button(t("Collapse"))
+                .on_hover_text(t("Collapse the abyss line selector and toolbar"))
                 .clicked()
         {
             self.abyss_compact_mode = true;
         }
         if ui
             .button("HUD")
-            .on_hover_text("切换为无底板战斗 HUD（叠在游戏上 · 从外观菜单退出）")
+            .on_hover_text(t("Switch to the backing-less combat HUD (overlays the game · exit from the appearance menu)"))
             .clicked()
         {
             self.set_hud_mode(ui.ctx(), true);
         }
         if ui
-            .button("控制台")
-            .on_hover_text("设置 · 队伍数据 · 深渊数值 · 角色/INI · 调试（F12）")
+            .button(t("Console"))
+            .on_hover_text(t(
+                "Settings · team data · abyss values · character/INI · debug (F12)",
+            ))
             .clicked()
         {
             self.console_open = true;
@@ -239,7 +252,7 @@ impl DpsApp {
         child.add_space(2.0);
         child.horizontal(|ui| {
             ui.label(
-                RichText::new("队伍")
+                RichText::new(t("Team"))
                     .size(12.0)
                     .strong()
                     .color(shadcn_foreground(self.dark_mode)),
@@ -250,7 +263,7 @@ impl DpsApp {
                         !self
                             .selected_party_state()
                             .map_or(self.state.hits.is_empty(), |party| party.hits.is_empty()),
-                        egui::Button::new("队伍战斗明细"),
+                        egui::Button::new(t("Team Combat Details")),
                     )
                     .clicked()
                 {
@@ -294,7 +307,7 @@ impl DpsApp {
         );
         content.add_space(8.0);
         content.label(
-            RichText::new("正在导入并解析抓包")
+            RichText::new(t("Importing and parsing capture"))
                 .size(15.0)
                 .strong()
                 .color(shadcn_foreground(self.dark_mode)),
@@ -305,7 +318,7 @@ impl DpsApp {
             content.label(
                 RichText::new(format!(
                     "{} · {} · {}s",
-                    task.kind.label(),
+                    t(task.kind.label()),
                     file_display_name(&task.path),
                     elapsed
                 ))
@@ -314,18 +327,20 @@ impl DpsApp {
             );
         }
         content.label(
-            RichText::new(format!(
-                "已解析 {} 条伤害记录 · {} 个封包",
-                self.state.hits.len(),
-                self.state.packets.len()
+            RichText::new(tf(
+                "Parsed {} damage records · {} packets",
+                &[
+                    &self.state.hits.len().to_string(),
+                    &self.state.packets.len().to_string(),
+                ],
             ))
             .size(11.0)
             .color(content.visuals().weak_text_color()),
         );
         content.add_space(8.0);
-        if content.button("取消导入").clicked() {
+        if content.button(t("Cancel Import")).clicked() {
             self.stop_engine();
-            self.status = "导入已取消".to_owned();
+            self.status = t("Import canceled");
         }
     }
 
@@ -427,7 +442,10 @@ impl DpsApp {
                 egui::vec2(ui.available_width(), 40.0),
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
-                    ui.label(RichText::new("等待伤害数据").color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(t("Waiting for damage data"))
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 },
             );
             return;
@@ -495,7 +513,7 @@ impl DpsApp {
                 &painter,
                 egui::pos2(empty.left(), empty.center().y),
                 egui::Align2::LEFT_CENTER,
-                "等待伤害数据",
+                t("Waiting for damage data"),
                 egui::FontId::proportional(13.0),
                 MUTED,
             );
@@ -570,7 +588,7 @@ impl DpsApp {
             painter,
             egui::pos2(rect.right(), rect.center().y),
             egui::Align2::RIGHT_CENTER,
-            self.dps_time_mode.label(),
+            t(self.dps_time_mode.label()),
             egui::FontId::proportional(10.5),
             muted,
         );
@@ -588,9 +606,9 @@ impl DpsApp {
         let track_color = Color32::from_black_alpha(96);
         if self.hud_config.show_team_dps {
             let label = if self.hud_config.show_duration {
-                format!("队伍 DPS · {:.1}s", values.duration)
+                format!("{} · {:.1}s", t("Team DPS"), values.duration)
             } else {
-                "队伍 DPS".to_owned()
+                t("Team DPS")
             };
             paint_haloed(
                 painter,
@@ -613,7 +631,7 @@ impl DpsApp {
                 painter,
                 egui::pos2(header.left(), header.center().y),
                 egui::Align2::LEFT_CENTER,
-                format!("时间 {:.1}s", values.duration),
+                format!("{} {:.1}s", t("Time"), values.duration),
                 egui::FontId::monospace(14.0),
                 colors.text,
             );
@@ -624,15 +642,15 @@ impl DpsApp {
             self.hud_config.show_damage_taken,
         ) {
             (true, true) => Some((
-                "总伤害 / 受击",
+                t("Total Damage / Taken"),
                 format!(
                     "{} / {}",
                     format_number(values.total_damage),
                     format_number(values.damage_taken)
                 ),
             )),
-            (true, false) => Some(("总伤害", format_number(values.total_damage))),
-            (false, true) => Some(("总受击", format_number(values.damage_taken))),
+            (true, false) => Some((t("Total Damage"), format_number(values.total_damage))),
+            (false, true) => Some((t("Total Damage Taken"), format_number(values.damage_taken))),
             (false, false) => None,
         };
         if let Some((label, value)) = right_label {
@@ -697,16 +715,16 @@ impl DpsApp {
                 painter,
                 egui::pos2(rect.left(), rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                self.selected_abyss_half.label(),
+                t(self.selected_abyss_half.label()),
                 egui::FontId::proportional(11.0),
                 text,
             );
         }
         if self.hud_config.show_passthrough_state {
             let label = if self.mouse_passthrough {
-                "穿透"
+                t("Passthrough")
             } else {
-                "编辑"
+                t("Edit")
             };
             paint_haloed(
                 painter,
@@ -1058,7 +1076,10 @@ impl DpsApp {
         ui.painter().text(
             egui::pos2(text_left, rect.center().y + 9.0),
             egui::Align2::LEFT_CENTER,
-            format!("{}次 · {:.1}s", row.hits, duration),
+            tf(
+                "{} hits · {}",
+                &[&row.hits.to_string(), &format!("{duration:.1}s")],
+            ),
             egui::FontId::monospace(10.5),
             ui.visuals().weak_text_color(),
         );
@@ -1072,15 +1093,21 @@ impl DpsApp {
         ui.painter().text(
             egui::pos2(rect.right() - 10.0, rect.center().y + 9.0),
             egui::Align2::RIGHT_CENTER,
-            format!(
-                "伤害 {} · 占比 {share:.1}% · 受击 {}",
-                format_number(row.damage),
-                format_number(row.damage_taken)
+            tf(
+                "Damage {} · Share {}% · Taken {}",
+                &[
+                    &format_number(row.damage),
+                    &format!("{share:.1}"),
+                    &format_number(row.damage_taken),
+                ],
             ),
             egui::FontId::monospace(10.5),
             ui.visuals().weak_text_color(),
         );
-        if response.on_hover_text("在独立窗口查看战斗明细").clicked() {
+        if response
+            .on_hover_text(t("View combat details in a separate window"))
+            .clicked()
+        {
             self.hit_detail_char_id = Some(row.char_id);
             self.hit_detail_filter = HitDetailFilter::All;
             self.hit_detail_skill_filter.clear();

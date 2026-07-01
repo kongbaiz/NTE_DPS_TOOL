@@ -3,10 +3,21 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::i18n::Language;
+
 const CONFIG_DIRECTORY: &str = "NTE DPS Tool";
 const CONFIG_FILENAME: &str = "config.json";
-pub const WINDOW_SCALE_MIN: f32 = 0.7;
-pub const WINDOW_SCALE_MAX: f32 = 1.5;
+/// Smallest inner size (logical points) each window may be dragged down to. Enforced both when
+/// sanitizing a persisted size and at runtime via `with_min_inner_size`, so free resize can never
+/// collapse a window below a usable layout. Roughly 0.6–0.7× of each window's base size.
+pub const MAIN_WINDOW_MIN_SIZE: [f32; 2] = [420.0, 300.0];
+pub const CONSOLE_WINDOW_MIN_SIZE: [f32; 2] = [640.0, 420.0];
+pub const HIT_DETAIL_WINDOW_MIN_SIZE: [f32; 2] = [720.0, 480.0];
+pub const TEAM_HIT_DETAIL_WINDOW_MIN_SIZE: [f32; 2] = [640.0, 440.0];
+pub const ABYSS_WINDOW_MIN_SIZE: [f32; 2] = [680.0, 460.0];
+/// Upper bound on a persisted window dimension, guarding against a corrupt config pushing a
+/// window off every monitor.
+const WINDOW_SIZE_MAX: f32 = 6000.0;
 pub const TIMELINE_BUCKET_SECONDS_DEFAULT: f32 = 1.0;
 pub const TIMELINE_BUCKET_SECONDS_MIN: f32 = 0.2;
 pub const TIMELINE_BUCKET_SECONDS_MAX: f32 = 10.0;
@@ -59,17 +70,19 @@ impl DpsTimeMode {
         &DPS_TIME_MODES
     }
 
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn label(self) -> &'static str {
         match self {
-            Self::TimeStopAdjusted => "扣除时停",
-            Self::RealTime => "现实时间",
+            Self::TimeStopAdjusted => "Exclude Time Stop",
+            Self::RealTime => "Real Time",
         }
     }
 
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn description(self) -> &'static str {
         match self {
-            Self::TimeStopAdjusted => "大招/额外时停期间不累计输出时间",
-            Self::RealTime => "按抓包时间跨度累计输出时间",
+            Self::TimeStopAdjusted => "Output time is not counted during ultimate/extra time-stop",
+            Self::RealTime => "Output time accrues over the capture time span",
         }
     }
 }
@@ -87,10 +100,11 @@ impl TimelineDpsViewMode {
         &TIMELINE_DPS_VIEW_MODES
     }
 
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Team => "整队",
-            Self::Characters => "按角色",
+            Self::Team => "Whole Team",
+            Self::Characters => "By Character",
         }
     }
 }
@@ -172,6 +186,9 @@ impl HudConfig {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
+    /// Active UI language. Absent in older configs → defaults to Simplified Chinese
+    /// (the historical UI language) so upgrades are not disrupted.
+    pub language: Language,
     pub opacity: f32,
     pub dark_mode: bool,
     pub always_on_top: bool,
@@ -184,16 +201,25 @@ pub struct UiConfig {
     pub timeline_dps_view_mode: TimelineDpsViewMode,
     pub hud: HudConfig,
     pub passthrough_hotkey: PassthroughHotkey,
-    pub main_window_scale: f32,
-    pub abyss_window_scale: f32,
-    pub hit_detail_window_scale: f32,
-    pub team_hit_detail_window_scale: f32,
-    pub console_window_scale: f32,
+    /// Last inner size (logical points) each window was dragged to, restored on the next launch.
+    /// Absent (older configs, or the retired `*_window_scale` keys) → the window opens at its base
+    /// size. Replaces the removed fixed-ratio `−／＋` scale.
+    #[serde(default)]
+    pub main_window_size: Option<[f32; 2]>,
+    #[serde(default)]
+    pub abyss_window_size: Option<[f32; 2]>,
+    #[serde(default)]
+    pub hit_detail_window_size: Option<[f32; 2]>,
+    #[serde(default)]
+    pub team_hit_detail_window_size: Option<[f32; 2]>,
+    #[serde(default)]
+    pub console_window_size: Option<[f32; 2]>,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
+            language: Language::default(),
             opacity: 0.92,
             dark_mode: false,
             always_on_top: true,
@@ -204,11 +230,11 @@ impl Default for UiConfig {
             timeline_dps_view_mode: TimelineDpsViewMode::default(),
             hud: HudConfig::default(),
             passthrough_hotkey: PassthroughHotkey::default(),
-            main_window_scale: 1.0,
-            abyss_window_scale: 1.0,
-            hit_detail_window_scale: 1.0,
-            team_hit_detail_window_scale: 1.0,
-            console_window_scale: 1.0,
+            main_window_size: None,
+            abyss_window_size: None,
+            hit_detail_window_size: None,
+            team_hit_detail_window_size: None,
+            console_window_size: None,
         }
     }
 }
@@ -220,12 +246,17 @@ impl UiConfig {
         } else {
             Self::default().opacity
         };
-        self.main_window_scale = sanitized_window_scale(self.main_window_scale);
-        self.abyss_window_scale = sanitized_window_scale(self.abyss_window_scale);
-        self.hit_detail_window_scale = sanitized_window_scale(self.hit_detail_window_scale);
-        self.team_hit_detail_window_scale =
-            sanitized_window_scale(self.team_hit_detail_window_scale);
-        self.console_window_scale = sanitized_window_scale(self.console_window_scale);
+        self.main_window_size = sanitize_window_size(self.main_window_size, MAIN_WINDOW_MIN_SIZE);
+        self.abyss_window_size =
+            sanitize_window_size(self.abyss_window_size, ABYSS_WINDOW_MIN_SIZE);
+        self.hit_detail_window_size =
+            sanitize_window_size(self.hit_detail_window_size, HIT_DETAIL_WINDOW_MIN_SIZE);
+        self.team_hit_detail_window_size = sanitize_window_size(
+            self.team_hit_detail_window_size,
+            TEAM_HIT_DETAIL_WINDOW_MIN_SIZE,
+        );
+        self.console_window_size =
+            sanitize_window_size(self.console_window_size, CONSOLE_WINDOW_MIN_SIZE);
         self.timeline_bucket_seconds =
             sanitize_timeline_bucket_seconds(self.timeline_bucket_seconds);
         self.manual_capture_device = self
@@ -245,12 +276,17 @@ pub fn sanitize_timeline_bucket_seconds(seconds: f32) -> f32 {
     }
 }
 
-fn sanitized_window_scale(scale: f32) -> f32 {
-    if scale.is_finite() {
-        scale.clamp(WINDOW_SCALE_MIN, WINDOW_SCALE_MAX)
-    } else {
-        1.0
+/// Clamps a persisted window size to `[min, WINDOW_SIZE_MAX]` per axis. A non-finite or absent
+/// size becomes `None`, letting the caller fall back to the window's base size.
+fn sanitize_window_size(size: Option<[f32; 2]>, min: [f32; 2]) -> Option<[f32; 2]> {
+    let [width, height] = size?;
+    if !width.is_finite() || !height.is_finite() {
+        return None;
     }
+    Some([
+        width.clamp(min[0], WINDOW_SIZE_MAX),
+        height.clamp(min[1], WINDOW_SIZE_MAX),
+    ])
 }
 
 pub fn config_path() -> PathBuf {
@@ -265,9 +301,12 @@ pub fn load() -> (UiConfig, Option<String>) {
     let path = config_path();
     if !path.is_file() {
         let config = UiConfig::default();
-        let warning = save(&path, &config)
-            .err()
-            .map(|error| format!("默认 UI 配置创建失败（{}）：{error}", path.display()));
+        let warning = save(&path, &config).err().map(|error| {
+            crate::storage::i18n::tf(
+                "Failed to create default UI config ({}): {}",
+                &[&path.display().to_string(), &error],
+            )
+        });
         return (config, warning);
     }
     match fs::read_to_string(&path)
@@ -277,7 +316,10 @@ pub fn load() -> (UiConfig, Option<String>) {
         Ok(config) => (config.sanitized(), None),
         Err(error) => (
             UiConfig::default(),
-            Some(format!("UI 配置加载失败（{}）：{error}", path.display())),
+            Some(crate::storage::i18n::tf(
+                "Failed to load UI config ({}): {}",
+                &[&path.display().to_string(), &error],
+            )),
         ),
     }
 }
@@ -316,24 +358,36 @@ mod tests {
     }
 
     #[test]
-    fn sanitizes_invalid_window_scale() {
+    fn sanitizes_invalid_window_size() {
+        // Below the per-window minimum is clamped up to it.
         assert_eq!(
             UiConfig {
-                main_window_scale: 2.0,
+                main_window_size: Some([10.0, 10.0]),
                 ..UiConfig::default()
             }
             .sanitized()
-            .main_window_scale,
-            WINDOW_SCALE_MAX
+            .main_window_size,
+            Some(MAIN_WINDOW_MIN_SIZE)
         );
+        // Absurdly large is clamped down to the ceiling.
         assert_eq!(
             UiConfig {
-                console_window_scale: f32::NAN,
+                console_window_size: Some([99999.0, 99999.0]),
                 ..UiConfig::default()
             }
             .sanitized()
-            .console_window_scale,
-            1.0
+            .console_window_size,
+            Some([WINDOW_SIZE_MAX, WINDOW_SIZE_MAX])
+        );
+        // Non-finite falls back to "use the base size".
+        assert_eq!(
+            UiConfig {
+                console_window_size: Some([f32::NAN, 640.0]),
+                ..UiConfig::default()
+            }
+            .sanitized()
+            .console_window_size,
+            None
         );
     }
 

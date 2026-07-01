@@ -76,9 +76,9 @@ pub(crate) fn draw_resource_audit_row(
         egui::FontId::monospace(10.0),
         ui.visuals().weak_text_color(),
     );
-    response.on_hover_text(format!(
-        "{}\n{}\n建议来源：{}",
-        item.resource_id, item.message, item.suggested_source
+    response.on_hover_text(tf(
+        "{}\n{}\nSuggested source: {}",
+        &[&item.resource_id, &item.message, &item.suggested_source],
     ));
 }
 
@@ -90,14 +90,14 @@ pub(crate) fn draw_diagnostic_report(
     ui.columns(3, |columns| {
         compact_metric(
             &mut columns[0],
-            "失败",
+            &t("Failed"),
             report.failed_count().to_string(),
             semantic_danger(dark_mode),
             true,
         );
         compact_metric(
             &mut columns[1],
-            "警告",
+            &t("Warnings"),
             report.warning_count().to_string(),
             semantic_warning(dark_mode),
             true,
@@ -105,7 +105,7 @@ pub(crate) fn draw_diagnostic_report(
         let check_color = columns[2].visuals().text_color();
         compact_metric(
             &mut columns[2],
-            "检查项",
+            &t("Checks"),
             report.checks.len().to_string(),
             check_color,
             false,
@@ -167,7 +167,7 @@ pub(crate) fn draw_capture_quality_summary(
     dark_mode: bool,
 ) {
     egui::CollapsingHeader::new(
-        RichText::new("解析质量")
+        RichText::new(t("Parse Quality"))
             .strong()
             .color(shadcn_foreground(dark_mode)),
     )
@@ -175,11 +175,11 @@ pub(crate) fn draw_capture_quality_summary(
     .show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(summary.source.label())
+                RichText::new(t(summary.source.label()))
                     .size(12.0)
                     .color(ui.visuals().weak_text_color()),
             );
-            if ui.button("复制脱敏报告").clicked() {
+            if ui.button(t("Copy Redacted Report")).clicked() {
                 ui.ctx().copy_text(summary.redacted_text());
             }
         });
@@ -188,62 +188,83 @@ pub(crate) fn draw_capture_quality_summary(
             .num_columns(4)
             .spacing([16.0, 6.0])
             .show(ui, |ui| {
-                ui.label("封包");
-                ui.monospace(format!(
-                    "{} / 命中 {}",
-                    summary.packet_count, summary.packets_with_hits
+                ui.label(t("Packets"));
+                ui.monospace(tf(
+                    "{} / hits {}",
+                    &[
+                        &summary.packet_count.to_string(),
+                        &summary.packets_with_hits.to_string(),
+                    ],
                 ));
-                ui.label("命中");
+                ui.label(t("Hits"));
                 ui.monospace(summary.hit_count.to_string());
                 ui.end_row();
 
-                ui.label("输出");
-                ui.monospace(format!(
-                    "{} 条 / {}",
-                    summary.outgoing_hits,
-                    format_number(summary.outgoing_damage)
+                ui.label(t("Outgoing"));
+                ui.monospace(tf(
+                    "{} / {}",
+                    &[
+                        &summary.outgoing_hits.to_string(),
+                        &format_number(summary.outgoing_damage),
+                    ],
                 ));
-                ui.label("候选");
-                ui.monospace(format!(
-                    "{} 条 / {}",
-                    summary.unknown_direction_hits,
-                    format_number(summary.unknown_direction_damage)
-                ));
-                ui.end_row();
-
-                ui.label("受击");
-                ui.monospace(format!(
-                    "{} 条 / {}",
-                    summary.incoming_hits,
-                    format_number(summary.incoming_damage)
-                ));
-                ui.label("未知角色");
-                ui.monospace(format!(
-                    "{} 个 / {} 条",
-                    summary.unknown_character_count, summary.unknown_character_hits
+                ui.label(t("Candidate"));
+                ui.monospace(tf(
+                    "{} / {}",
+                    &[
+                        &summary.unknown_direction_hits.to_string(),
+                        &format_number(summary.unknown_direction_damage),
+                    ],
                 ));
                 ui.end_row();
 
-                ui.label("待映射技能");
-                ui.monospace(format!(
-                    "{} 类 / {} 条",
-                    summary.unmapped_skill_rows, summary.unmapped_skill_hits
+                ui.label(t("Incoming"));
+                ui.monospace(tf(
+                    "{} / {}",
+                    &[
+                        &summary.incoming_hits.to_string(),
+                        &format_number(summary.incoming_damage),
+                    ],
                 ));
-                ui.label("未映射 GE");
+                ui.label(t("Unknown Characters"));
+                ui.monospace(tf(
+                    "{} / {} hits",
+                    &[
+                        &summary.unknown_character_count.to_string(),
+                        &summary.unknown_character_hits.to_string(),
+                    ],
+                ));
+                ui.end_row();
+
+                ui.label(t("Pending Skills"));
+                ui.monospace(tf(
+                    "{} kinds / {} hits",
+                    &[
+                        &summary.unmapped_skill_rows.to_string(),
+                        &summary.unmapped_skill_hits.to_string(),
+                    ],
+                ));
+                ui.label(t("Unmapped GE"));
                 ui.monospace(summary.unmapped_gameplay_effect_count.to_string());
                 ui.end_row();
 
-                ui.label("时停");
-                ui.monospace(format!(
-                    "{} 事件 / {} 段",
-                    summary.time_stop_event_count, summary.time_stop_interval_count
+                ui.label(t("Time Stop"));
+                ui.monospace(tf(
+                    "{} events / {} intervals",
+                    &[
+                        &summary.time_stop_event_count.to_string(),
+                        &summary.time_stop_interval_count.to_string(),
+                    ],
                 ));
-                ui.label("深渊");
-                ui.monospace(format!("{} 事件", summary.abyss_event_count));
+                ui.label(t("Abyss"));
+                ui.monospace(tf("{} events", &[&summary.abyss_event_count.to_string()]));
                 ui.end_row();
 
-                ui.label("伤害校准");
-                ui.monospace(format!("{} 条", summary.server_damage_corrections));
+                ui.label(t("Damage Calibration"));
+                ui.monospace(tf(
+                    "{} rows",
+                    &[&summary.server_damage_corrections.to_string()],
+                ));
                 ui.label("");
                 ui.label("");
                 ui.end_row();

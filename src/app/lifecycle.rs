@@ -21,9 +21,9 @@ impl DpsApp {
                 Ok(characters) => (characters, None),
                 Err(error) => (
                     HashMap::new(),
-                    Some(format!(
-                        "角色数据加载失败（{}）：{error}",
-                        characters_path.display()
+                    Some(tf(
+                        "Failed to load character data ({}): {}",
+                        &[&characters_path.display().to_string(), &error.to_string()],
                     )),
                 ),
             };
@@ -94,7 +94,7 @@ impl DpsApp {
         let selected_device: usize = 0;
         let game_network: Option<GameNetwork> = None;
         let local_ip = String::new();
-        let status = "正在检测采集环境…".to_owned();
+        let status = t("Detecting the capture environment...");
         let diagnostic: Option<String> = None;
         let (device_detection_sender, device_detection_receiver) = unbounded();
         {
@@ -198,6 +198,7 @@ impl DpsApp {
             character_editor,
             encrypted_ini_editor: EncryptedIniEditorState::default(),
             paused: false,
+            language: ui_config.language,
             dark_mode: ui_config.dark_mode,
             always_on_top: ui_config.always_on_top,
             mouse_passthrough: false,
@@ -205,11 +206,27 @@ impl DpsApp {
             opacity: ui_config.opacity,
             applied_opacity: None,
             corner_applied_hwnd: None,
-            main_window_scale: ui_config.main_window_scale,
-            abyss_window_scale: ui_config.abyss_window_scale,
-            hit_detail_window_scale: ui_config.hit_detail_window_scale,
-            team_hit_detail_window_scale: ui_config.team_hit_detail_window_scale,
-            console_window_scale: ui_config.console_window_scale,
+            main_window_size: ui_config
+                .main_window_size
+                .map(egui::Vec2::from)
+                .unwrap_or(MAIN_WINDOW_BASE_SIZE),
+            abyss_window_size: ui_config
+                .abyss_window_size
+                .map(egui::Vec2::from)
+                .unwrap_or(ABYSS_WINDOW_BASE_SIZE),
+            hit_detail_window_size: ui_config
+                .hit_detail_window_size
+                .map(egui::Vec2::from)
+                .unwrap_or(HIT_DETAIL_WINDOW_BASE_SIZE),
+            team_hit_detail_window_size: ui_config
+                .team_hit_detail_window_size
+                .map(egui::Vec2::from)
+                .unwrap_or(TEAM_HIT_DETAIL_WINDOW_BASE_SIZE),
+            console_window_size: ui_config
+                .console_window_size
+                .map(egui::Vec2::from)
+                .unwrap_or(CONSOLE_WINDOW_BASE_SIZE),
+            main_size_restore_frames: 0,
             // eframe may replace the context style after app construction.
             style_dark_mode_applied: None,
             opacity_reapply_frames: 4,
@@ -328,7 +345,7 @@ impl DpsApp {
             ConfirmationAction::ResetSession => {
                 self.stop_engine();
                 self.reset_combat_session();
-                self.status = "统计已重置".to_owned();
+                self.status = t("Stats reset");
             }
             ConfirmationAction::ImportPcapng(path) => self.start_pcapng_import_for(path, viewport),
             ConfirmationAction::ImportCaptureJson(path) => {
@@ -336,7 +353,7 @@ impl DpsApp {
             }
             ConfirmationAction::ClearEncryptedIni => {
                 self.encrypted_ini_editor = EncryptedIniEditorState::default();
-                self.status = "加密 INI 编辑器已清空".to_owned();
+                self.status = t("Encrypted INI editor cleared");
             }
             ConfirmationAction::ReloadEncryptedIni(path) => {
                 self.load_encrypted_ini_for(path, viewport)
@@ -362,19 +379,23 @@ impl DpsApp {
         let outcome = capture_logs::clear_capture_logs(Path::new(capture_logs::CAPTURE_LOG_DIR));
         self.refresh_capture_log_stats();
         self.status = if outcome.deleted == 0 && outcome.failed == 0 {
-            "没有可清理的抓包文件".to_owned()
+            t("No capture files to clear")
         } else if outcome.failed > 0 {
-            format!(
-                "已清理 {} 个抓包文件（释放 {}），{} 个占用中未删除",
-                outcome.deleted,
-                capture_logs::format_bytes(outcome.freed_bytes),
-                outcome.failed
+            tf(
+                "Cleared {} capture files (freed {}); {} in use and not deleted",
+                &[
+                    &outcome.deleted.to_string(),
+                    &capture_logs::format_bytes(outcome.freed_bytes),
+                    &outcome.failed.to_string(),
+                ],
             )
         } else {
-            format!(
-                "已清理 {} 个抓包文件，释放 {}",
-                outcome.deleted,
-                capture_logs::format_bytes(outcome.freed_bytes)
+            tf(
+                "Cleared {} capture files, freed {}",
+                &[
+                    &outcome.deleted.to_string(),
+                    &capture_logs::format_bytes(outcome.freed_bytes),
+                ],
             )
         };
     }
@@ -427,7 +448,7 @@ impl DpsApp {
         }
         self.passthrough_hotkey = hotkey;
         self.hotkey.set_passthrough_hotkey(hotkey);
-        self.status = format!("鼠标穿透热键已切换为 {}", hotkey.label());
+        self.status = tf("Mouse passthrough hotkey switched to {}", &[hotkey.label()]);
     }
 
     pub(crate) fn drain_hotkeys(&mut self, ctx: &egui::Context) {
@@ -465,8 +486,9 @@ impl DpsApp {
                     }
                 }
                 HotkeyEvent::RegistrationFailed(shortcut) => {
-                    self.diagnostic = Some(format!(
-                        "无法注册全局快捷键 {shortcut}，可能已被其他程序占用"
+                    self.diagnostic = Some(tf(
+                        "Could not register global hotkey {}; it may be in use by another program",
+                        &[&shortcut],
                     ));
                 }
             }
@@ -483,14 +505,17 @@ impl DpsApp {
         let hotkey = self.passthrough_hotkey.label();
         self.status = if self.mouse_passthrough {
             if self.hud_mode {
-                format!("HUD 穿透已开启，按 {hotkey} 进入编辑模式")
+                tf("HUD passthrough on; press {} to enter edit mode", &[hotkey])
             } else {
-                format!("鼠标穿透已开启，按 {hotkey} 关闭")
+                tf("Mouse passthrough on; press {} to turn off", &[hotkey])
             }
         } else if self.hud_mode {
-            format!("HUD 编辑模式已开启，按 {hotkey} 返回游戏穿透")
+            tf(
+                "HUD edit mode on; press {} to return to game passthrough",
+                &[hotkey],
+            )
         } else {
-            "鼠标穿透已关闭".to_owned()
+            t("Mouse passthrough off")
         };
     }
 
@@ -511,13 +536,13 @@ impl DpsApp {
                 ));
             }
             self.set_mouse_passthrough(ctx, true);
-            self.status = format!(
-                "战斗 HUD 已开启：置顶显示并默认穿透鼠标，按 {} 编辑",
-                self.passthrough_hotkey.label()
+            self.status = tf(
+                "Combat HUD on: always-on-top with mouse passthrough by default; press {} to edit",
+                &[self.passthrough_hotkey.label()],
             );
         } else {
             self.set_mouse_passthrough(ctx, false);
-            self.status = "已退出战斗 HUD".to_owned();
+            self.status = t("Exited combat HUD");
         }
     }
 
@@ -531,15 +556,18 @@ impl DpsApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
         self.opacity_reapply_frames = 2;
         self.status = if self.always_on_top {
-            "窗口置顶已开启".to_owned()
+            t("Always-on-top enabled")
         } else {
-            "窗口置顶已关闭".to_owned()
+            t("Always-on-top disabled")
         };
     }
 
     pub(crate) fn title_bar(&mut self, ui: &mut egui::Ui) {
         let title_height = ui.available_height().max(28.0);
-        let passthrough_hint = format!("{} 可随时切换鼠标穿透", self.passthrough_hotkey.label());
+        let passthrough_hint = tf(
+            "{} toggles mouse passthrough anytime",
+            &[self.passthrough_hotkey.label()],
+        );
         // The whole title bar is the drag-to-move zone: allocate it first with a
         // drag sense, then draw the label/buttons on top. Buttons (added later)
         // win the pointer where they are, so dragging works on any empty area —
@@ -552,91 +580,60 @@ impl DpsApp {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
         let title_status = if self.paused {
-            format!(
-                "已暂停 · 待处理 {} · 已丢弃调试封包 {}",
-                self.paused_events.len(),
-                self.dropped_debug_packets
+            tf(
+                "Paused · pending {} · dropped debug packets {}",
+                &[
+                    &self.paused_events.len().to_string(),
+                    &self.dropped_debug_packets.to_string(),
+                ],
             )
         } else {
             self.status.clone()
         };
         let show_title_toggles = !self.abyss_compact_mode || !self.state.abyss.is_active();
-        let spacing = 4.0;
-        let scale_stepper_width = TITLE_BAR_BUTTON_SIZE.x * 2.0 + 42.0 + spacing * 2.0;
-        let window_buttons_width = TITLE_BAR_BUTTON_SIZE.x * 2.0 + spacing;
-        let toggle_width = if show_title_toggles {
-            TITLE_BAR_TOGGLE_SIZE.x * 3.0 + spacing * 3.0
-        } else {
-            0.0
-        };
-        let right_width = (window_buttons_width + scale_stepper_width + toggle_width)
-            .min((full_rect.width() - 120.0).max(0.0));
-        let left_width = (full_rect.width() - right_width - 8.0).max(0.0);
-        let left_rect =
-            egui::Rect::from_min_size(full_rect.min, egui::vec2(left_width, full_rect.height()));
-        let right_rect = egui::Rect::from_min_size(
-            egui::pos2(full_rect.right() - right_width, full_rect.top()),
-            egui::vec2(right_width, full_rect.height()),
-        );
-        let title_button_text = |text: &'static str| RichText::new(text).size(13.0);
+        let title_button_text = |text: String| RichText::new(text).size(13.0);
 
-        let mut title_ui = ui.new_child(
+        // The right-aligned controls are drawn first, into their own child spanning
+        // the full bar, so their natural (localized) width is known before the title
+        // claims space. Whatever the controls don't use goes to the title, which
+        // truncates with an ellipsis into that remainder — so a longer translation
+        // (e.g. English "Passthrough"/"Appearance" vs. the shorter Chinese originals)
+        // can never overlap or paint over the title instead of politely eliding it.
+        let mut controls = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(left_rect)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
-        title_ui.set_clip_rect(left_rect);
-        title_ui.spacing_mut().item_spacing.x = 6.0;
-        title_ui.label(
-            RichText::new("NTE DPS TOOL")
-                .size(13.0)
-                .strong()
-                .color(theme_accent(self.dark_mode)),
-        );
-        let (dot_rect, dot_response) = title_ui
-            .allocate_exact_size(egui::vec2(10.0, full_rect.height()), egui::Sense::hover());
-        title_ui.painter().circle_filled(
-            dot_rect.center(),
-            3.5,
-            status_color(&self.status, self.paused, self.dark_mode),
-        );
-        dot_response.on_hover_text(title_status);
-
-        let mut controls_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(right_rect)
+                .max_rect(full_rect)
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
         );
-        controls_ui.set_clip_rect(right_rect);
-        controls_ui.spacing_mut().item_spacing.x = spacing;
-        controls_ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
-        controls_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        controls.set_clip_rect(full_rect);
+        {
+            let ui = &mut controls;
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
             if ui
                 .add_sized(TITLE_BAR_BUTTON_SIZE, egui::Button::new("×").frame(false))
-                .on_hover_text("关闭")
+                .on_hover_text(t("Close"))
                 .clicked()
             {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
             if ui
                 .add_sized(TITLE_BAR_BUTTON_SIZE, egui::Button::new("−").frame(false))
-                .on_hover_text("最小化")
+                .on_hover_text(t("Minimize"))
                 .clicked()
             {
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
-            window_scale_stepper(ui, &mut self.main_window_scale, MAIN_WINDOW_BASE_SIZE);
             if show_title_toggles {
-                let appearance_button =
-                    egui::Button::new(title_button_text("外观")).min_size(TITLE_BAR_TOGGLE_SIZE);
+                let appearance_button = egui::Button::new(title_button_text(t("Appearance")))
+                    .min_size(TITLE_BAR_TOGGLE_SIZE);
                 let (appearance_response, _) = egui::containers::menu::MenuButton::from_button(
                     appearance_button,
                 )
                 .ui(ui, |ui| {
                     ui.set_min_width(190.0);
                     ui.horizontal(|ui| {
-                        ui.label("透明度");
+                        ui.label(t("Opacity"));
                         ui.add(
                             egui::Slider::new(&mut self.opacity, 0.35..=1.0)
                                 .show_value(true)
@@ -645,9 +642,9 @@ impl DpsApp {
                     });
                     if ui
                         .button(if self.dark_mode {
-                            "切换为亮色"
+                            t("Switch to light")
                         } else {
-                            "切换为深色"
+                            t("Switch to dark")
                         })
                         .clicked()
                     {
@@ -659,30 +656,30 @@ impl DpsApp {
                     ui.separator();
                     if ui
                         .add(
-                            egui::Button::selectable(self.hud_mode, "战斗 HUD")
+                            egui::Button::selectable(self.hud_mode, t("Combat HUD"))
                                 .frame_when_inactive(true),
                         )
-                        .on_hover_text("无底板 HUD，直接叠在游戏画面上")
+                        .on_hover_text(t("Backing-less HUD, overlaid directly on the game"))
                         .clicked()
                     {
                         self.set_hud_mode(ui.ctx(), !self.hud_mode);
                         ui.close();
                     }
                 });
-                appearance_response.on_hover_text("调整透明度、主题和 HUD 模式");
+                appearance_response.on_hover_text(t("Adjust opacity, theme and HUD mode"));
                 let passthrough_label = if self.mouse_passthrough {
-                    "穿透中"
+                    t("Passthrough on")
                 } else {
-                    "穿透"
+                    t("Passthrough")
                 };
                 if ui
-                    .add_sized(
-                        TITLE_BAR_TOGGLE_SIZE,
+                    .add(
                         egui::Button::selectable(
                             self.mouse_passthrough,
                             title_button_text(passthrough_label),
                         )
-                        .frame_when_inactive(true),
+                        .frame_when_inactive(true)
+                        .min_size(TITLE_BAR_TOGGLE_SIZE),
                     )
                     .on_hover_text(passthrough_hint)
                     .clicked()
@@ -690,18 +687,57 @@ impl DpsApp {
                     self.toggle_mouse_passthrough(ui.ctx());
                 }
                 if ui
-                    .add_sized(
-                        TITLE_BAR_TOGGLE_SIZE,
-                        egui::Button::selectable(self.always_on_top, title_button_text("置顶"))
-                            .frame_when_inactive(true),
+                    .add(
+                        egui::Button::selectable(self.always_on_top, title_button_text(t("Pin")))
+                            .frame_when_inactive(true)
+                            .min_size(TITLE_BAR_TOGGLE_SIZE),
                     )
-                    .on_hover_text("保持主窗口位于游戏上方")
+                    .on_hover_text(t("Keep the main window above the game"))
                     .clicked()
                 {
                     self.toggle_always_on_top(ui.ctx());
                 }
             }
-        });
+        }
+        let controls_left = controls.min_rect().left();
+
+        // Whatever the controls didn't claim goes to the branding label + status
+        // dot. Bounding it to a child rect (rather than just drawing a plain label
+        // into the shared bar) means a too-narrow remainder truncates the text with
+        // an ellipsis instead of the controls drawing over it.
+        let title_rect = egui::Rect::from_min_max(
+            full_rect.min,
+            egui::pos2((controls_left - 6.0).max(full_rect.left()), full_rect.max.y),
+        );
+        let mut left = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(title_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        left.set_clip_rect(title_rect);
+        left.spacing_mut().item_spacing.x = 6.0;
+        const DOT_WIDTH: f32 = 10.0;
+        let label_width = (title_rect.width() - DOT_WIDTH - left.spacing().item_spacing.x).max(0.0);
+        left.add_sized(
+            egui::vec2(label_width, title_rect.height()),
+            egui::Label::new(
+                RichText::new("NTE DPS TOOL")
+                    .size(13.0)
+                    .strong()
+                    .color(theme_accent(self.dark_mode)),
+            )
+            .truncate(),
+        );
+        let (dot_rect, dot_response) = left.allocate_exact_size(
+            egui::vec2(DOT_WIDTH, title_rect.height()),
+            egui::Sense::hover(),
+        );
+        left.painter().circle_filled(
+            dot_rect.center(),
+            3.5,
+            status_color(&self.status, self.paused, self.dark_mode),
+        );
+        dot_response.on_hover_text(title_status);
     }
 
     /// Compact title strip for HUD mode: a drag zone plus the two controls that
@@ -748,21 +784,23 @@ impl DpsApp {
                 .color(Color32::from_rgb(218, 224, 228)),
         );
         child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let passthrough_hint = format!(
-                "{} 可随时切换；穿透时点不到按钮，先按 {} 关闭再退出",
-                self.passthrough_hotkey.label(),
-                self.passthrough_hotkey.label()
+            let passthrough_hint = tf(
+                "{} toggles anytime; while passthrough is on you can't click buttons, so press {} to turn it off before exiting",
+                &[
+                    self.passthrough_hotkey.label(),
+                    self.passthrough_hotkey.label(),
+                ],
             );
             if ui
-                .small_button("退出")
-                .on_hover_text("返回普通窗口")
+                .small_button(t("Exit"))
+                .on_hover_text(t("Return to the normal window"))
                 .clicked()
             {
                 self.set_hud_mode(ui.ctx(), false);
             }
             if ui
                 .add(
-                    egui::Button::selectable(self.mouse_passthrough, "穿透")
+                    egui::Button::selectable(self.mouse_passthrough, t("Passthrough"))
                         .frame_when_inactive(true),
                 )
                 .on_hover_text(passthrough_hint)
@@ -782,7 +820,7 @@ impl DpsApp {
         }
         let Some(device) = self.devices.get(self.selected_device).cloned() else {
             self.set_last_error(
-                "没有可用抓包设备，请确认已安装 Npcap",
+                t("No usable capture device; confirm Npcap is installed"),
                 Some(ErrorAction::RefreshNetwork),
             );
             return;
@@ -803,7 +841,7 @@ impl DpsApp {
         self.active_capture_filter = Some(capture_filter);
         self.raw_capture = Some(capture.raw_capture());
         self.capture = Some(capture);
-        self.status = "正在启动实时抓包...".to_owned();
+        self.status = t("Starting live capture...");
     }
 
     pub(crate) fn refresh_game_network(&mut self) -> Result<(), String> {
@@ -821,7 +859,7 @@ impl DpsApp {
         })?;
         self.selected_device = index;
         self.local_ip = network.local_ip.to_string();
-        self.status = "已检测到游戏，准备就绪".to_owned();
+        self.status = t("Game detected, ready");
         self.diagnostic = None;
         self.game_network = Some(network);
         Ok(())
@@ -832,12 +870,14 @@ impl DpsApp {
     /// and `infer_outgoing` falls back to its public/private heuristic. Only a vanished NIC aborts.
     pub(crate) fn apply_manual_capture_device(&mut self, name: &str) -> Result<(), String> {
         let Some(index) = self.devices.iter().position(|device| device.name == name) else {
-            let message =
-                format!("手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动");
+            let message = tf(
+                "The manually selected NIC ({}) is currently unavailable; reselect in settings or switch back to auto",
+                &[name],
+            );
             self.diagnostic = Some(message.clone());
             self.game_network = None;
             self.local_ip.clear();
-            self.status = "手动网卡不可用".to_owned();
+            self.status = t("Manual NIC unavailable");
             return Err(message);
         };
         self.selected_device = index;
@@ -845,13 +885,13 @@ impl DpsApp {
             Ok(network) => {
                 self.local_ip = network.local_ip.to_string();
                 self.game_network = Some(network);
-                self.status = "已就绪（手动网卡）".to_owned();
+                self.status = t("Ready (manual NIC)");
                 self.diagnostic = None;
             }
             Err(error) => {
                 self.local_ip.clear();
                 self.game_network = None;
-                self.status = "已手动选定网卡（未检测到游戏连接）".to_owned();
+                self.status = t("Manual NIC selected (no game connection detected)");
                 self.diagnostic = Some(error);
             }
         }
@@ -887,8 +927,13 @@ impl DpsApp {
         ));
         self.replay_stop = Some(stop);
         self.status = local_ip_hint.map_or_else(
-            || "正在导入并解析 pcapng（启发式判向）...".to_owned(),
-            |ip| format!("正在导入并解析 pcapng（本机 IP {ip} 过滤/判向）..."),
+            || t("Importing and parsing pcapng (heuristic direction)..."),
+            |ip| {
+                tf(
+                    "Importing and parsing pcapng (local IP {} filter/direction)...",
+                    &[&ip.to_string()],
+                )
+            },
         );
     }
 
@@ -911,7 +956,7 @@ impl DpsApp {
         });
         self.replay_thread = Some(import_capture_json(path, self.sender.clone(), stop.clone()));
         self.replay_stop = Some(stop);
-        self.status = "正在导入抓包 JSON...".to_owned();
+        self.status = t("Importing capture JSON...");
     }
 
     pub(crate) fn process_file_drops(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
@@ -951,15 +996,27 @@ impl DpsApp {
             _ => {
                 let name = file_display_name(&path);
                 self.set_last_error(
-                    format!("不支持拖入该文件：{name}\n当前支持 .pcapng 和 .json"),
+                    tf(
+                        "Unsupported dropped file: {}\nCurrently .pcapng and .json are supported",
+                        &[&name],
+                    ),
                     Some(ErrorAction::OpenPcapng),
                 );
             }
         }
     }
 
+    /// Switch the live UI language and reload its locale map. The change is picked up
+    /// by the next frame; `current_ui_config` includes it so the debounced save
+    /// persists the choice to the config file.
+    pub(crate) fn set_language(&mut self, language: Language) {
+        self.language = language;
+        i18n::set_language(language);
+    }
+
     pub(crate) fn current_ui_config(&self) -> UiConfig {
         UiConfig {
+            language: self.language,
             opacity: self.opacity,
             dark_mode: self.dark_mode,
             always_on_top: self.always_on_top,
@@ -970,11 +1027,17 @@ impl DpsApp {
             timeline_dps_view_mode: self.timeline_dps_view_mode,
             hud: self.hud_config.clone(),
             passthrough_hotkey: self.passthrough_hotkey,
-            main_window_scale: self.main_window_scale,
-            abyss_window_scale: self.abyss_window_scale,
-            hit_detail_window_scale: self.hit_detail_window_scale,
-            team_hit_detail_window_scale: self.team_hit_detail_window_scale,
-            console_window_scale: self.console_window_scale,
+            main_window_size: Some([self.main_window_size.x, self.main_window_size.y]),
+            abyss_window_size: Some([self.abyss_window_size.x, self.abyss_window_size.y]),
+            hit_detail_window_size: Some([
+                self.hit_detail_window_size.x,
+                self.hit_detail_window_size.y,
+            ]),
+            team_hit_detail_window_size: Some([
+                self.team_hit_detail_window_size.x,
+                self.team_hit_detail_window_size.y,
+            ]),
+            console_window_size: Some([self.console_window_size.x, self.console_window_size.y]),
         }
         .sanitized()
     }
@@ -1025,9 +1088,9 @@ impl DpsApp {
                 }
                 Err(error) => {
                     self.set_last_error(
-                        format!(
-                            "UI 配置保存失败，请检查权限或磁盘空间：{error}\n{}",
-                            self.ui_config_path.display()
+                        tf(
+                            "Failed to save UI config; check permissions or disk space: {}\n{}",
+                            &[&error, &self.ui_config_path.display().to_string()],
                         ),
                         Some(ErrorAction::OpenConsole),
                     );
@@ -1096,14 +1159,14 @@ impl DpsApp {
         self.pending_debug_import = None;
         let path = self.open_native_file_dialog(ctx, || match pending.kind {
             DebugImportKind::Pcapng => rfd::FileDialog::new()
-                .add_filter("Wireshark 抓包", &["pcapng"])
+                .add_filter(t("Wireshark capture"), &["pcapng"])
                 .pick_file(),
             DebugImportKind::CaptureJson => rfd::FileDialog::new()
-                .add_filter("NTE 导出抓包", &["json"])
+                .add_filter(t("NTE exported capture"), &["json"])
                 .pick_file(),
             DebugImportKind::EncryptedIni => rfd::FileDialog::new()
-                .add_filter("NTE 加密 INI", &["ini"])
-                .add_filter("所有文件", &["*"])
+                .add_filter(t("NTE encrypted INI"), &["ini"])
+                .add_filter(t("All files"), &["*"])
                 .pick_file(),
         });
         if let Some(path) = path {
@@ -1255,10 +1318,13 @@ impl DpsApp {
             }
             EngineEvent::Status(status) => self.status = status,
             EngineEvent::Warning(warning) => {
-                self.diagnostic = Some(format!("部分资源加载失败，功能降级：{warning}"));
+                self.diagnostic = Some(tf(
+                    "Some resources failed to load; features degraded: {}",
+                    &[&warning],
+                ));
             }
             EngineEvent::Error(error) => {
-                self.status = "运行失败".to_owned();
+                self.status = t("Run failed");
                 let action = import_error_action(&error);
                 let viewport = self
                     .active_import
@@ -1277,9 +1343,9 @@ impl DpsApp {
                     self.selected_abyss_half = AbyssHalf::First;
                     self.abyss_compact_mode = false;
                     self.active_import = None;
-                    self.status = "导入已完成，可在诊断页查看解析质量".to_owned();
+                    self.status = t("Import complete; see parse quality on the diagnostics page");
                 } else {
-                    self.status = "已停止".to_owned();
+                    self.status = t("Stopped");
                 }
             }
         }
@@ -1357,19 +1423,23 @@ impl DpsApp {
         if self.state.hits.is_empty() && self.state.packets.is_empty() {
             self.set_last_error_in(
                 ctx,
-                "当前没有可导出的抓包信息",
+                t("No capture info to export"),
                 Some(ErrorAction::OpenConsole),
             );
             return;
         }
         if self.capture.is_some() || self.replay_thread.is_some() {
-            self.set_last_error_in(ctx, "请先停止抓包或回放，再导出本次抓包信息", None);
+            self.set_last_error_in(
+                ctx,
+                t("Stop capture or replay first, then export this capture info"),
+                None,
+            );
             return;
         }
 
         let Some(path) = self.open_native_file_dialog(ctx, || {
             rfd::FileDialog::new()
-                .add_filter("抓包信息 JSON", &["json"])
+                .add_filter(t("Capture info JSON"), &["json"])
                 .set_file_name(default_export_filename())
                 .save_file()
         }) else {
@@ -1382,35 +1452,43 @@ impl DpsApp {
             out.finish()
         }) {
             Ok(()) => {
-                self.status = "已导出抓包信息".to_owned();
+                self.status = t("Capture info exported");
                 self.clear_last_error();
             }
             Err(error) => {
-                self.set_last_error_in(ctx, format!("导出抓包信息失败：{error}"), None);
+                self.set_last_error_in(
+                    ctx,
+                    tf("Failed to export capture info: {}", &[&error.to_string()]),
+                    None,
+                );
             }
         }
     }
 
     pub(crate) fn export_raw_capture(&mut self, ctx: &egui::Context) {
         if self.capture.is_some() {
-            self.set_last_error_in(ctx, "请先停止抓包，再另存完整 PCAPNG", None);
+            self.set_last_error_in(
+                ctx,
+                t("Stop capture first, then save the full PCAPNG"),
+                None,
+            );
             return;
         }
         if self.raw_capture.is_none() {
-            self.set_last_error_in(ctx, "当前没有可另存的完整 PCAPNG", None);
+            self.set_last_error_in(ctx, t("No full PCAPNG to save"), None);
             return;
         }
         let default_file_name = format!("nte_raw_{}.pcapng", Local::now().format("%Y%m%d_%H%M%S"));
         let Some(destination) = self.open_native_file_dialog(ctx, || {
             rfd::FileDialog::new()
-                .add_filter("完整原始抓包", &["pcapng"])
+                .add_filter(t("Full raw capture"), &["pcapng"])
                 .set_file_name(default_file_name)
                 .save_file()
         }) else {
             return;
         };
         let Some(raw_capture) = self.raw_capture.as_ref() else {
-            self.set_last_error_in(ctx, "当前没有可另存的完整 PCAPNG", None);
+            self.set_last_error_in(ctx, t("No full PCAPNG to save"), None);
             return;
         };
         match raw_capture.save(&destination) {
@@ -1418,15 +1496,24 @@ impl DpsApp {
                 let file_name = destination
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .unwrap_or("PCAPNG 文件");
-                self.status = format!(
-                    "已另存完整抓包至 {}（{} 包，{} 字节）",
-                    file_name, packet_count, captured_bytes
+                    .map(|name| name.to_owned())
+                    .unwrap_or_else(|| t("PCAPNG file"));
+                self.status = tf(
+                    "Saved the full capture to {} ({} packets, {} bytes)",
+                    &[
+                        &file_name,
+                        &packet_count.to_string(),
+                        &captured_bytes.to_string(),
+                    ],
                 );
                 self.clear_last_error();
             }
             Err(error) => {
-                self.set_last_error_in(ctx, format!("另存完整抓包失败：{error}"), None);
+                self.set_last_error_in(
+                    ctx,
+                    tf("Failed to save the full capture: {}", &[&error.to_string()]),
+                    None,
+                );
             }
         }
     }
@@ -2092,7 +2179,7 @@ impl DpsApp {
             return;
         }
         self.resource_audit.loading = true;
-        self.resource_audit.message = "正在检查运行资源...".to_owned();
+        self.resource_audit.message = t("Checking runtime resources...");
         let sender = self.resource_audit_sender.clone();
         self.resource_audit_thread = Some(thread::spawn(move || {
             let summary = audit_runtime_resources();
@@ -2143,8 +2230,10 @@ impl DpsApp {
             let warning_count = summary.warning_count();
             self.resource_audit.summary = Some(summary);
             self.resource_audit.loading = false;
-            self.resource_audit.message =
-                format!("资源检查完成：{error_count} 个错误，{warning_count} 个警告");
+            self.resource_audit.message = tf(
+                "Resource check complete: {} errors, {} warnings",
+                &[&error_count.to_string(), &warning_count.to_string()],
+            );
             if let Some(thread) = self.resource_audit_thread.take() {
                 let _ = thread.join();
             }
@@ -2170,7 +2259,10 @@ impl DpsApp {
             let warnings = report.warning_count();
             self.diagnostics_report = Some(report);
             self.diagnostics_running = false;
-            self.status = format!("诊断完成：{failed} 个失败，{warnings} 个警告");
+            self.status = tf(
+                "Diagnostics complete: {} failed, {} warnings",
+                &[&failed.to_string(), &warnings.to_string()],
+            );
             if let Some(thread) = self.diagnostics_thread.take() {
                 let _ = thread.join();
             }
@@ -2209,10 +2301,10 @@ fn detect_capture_environment(
         Err(error) => (Vec::new(), Some(error)),
     };
     let (mut selected_device, mut game_network, mut status, mut diagnostic) = match device_error {
-        Some(error) => (0, None, "采集环境不可用".to_owned(), Some(error)),
+        Some(error) => (0, None, t("Capture environment unavailable"), Some(error)),
         None => match detect_game_device(&devices) {
-            Ok((index, network)) => (index, Some(network), "已就绪".to_owned(), None),
-            Err(error) => (0, None, "未检测到游戏".to_owned(), Some(error)),
+            Ok((index, network)) => (index, Some(network), t("Ready"), None),
+            Err(error) => (0, None, t("Game not detected"), Some(error)),
         },
     };
     // Apply the persisted manual NIC override (VPN fallback). The saved choice is kept even when
@@ -2224,21 +2316,22 @@ fn detect_capture_environment(
                 match detect_game_network() {
                     Ok(network) => {
                         game_network = Some(network);
-                        status = "已就绪（手动网卡）".to_owned();
+                        status = t("Ready (manual NIC)");
                         diagnostic = None;
                     }
                     Err(error) => {
                         game_network = None;
-                        status = "已手动选定网卡（未检测到游戏连接）".to_owned();
+                        status = t("Manual NIC selected (no game connection detected)");
                         diagnostic = Some(error);
                     }
                 }
             }
             None => {
                 game_network = None;
-                status = "手动网卡不可用".to_owned();
-                diagnostic = Some(format!(
-                    "手动选择的网卡当前不可用（{name}），请在设置中重新选择或切回自动"
+                status = t("Manual NIC unavailable");
+                diagnostic = Some(tf(
+                    "The manually selected NIC ({}) is currently unavailable; reselect in settings or switch back to auto",
+                    &[name],
                 ));
             }
         }

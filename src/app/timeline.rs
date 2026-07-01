@@ -155,7 +155,7 @@ pub(crate) fn draw_timeline_chart(
         painter.text(
             egui::pos2(x + 4.0, plot.top() + 10.0),
             egui::Align2::LEFT_CENTER,
-            &marker.label,
+            t(&marker.label),
             egui::FontId::proportional(10.0),
             color,
         );
@@ -264,8 +264,8 @@ pub(crate) fn draw_timeline_chart(
         format!(
             "{} {}",
             match dps_view_mode {
-                TimelineDpsViewMode::Team => "DPS 峰值",
-                TimelineDpsViewMode::Characters => "角色 DPS 峰值",
+                TimelineDpsViewMode::Team => t("Peak DPS"),
+                TimelineDpsViewMode::Characters => t("Peak Character DPS"),
             },
             format_number(max_dps)
         ),
@@ -275,7 +275,7 @@ pub(crate) fn draw_timeline_chart(
     painter.text(
         rect.right_top() + egui::vec2(-12.0, 12.0),
         egui::Align2::RIGHT_CENTER,
-        format!("累计 {}", format_number(series.total_damage)),
+        tf("Total {}", &[&format_number(series.total_damage)]),
         egui::FontId::monospace(11.0),
         ui.visuals().weak_text_color(),
     );
@@ -338,7 +338,9 @@ pub(crate) fn draw_timeline_chart(
                 egui::FontId::proportional(13.0),
                 shadcn_foreground(dark_mode),
             );
-            response.on_hover_text("点击高亮该角色折线，再次点击取消");
+            response.on_hover_text(t(
+                "Click to highlight this character's line; click again to clear",
+            ));
             x += label_width;
         }
     }
@@ -425,8 +427,8 @@ pub(crate) fn draw_timeline_chart(
                     "{}s · {} {}",
                     format_timeline_seconds(bucket.start_offset),
                     match dps_view_mode {
-                        TimelineDpsViewMode::Team => "DPS",
-                        TimelineDpsViewMode::Characters => "最高角色 DPS",
+                        TimelineDpsViewMode::Team => t("DPS"),
+                        TimelineDpsViewMode::Characters => t("Top Character DPS"),
                     },
                     format_number(hovered_dps)
                 ),
@@ -458,28 +460,30 @@ pub(crate) fn draw_timeline_chart(
                 painter.text(
                     egui::pos2(interval_rect.center().x, plot.top() + 12.0),
                     egui::Align2::CENTER_CENTER,
-                    format!(
-                        "时停 {}s",
-                        format_timeline_seconds(interval.end_offset - interval.start_offset)
+                    tf(
+                        "Time stop {}s",
+                        &[&format_timeline_seconds(
+                            interval.end_offset - interval.start_offset,
+                        )],
                     ),
                     egui::FontId::monospace(10.0),
                     semantic_warning(dark_mode),
                 );
                 response.on_hover_ui_at_pointer(|ui| {
                     ui.spacing_mut().item_spacing.y = 3.0;
-                    ui.label(RichText::new("时停区间").strong());
+                    ui.label(RichText::new(t("Time-stop Interval")).strong());
                     egui::Grid::new("timeline_time_stop_hover")
                         .num_columns(2)
                         .spacing([12.0, 3.0])
                         .show(ui, |ui| {
-                            ui.label("起止");
+                            ui.label(t("Range"));
                             ui.monospace(format!(
                                 "{}s - {}s",
                                 format_timeline_seconds(interval.start_offset),
                                 format_timeline_seconds(interval.end_offset)
                             ));
                             ui.end_row();
-                            ui.label("持续");
+                            ui.label(t("Duration"));
                             ui.monospace(format!(
                                 "{}s",
                                 format_timeline_seconds(
@@ -487,7 +491,7 @@ pub(crate) fn draw_timeline_chart(
                                 )
                             ));
                             ui.end_row();
-                            ui.label("当前区间");
+                            ui.label(t("Current Bucket"));
                             ui.monospace(format!(
                                 "{}s - {}s",
                                 format_timeline_seconds(bucket.start_offset),
@@ -495,12 +499,12 @@ pub(crate) fn draw_timeline_chart(
                             ));
                             ui.end_row();
                             ui.label(match dps_view_mode {
-                                TimelineDpsViewMode::Team => "区间 DPS",
-                                TimelineDpsViewMode::Characters => "最高角色 DPS",
+                                TimelineDpsViewMode::Team => t("Bucket DPS"),
+                                TimelineDpsViewMode::Characters => t("Top Character DPS"),
                             });
                             ui.monospace(format_number(hovered_dps));
                             ui.end_row();
-                            ui.label("区间伤害");
+                            ui.label(t("Bucket Damage"));
                             ui.monospace(format_number(bucket.damage));
                             ui.end_row();
                         });
@@ -521,18 +525,18 @@ pub(crate) fn draw_timeline_chart(
                         .spacing([12.0, 3.0])
                         .show(ui, |ui| {
                             ui.label(match dps_view_mode {
-                                TimelineDpsViewMode::Team => "DPS",
-                                TimelineDpsViewMode::Characters => "最高角色 DPS",
+                                TimelineDpsViewMode::Team => t("DPS"),
+                                TimelineDpsViewMode::Characters => t("Top Character DPS"),
                             });
                             ui.monospace(format_number(hovered_dps));
                             ui.end_row();
-                            ui.label("伤害");
+                            ui.label(t("Damage"));
                             ui.monospace(format_number(bucket.damage));
                             ui.end_row();
-                            ui.label("命中");
+                            ui.label(t("Hits"));
                             ui.monospace(bucket.hits.to_string());
                             ui.end_row();
-                            ui.label("累计");
+                            ui.label(t("Cumulative"));
                             ui.monospace(format_number(bucket.cumulative_damage));
                             ui.end_row();
                         });
@@ -615,7 +619,8 @@ pub(crate) fn draw_skill_breakdown_rows(
             egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
             |ui| {
                 ui.label(
-                    RichText::new("当前角色暂无技能归因").color(ui.visuals().weak_text_color()),
+                    RichText::new(t("No skill attribution for this character yet"))
+                        .color(ui.visuals().weak_text_color()),
                 );
             },
         );
@@ -663,7 +668,7 @@ pub(crate) fn draw_skill_breakdown_rows(
                     color,
                 );
                 let label = if row.is_follow_up {
-                    format!("{} · 后续", row.name)
+                    format!("{} · {}", row.name, t("follow-up"))
                 } else {
                     row.name.clone()
                 };
@@ -689,9 +694,9 @@ pub(crate) fn draw_skill_breakdown_rows(
                     rect.right_center() - egui::vec2(10.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     format!(
-                        "{share:.1}% · {} · {}次",
+                        "{share:.1}% · {} · {}",
                         format_number(row.damage),
-                        row.hits
+                        tf("{} hits", &[&row.hits.to_string()])
                     ),
                     egui::FontId::monospace(11.0),
                     shadcn_foreground(dark_mode),
@@ -703,10 +708,10 @@ pub(crate) fn draw_skill_breakdown_rows(
 
 pub(crate) fn skill_breakdown_hover_text(row: &SkillBreakdownRow) -> String {
     let mut lines = vec![
-        format!("角色：{}", row.char_name),
-        format!("分类：{}", row.category),
-        format!("伤害：{}", format_number(row.damage)),
-        format!("命中：{} 次", row.hits),
+        tf("Character: {}", &[&row.char_name]),
+        tf("Category: {}", &[&row.category]),
+        tf("Damage: {}", &[&format_number(row.damage)]),
+        tf("Hits: {}", &[&row.hits.to_string()]),
     ];
     if let Some(name) = row.ability_name.as_deref() {
         lines.push(format!("GA：{name}"));
@@ -733,7 +738,7 @@ pub(crate) fn draw_unknown_attribution(
     dark_mode: bool,
 ) {
     egui::CollapsingHeader::new(
-        RichText::new("待映射诊断")
+        RichText::new(t("Pending Mapping Diagnostics"))
             .strong()
             .color(shadcn_foreground(dark_mode)),
     )
@@ -743,39 +748,48 @@ pub(crate) fn draw_unknown_attribution(
             .num_columns(2)
             .spacing([16.0, 5.0])
             .show(ui, |ui| {
-                ui.label("未知角色");
-                ui.monospace(format!(
-                    "{} 个 / {} 条",
-                    breakdown.unknown.unknown_character_count,
-                    breakdown.unknown.unknown_character_hits
+                ui.label(t("Unknown Characters"));
+                ui.monospace(tf(
+                    "{} / {} hits",
+                    &[
+                        &breakdown.unknown.unknown_character_count.to_string(),
+                        &breakdown.unknown.unknown_character_hits.to_string(),
+                    ],
                 ));
                 ui.end_row();
-                ui.label("候选方向");
-                ui.monospace(format!(
-                    "{} 条 / {}",
-                    breakdown.unknown.unknown_direction_hits,
-                    format_number(breakdown.unknown.unknown_direction_damage)
+                ui.label(t("Candidate Direction"));
+                ui.monospace(tf(
+                    "{} / {}",
+                    &[
+                        &breakdown.unknown.unknown_direction_hits.to_string(),
+                        &format_number(breakdown.unknown.unknown_direction_damage),
+                    ],
                 ));
                 ui.end_row();
-                ui.label("待映射技能");
-                ui.monospace(format!(
-                    "{} 类 / {} 条",
-                    breakdown.unknown.unmapped_skill_rows, breakdown.unknown.unmapped_skill_hits
+                ui.label(t("Pending Skills"));
+                ui.monospace(tf(
+                    "{} kinds / {} hits",
+                    &[
+                        &breakdown.unknown.unmapped_skill_rows.to_string(),
+                        &breakdown.unknown.unmapped_skill_hits.to_string(),
+                    ],
                 ));
                 ui.end_row();
             });
         if !breakdown.unknown.unmapped_gameplay_effects.is_empty() {
             ui.add_space(6.0);
-            ui.label(RichText::new("未映射 GE").color(ui.visuals().weak_text_color()));
+            ui.label(RichText::new(t("Unmapped GE")).color(ui.visuals().weak_text_color()));
             for effect in breakdown.unknown.unmapped_gameplay_effects.iter().take(24) {
                 ui.horizontal(|ui| {
-                    ui.monospace(format!(
-                        "{} · {} 条 · {}",
-                        effect.index,
-                        effect.hits,
-                        format_number(effect.damage)
+                    ui.monospace(tf(
+                        "{} · {} hits · {}",
+                        &[
+                            &effect.index.to_string(),
+                            &effect.hits.to_string(),
+                            &format_number(effect.damage),
+                        ],
                     ));
-                    if ui.small_button("复制").clicked() {
+                    if ui.small_button(t("Copy")).clicked() {
                         ui.ctx().copy_text(effect.index.to_string());
                     }
                 });

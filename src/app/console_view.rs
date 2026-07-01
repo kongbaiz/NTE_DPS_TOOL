@@ -6,16 +6,14 @@ impl DpsApp {
         let close_requested = ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
-                .with_title("NTE 控制台")
-                .with_inner_size(scaled_window_size(
-                    CONSOLE_WINDOW_BASE_SIZE,
-                    self.console_window_scale,
-                ))
+                .with_title(t("NTE Console"))
+                .with_inner_size(self.console_window_size)
+                .with_min_inner_size(egui::Vec2::from(config::CONSOLE_WINDOW_MIN_SIZE))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                // Not transparent and not resizable on purpose — see
-                // window_scale_stepper for the Windows resize-crash rationale.
-                .with_resizable(false),
+                // Borderless but freely resizable via the edge grips (window_resize_grips);
+                // not transparent so the console reads clearly over the game.
+                .with_resizable(true),
             |ctx, _class| {
                 if !self.console_corner_applied {
                     apply_rounding_to_process_windows();
@@ -31,12 +29,7 @@ impl DpsApp {
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
                     .show_inside(ctx, |ui| {
-                        close_clicked = secondary_title_bar(
-                            ui,
-                            "NTE 控制台",
-                            &mut self.console_window_scale,
-                            CONSOLE_WINDOW_BASE_SIZE,
-                        );
+                        close_clicked = secondary_title_bar(ui, &t("NTE Console"));
                     });
                 egui::CentralPanel::default()
                     .frame(
@@ -47,6 +40,8 @@ impl DpsApp {
                     .show_inside(ctx, |ui| {
                         self.console_contents(ui);
                     });
+                track_window_size(ctx, &mut self.console_window_size);
+                window_resize_grips(ctx);
                 self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
@@ -59,30 +54,58 @@ impl DpsApp {
     }
 
     pub(crate) fn console_contents(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Settings, "设置");
-            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Timeline, "时间轴");
-            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Skills, "技能");
-            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::History, "历史");
+        // Wrapped: up to nine tabs, and a localized label can run longer than the
+        // Chinese original — wrap to a second line instead of spilling past the
+        // console window's edge.
+        ui.horizontal_wrapped(|ui| {
+            stable_selectable_value(
+                ui,
+                &mut self.console_tab,
+                ConsoleTab::Settings,
+                t("Settings"),
+            );
+            stable_selectable_value(
+                ui,
+                &mut self.console_tab,
+                ConsoleTab::Timeline,
+                t("Timeline"),
+            );
+            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Skills, t("Skills"));
+            stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::History, t("History"));
             stable_selectable_value(
                 ui,
                 &mut self.console_tab,
                 ConsoleTab::Characters,
-                "角色数据",
+                t("Character Data"),
             );
             stable_selectable_value(
                 ui,
                 &mut self.console_tab,
                 ConsoleTab::EncryptedIni,
-                "加密 INI",
+                t("Encrypted INI"),
             );
             // Genuine capture debugging — only reachable in debug builds.
             #[cfg(not(feature = "no_debug"))]
             {
                 ui.separator();
-                stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Packets, "封包");
-                stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Resources, "资源");
-                stable_selectable_value(ui, &mut self.console_tab, ConsoleTab::Diagnostics, "诊断");
+                stable_selectable_value(
+                    ui,
+                    &mut self.console_tab,
+                    ConsoleTab::Packets,
+                    t("Packets"),
+                );
+                stable_selectable_value(
+                    ui,
+                    &mut self.console_tab,
+                    ConsoleTab::Resources,
+                    t("Resources"),
+                );
+                stable_selectable_value(
+                    ui,
+                    &mut self.console_tab,
+                    ConsoleTab::Diagnostics,
+                    t("Diagnostics"),
+                );
             }
         });
         ui.separator();
@@ -102,7 +125,10 @@ impl DpsApp {
     pub(crate) fn timeline_contents(&mut self, ui: &mut egui::Ui) {
         self.abyss_selector(ui);
         inline_controls(ui, |ui| {
-            ui.label(inline_text("统计间隔", ui.visuals().weak_text_color()));
+            ui.label(inline_text(
+                t("Bucket Interval"),
+                ui.visuals().weak_text_color(),
+            ));
             let mut bucket_seconds =
                 config::sanitize_timeline_bucket_seconds(self.timeline_bucket_seconds);
             let changed = ui
@@ -116,7 +142,9 @@ impl DpsApp {
                     .suffix("s")
                     .show_value(true),
                 )
-                .on_hover_text("每个统计点覆盖的秒数；越小越细，越大越平滑")
+                .on_hover_text(t(
+                    "Seconds each bucket covers; smaller is finer, larger is smoother",
+                ))
                 .changed();
             if changed {
                 self.timeline_bucket_seconds =
@@ -124,9 +152,14 @@ impl DpsApp {
                 self.timeline_cache = TimelineCache::default();
             }
             ui.separator();
-            ui.label(inline_text("曲线", ui.visuals().weak_text_color()));
+            ui.label(inline_text(t("Curve"), ui.visuals().weak_text_color()));
             for mode in TimelineDpsViewMode::all() {
-                stable_selectable_value(ui, &mut self.timeline_dps_view_mode, *mode, mode.label());
+                stable_selectable_value(
+                    ui,
+                    &mut self.timeline_dps_view_mode,
+                    *mode,
+                    t(mode.label()),
+                );
             }
         });
         ui.add_space(6.0);
@@ -136,7 +169,10 @@ impl DpsApp {
                 egui::vec2(ui.available_width(), 120.0),
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
-                    ui.label(RichText::new("等待伤害数据").color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(t("Waiting for damage data"))
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 },
             );
             return;
@@ -166,14 +202,14 @@ impl DpsApp {
         ui.columns(4, |columns| {
             compact_metric(
                 &mut columns[0],
-                "总伤害",
+                &t("Total Damage"),
                 format_number(timeline.total_damage),
                 theme_accent(self.dark_mode),
                 true,
             );
             compact_metric(
                 &mut columns[1],
-                "峰值 DPS",
+                &t("Peak DPS"),
                 format_number(peak_dps),
                 theme_accent(self.dark_mode),
                 true,
@@ -181,7 +217,7 @@ impl DpsApp {
             let bucket_color = columns[2].visuals().text_color();
             compact_metric(
                 &mut columns[2],
-                "战斗时间",
+                &t("Combat Time"),
                 format!("{duration:.1}s"),
                 bucket_color,
                 false,
@@ -189,7 +225,7 @@ impl DpsApp {
             let interval_color = columns[3].visuals().text_color();
             compact_metric(
                 &mut columns[3],
-                "时停区间",
+                &t("Time-stop Intervals"),
                 timeline.time_stop_intervals.len().to_string(),
                 interval_color,
                 false,
@@ -204,10 +240,12 @@ impl DpsApp {
             let dark_mode = self.dark_mode;
             ui.horizontal_wrapped(|ui| {
                 ui.label(inline_text(
-                    format!(
-                        "战斗分段 · {} 段（间隔 >{:.0}s 自动切分）",
-                        segments.len(),
-                        COMBAT_SEGMENT_GAP_SECONDS
+                    tf(
+                        "Combat segments · {} (auto-split at gaps >{}s)",
+                        &[
+                            &segments.len().to_string(),
+                            &format!("{COMBAT_SEGMENT_GAP_SECONDS:.0}"),
+                        ],
                     ),
                     ui.visuals().weak_text_color(),
                 ));
@@ -229,12 +267,14 @@ impl DpsApp {
         );
         ui.add_space(6.0);
         ui.label(
-            RichText::new(format!(
-                "当前保留窗口 · {:.1}s · {}s 统计间隔 · {} 个采样点 · {} 个事件标记",
-                duration,
-                format_timeline_seconds(timeline.bucket_seconds),
-                timeline.buckets.len(),
-                timeline.markers.len()
+            RichText::new(tf(
+                "Retained window · {}s · {}s bucket · {} samples · {} event markers",
+                &[
+                    &format!("{duration:.1}"),
+                    &format_timeline_seconds(timeline.bucket_seconds),
+                    &timeline.buckets.len().to_string(),
+                    &timeline.markers.len().to_string(),
+                ],
             ))
             .size(11.0)
             .color(ui.visuals().weak_text_color()),
@@ -250,7 +290,8 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("等待技能归因数据").color(ui.visuals().weak_text_color()),
+                        RichText::new(t("Waiting for skill attribution data"))
+                            .color(ui.visuals().weak_text_color()),
                     );
                 },
             );
@@ -273,13 +314,16 @@ impl DpsApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.label(
-                            RichText::new("角色")
+                            RichText::new(t("Character"))
                                 .strong()
                                 .color(shadcn_foreground(self.dark_mode)),
                         );
                         ui.add_space(4.0);
                         if ui
-                            .selectable_label(self.selected_skill_breakdown_char.is_none(), "全队")
+                            .selectable_label(
+                                self.selected_skill_breakdown_char.is_none(),
+                                t("Whole Team"),
+                            )
                             .clicked()
                         {
                             self.selected_skill_breakdown_char = None;
@@ -328,7 +372,7 @@ impl DpsApp {
                         ui.columns(4, |columns| {
                             compact_metric(
                                 &mut columns[0],
-                                "归因伤害",
+                                &t("Attributed Damage"),
                                 format_number(visible_total),
                                 theme_accent(self.dark_mode),
                                 true,
@@ -336,7 +380,7 @@ impl DpsApp {
                             let skill_count_color = columns[1].visuals().text_color();
                             compact_metric(
                                 &mut columns[1],
-                                "技能项",
+                                &t("Skill Entries"),
                                 visible_rows.len().to_string(),
                                 skill_count_color,
                                 false,
@@ -348,7 +392,7 @@ impl DpsApp {
                             };
                             compact_metric(
                                 &mut columns[2],
-                                "待映射",
+                                &t("Pending Mapping"),
                                 breakdown.unknown.unmapped_skill_hits.to_string(),
                                 unmapped_color,
                                 false,
@@ -360,7 +404,7 @@ impl DpsApp {
                             };
                             compact_metric(
                                 &mut columns[3],
-                                "候选方向",
+                                &t("Candidate Direction"),
                                 breakdown.unknown.unknown_direction_hits.to_string(),
                                 candidate_color,
                                 false,
@@ -392,24 +436,27 @@ impl DpsApp {
     pub(crate) fn history_contents(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("保存本次摘要")
-                .on_hover_text("保存脱敏统计摘要，不包含封包、payload、IP、端口或本机路径")
+                .button(t("Save This Summary"))
+                .on_hover_text(t("Save a de-identified stats summary; no packets, payload, IP, port or local paths"))
                 .clicked()
             {
                 self.save_current_history_summary(ui.ctx());
             }
-            if ui.button("重新加载").clicked() {
+            if ui.button(t("Reload")).clicked() {
                 self.history.reload();
-                self.history.message = "历史列表已刷新".to_owned();
+                self.history.message = t("History list refreshed");
             }
             ui.label(
-                RichText::new(format!("{} 条记录", self.history.records.len()))
+                RichText::new(tf("{} records", &[&self.history.records.len().to_string()]))
                     .color(ui.visuals().weak_text_color()),
             );
             if self.history.skipped_files > 0 {
                 ui.label(
-                    RichText::new(format!("跳过 {} 个损坏文件", self.history.skipped_files))
-                        .color(semantic_warning(self.dark_mode)),
+                    RichText::new(tf(
+                        "Skipped {} corrupt files",
+                        &[&self.history.skipped_files.to_string()],
+                    ))
+                    .color(semantic_warning(self.dark_mode)),
                 );
             }
             if !self.history.message.is_empty() {
@@ -425,7 +472,10 @@ impl DpsApp {
                 egui::vec2(ui.available_width(), 160.0),
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
-                    ui.label(RichText::new("暂无历史摘要").color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(t("No history summaries yet"))
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 },
             );
             return;
@@ -455,7 +505,7 @@ impl DpsApp {
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.label(
-                            RichText::new("记录")
+                            RichText::new(t("Records"))
                                 .strong()
                                 .color(shadcn_foreground(self.dark_mode)),
                         );
@@ -518,8 +568,8 @@ impl DpsApp {
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button("删除")
-                    .on_hover_text("删除这条本地历史摘要")
+                    .button(t("Delete"))
+                    .on_hover_text(t("Delete this local history summary"))
                     .clicked()
                 {
                     self.request_confirmation_for(
@@ -528,16 +578,16 @@ impl DpsApp {
                     );
                 }
                 if let Some(team) = record.lower_team_dps()
-                    && ui.button("设为下行预测").clicked()
+                    && ui.button(t("Set as Lower Prediction")).clicked()
                 {
                     self.abyss_overview.lower_team = Some(team);
-                    self.history.message = "已设为下行线预测队伍".to_owned();
+                    self.history.message = t("Set as the lower-line prediction team");
                 }
                 if let Some(team) = record.upper_team_dps()
-                    && ui.button("设为上行预测").clicked()
+                    && ui.button(t("Set as Upper Prediction")).clicked()
                 {
                     self.abyss_overview.upper_team = Some(team);
-                    self.history.message = "已设为上行线预测队伍".to_owned();
+                    self.history.message = t("Set as the upper-line prediction team");
                 }
             });
         });
@@ -548,31 +598,34 @@ impl DpsApp {
             let quality_color = columns[3].visuals().text_color();
             compact_metric(
                 &mut columns[0],
-                "总 DPS",
+                &t("Total DPS"),
                 format_number(record.summary.total_dps),
                 theme_accent(self.dark_mode),
                 true,
             );
             compact_metric(
                 &mut columns[1],
-                "总伤害",
+                &t("Total Damage"),
                 format_number(record.summary.total_damage),
                 damage_color,
                 false,
             );
             compact_metric(
                 &mut columns[2],
-                "战斗时间",
+                &t("Combat Time"),
                 format_clear_seconds(record.summary.duration_seconds),
                 duration_color,
                 false,
             );
             compact_metric(
                 &mut columns[3],
-                "解析质量",
-                format!(
-                    "{} 命中 / {} 待映射",
-                    record.summary.quality.hit_count, record.summary.quality.unmapped_skill_hits
+                &t("Parse Quality"),
+                tf(
+                    "{} hits / {} pending",
+                    &[
+                        &record.summary.quality.hit_count.to_string(),
+                        &record.summary.quality.unmapped_skill_hits.to_string(),
+                    ],
                 ),
                 quality_color,
                 false,
@@ -606,9 +659,9 @@ impl DpsApp {
         } else {
             draw_history_summary_rows(
                 ui,
-                "角色",
+                &t("Character"),
                 &record.summary.characters,
-                "技能",
+                &t("Skill"),
                 &record.summary.skills,
                 HistoryVisualContext {
                     dark_mode: self.dark_mode,
@@ -621,7 +674,7 @@ impl DpsApp {
 
     pub(crate) fn history_compare_contents(&mut self, ui: &mut egui::Ui) {
         ui.label(
-            RichText::new("对比")
+            RichText::new(t("Compare"))
                 .strong()
                 .color(shadcn_foreground(self.dark_mode)),
         );
@@ -643,7 +696,7 @@ impl DpsApp {
             .num_columns(2)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
-                ui.label(RichText::new("基准").color(ui.visuals().weak_text_color()));
+                ui.label(RichText::new(t("Baseline")).color(ui.visuals().weak_text_color()));
                 history_record_combo(
                     ui,
                     "history_compare_left",
@@ -652,7 +705,7 @@ impl DpsApp {
                     combo_width,
                 );
                 ui.end_row();
-                ui.label(RichText::new("对比").color(ui.visuals().weak_text_color()));
+                ui.label(RichText::new(t("Compare")).color(ui.visuals().weak_text_color()));
                 history_record_combo(
                     ui,
                     "history_compare_right",
@@ -663,31 +716,36 @@ impl DpsApp {
                 ui.end_row();
             });
         let Some((left, right, comparison)) = self.history.compare_records() else {
-            ui.label(RichText::new("请选择两条不同记录").color(ui.visuals().weak_text_color()));
+            ui.label(
+                RichText::new(t("Select two different records"))
+                    .color(ui.visuals().weak_text_color()),
+            );
             return;
         };
         if left.summary.dps_time_mode != right.summary.dps_time_mode {
             ui.label(
-                RichText::new("两条记录的 DPS 时间口径不同，请谨慎比较")
-                    .color(semantic_warning(self.dark_mode)),
+                RichText::new(t(
+                    "The two records use different DPS time bases; compare with care",
+                ))
+                .color(semantic_warning(self.dark_mode)),
             );
         }
         ui.columns(3, |columns| {
             delta_metric(
                 &mut columns[0],
-                "总 DPS 差异",
+                &t("Total DPS Δ"),
                 comparison.total_dps_delta,
                 self.dark_mode,
             );
             delta_metric(
                 &mut columns[1],
-                "总伤害差异",
+                &t("Total Damage Δ"),
                 comparison.total_damage_delta,
                 self.dark_mode,
             );
             delta_metric(
                 &mut columns[2],
-                "时间差异",
+                &t("Time Δ"),
                 comparison.duration_delta,
                 self.dark_mode,
             );
@@ -695,17 +753,17 @@ impl DpsApp {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(RichText::new("角色差异").color(ui.visuals().weak_text_color()));
+                ui.label(RichText::new(t("Character Δ")).color(ui.visuals().weak_text_color()));
                 for row in &comparison.character_deltas {
                     ui.horizontal(|ui| {
-                        ui.add_sized([120.0, 20.0], egui::Label::new(&row.name));
+                        ui.add_sized([120.0, 20.0], egui::Label::new(&row.name).truncate());
                         ui.monospace(format_signed_number(row.delta_dps));
                     });
                 }
             });
             ui.separator();
             ui.vertical(|ui| {
-                ui.label(RichText::new("技能差异").color(ui.visuals().weak_text_color()));
+                ui.label(RichText::new(t("Skill Δ")).color(ui.visuals().weak_text_color()));
                 for row in &comparison.skill_deltas {
                     ui.horizontal(|ui| {
                         ui.add_sized([190.0, 20.0], egui::Label::new(&row.name).truncate());
@@ -718,18 +776,18 @@ impl DpsApp {
 
     pub(crate) fn debug_encrypted_ini_contents(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("打开 INI").clicked() {
+            if ui.button(t("Open INI")).clicked() {
                 self.request_debug_import(ui.ctx(), DebugImportKind::EncryptedIni);
             }
             let can_save = self.encrypted_ini_editor.path.is_some();
             if ui
-                .add_enabled(can_save, egui::Button::new("保存为加密 INI"))
+                .add_enabled(can_save, egui::Button::new(t("Save as Encrypted INI")))
                 .clicked()
             {
                 self.save_encrypted_ini(ui.ctx());
             }
             if ui
-                .add_enabled(can_save, egui::Button::new("重新载入"))
+                .add_enabled(can_save, egui::Button::new(t("Reload")))
                 .clicked()
                 && let Some(path) = self.encrypted_ini_editor.path.clone()
             {
@@ -742,7 +800,7 @@ impl DpsApp {
                     self.load_encrypted_ini_in(ui.ctx(), path);
                 }
             }
-            if ui.button("清空").clicked() {
+            if ui.button(t("Clear")).clicked() {
                 if self.encrypted_ini_editor.dirty {
                     self.request_confirmation_for(
                         ui.ctx().viewport_id(),
@@ -758,21 +816,21 @@ impl DpsApp {
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.add_sized([92.0, 28.0], egui::Label::new("文件"));
+            ui.add_sized([92.0, 28.0], egui::Label::new(t("File")).truncate());
             ui.monospace(self.encrypted_ini_editor.display_path());
         });
         ui.horizontal(|ui| {
-            ui.add_sized([92.0, 28.0], egui::Label::new("保存 key"));
+            ui.add_sized([92.0, 28.0], egui::Label::new(t("Save Key")).truncate());
             egui::ComboBox::from_id_salt("encrypted_ini_key")
                 .width(200.0)
-                .selected_text(self.encrypted_ini_editor.key.label())
+                .selected_text(t(self.encrypted_ini_editor.key.label()))
                 .show_ui(ui, |ui| {
                     for key in EncryptedIniKey::all() {
                         stable_popup_selectable_value(
                             ui,
                             &mut self.encrypted_ini_editor.key,
                             key,
-                            key.label(),
+                            t(key.label()),
                         );
                     }
                 });
@@ -780,13 +838,13 @@ impl DpsApp {
         let editor_id = ui.make_persistent_id("encrypted_ini_plaintext_editor");
         let mut jump_to_match = false;
         ui.horizontal(|ui| {
-            ui.add_sized([92.0, 28.0], egui::Label::new("搜索"));
+            ui.add_sized([92.0, 28.0], egui::Label::new(t("Search")).truncate());
             let search_changed = ui
                 .add(
                     egui::TextEdit::singleline(&mut self.encrypted_ini_editor.search)
                         .desired_width(360.0)
                         .vertical_align(egui::Align::Center)
-                        .hint_text("输入配置名或值"),
+                        .hint_text(t("Enter a config name or value")),
                 )
                 .changed();
             if search_changed {
@@ -797,7 +855,7 @@ impl DpsApp {
             let matches = &self.encrypted_ini_editor.search_matches;
             let can_search = !matches.is_empty();
             if ui
-                .add_enabled(can_search, egui::Button::new("上一个"))
+                .add_enabled(can_search, egui::Button::new(t("Previous")))
                 .clicked()
             {
                 self.encrypted_ini_editor.search_match =
@@ -805,7 +863,7 @@ impl DpsApp {
                 jump_to_match = true;
             }
             if ui
-                .add_enabled(can_search, egui::Button::new("下一个"))
+                .add_enabled(can_search, egui::Button::new(t("Next")))
                 .clicked()
             {
                 self.encrypted_ini_editor.search_match =
@@ -813,21 +871,23 @@ impl DpsApp {
                 jump_to_match = true;
             }
             if self.encrypted_ini_editor.search.is_empty() {
-                ui.label("未搜索");
+                ui.label(t("No search"));
             } else if let Some(current) = self.encrypted_ini_editor.search_match {
                 if let Some(&byte_index) = matches.get(current) {
                     let (line, column) =
                         line_column_for_byte(&self.encrypted_ini_editor.plaintext, byte_index);
-                    ui.monospace(format!(
-                        "{}/{}  行 {} 列 {}",
-                        current + 1,
-                        matches.len(),
-                        line,
-                        column
+                    ui.monospace(tf(
+                        "{}/{}  line {} col {}",
+                        &[
+                            &(current + 1).to_string(),
+                            &matches.len().to_string(),
+                            &line.to_string(),
+                            &column.to_string(),
+                        ],
                     ));
                 }
             } else {
-                ui.monospace(format!("{} 处匹配", matches.len()));
+                ui.monospace(tf("{} matches", &[&matches.len().to_string()]));
             }
         });
         if !self.encrypted_ini_editor.message.is_empty() {
@@ -877,7 +937,9 @@ impl DpsApp {
                     .desired_width(editor_width)
                     .lock_focus(true)
                     .layouter(&mut layouter)
-                    .hint_text("打开加密 INI 后，这里会显示解密后的明文。")
+                    .hint_text(t(
+                        "After opening an encrypted INI, the decrypted plaintext appears here.",
+                    ))
                     .show(ui);
                 if editor_output.response.changed() {
                     editor_changed = true;
@@ -909,9 +971,9 @@ impl DpsApp {
         }
         ui.horizontal(|ui| {
             if self.encrypted_ini_editor.dirty {
-                ui.label("有未保存修改");
+                ui.label(t("Unsaved changes"));
             } else if self.encrypted_ini_editor.path.is_some() {
-                ui.label("当前内容已保存或未修改");
+                ui.label(t("Current content is saved or unchanged"));
             }
         });
     }
@@ -935,14 +997,15 @@ impl DpsApp {
 
     pub(crate) fn save_encrypted_ini(&mut self, ctx: &egui::Context) {
         let Some(path) = self.encrypted_ini_editor.path.clone() else {
-            self.encrypted_ini_editor.message = "请先打开一个 INI 文件".to_owned();
+            self.encrypted_ini_editor.message = t("Open an INI file first");
             return;
         };
         if self.encrypted_ini_editor.plaintext == self.encrypted_ini_editor.original_plaintext
             && self.encrypted_ini_editor.key == self.encrypted_ini_editor.original_key
         {
             self.encrypted_ini_editor.dirty = false;
-            self.encrypted_ini_editor.message = "内容未修改，已保留原始密文文件".to_owned();
+            self.encrypted_ini_editor.message =
+                t("Content unchanged; the original ciphertext file was kept");
             return;
         }
         let encrypted = match encrypt_encrypted_ini_records(
@@ -955,25 +1018,31 @@ impl DpsApp {
         ) {
             Ok(encrypted) => encrypted,
             Err(error) => {
-                self.encrypted_ini_editor.message = format!("生成密文失败: {error}");
+                self.encrypted_ini_editor.message =
+                    tf("Failed to generate ciphertext: {}", &[&error]);
                 self.set_last_error_in(ctx, self.encrypted_ini_editor.message.clone(), None);
                 return;
             }
         };
         if let Err(error) = atomic_write_text(&path, &encrypted) {
-            self.encrypted_ini_editor.message = format!("保存 {} 失败: {error}", path.display());
+            self.encrypted_ini_editor.message = tf(
+                "Failed to save {}: {}",
+                &[&path.display().to_string(), &error],
+            );
             self.set_last_error_in(ctx, self.encrypted_ini_editor.message.clone(), None);
             return;
         }
         self.encrypted_ini_editor.original_key = self.encrypted_ini_editor.key;
         self.encrypted_ini_editor.original_plaintext = self.encrypted_ini_editor.plaintext.clone();
         self.encrypted_ini_editor.dirty = false;
-        self.encrypted_ini_editor.message = format!(
-            "已使用 {} key 保存到 {}",
-            self.encrypted_ini_editor.key.label(),
-            path.display()
+        self.encrypted_ini_editor.message = tf(
+            "Saved to {} using the {} key",
+            &[
+                &path.display().to_string(),
+                &t(self.encrypted_ini_editor.key.label()),
+            ],
         );
-        self.status = "加密 INI 已保存".to_owned();
+        self.status = t("Encrypted INI saved");
         self.clear_last_error();
     }
 
@@ -987,13 +1056,13 @@ impl DpsApp {
                 let mut unchecked = false;
                 ui.add_enabled(
                     false,
-                    egui::Checkbox::new(&mut unchecked, "手动指定网卡（VPN 兜底）"),
+                    egui::Checkbox::new(&mut unchecked, t("Pin capture NIC (VPN fallback)")),
                 );
                 ui.colored_label(
                     semantic_warning(self.dark_mode),
-                    "未发现可用网卡，请确认已安装 Npcap 后点击刷新",
+                    t("No usable NIC found; confirm Npcap is installed, then click refresh"),
                 );
-                if ui.button("刷新网卡列表").clicked() {
+                if ui.button(t("Refresh NIC List")).clicked() {
                     let _ = self.refresh_game_network();
                 }
                 return;
@@ -1001,10 +1070,10 @@ impl DpsApp {
 
             let mut manual = self.manual_capture_device.is_some();
             if ui
-                .checkbox(&mut manual, "手动指定网卡")
-                .on_hover_text(
-                    "开启 VPN 时自动识别可能选错网卡；勾选后固定使用所选网卡，重新抓包后生效",
-                )
+                .checkbox(&mut manual, t("Pin capture NIC"))
+                .on_hover_text(t(
+                    "Auto-detection may pick the wrong NIC under a VPN; checking this pins the chosen NIC, effective on the next capture",
+                ))
                 .changed()
             {
                 // A non-empty device list guarantees a default, so manual mode is never left
@@ -1028,7 +1097,7 @@ impl DpsApp {
             let selected_text = chosen
                 .as_deref()
                 .and_then(|name| self.devices.iter().find(|device| device.name == name))
-                .map_or_else(|| "请选择网卡".to_owned(), capture_device_label);
+                .map_or_else(|| t("Select a NIC"), capture_device_label);
             egui::ComboBox::from_id_salt("manual_capture_device")
                 .width(300.0)
                 .selected_text(selected_text)
@@ -1048,8 +1117,8 @@ impl DpsApp {
             }
 
             if ui
-                .button("刷新网卡列表")
-                .on_hover_text("重新枚举网卡")
+                .button(t("Refresh NIC List"))
+                .on_hover_text(t("Re-enumerate NICs"))
                 .clicked()
             {
                 let _ = self.refresh_game_network();
@@ -1063,10 +1132,10 @@ impl DpsApp {
             if !resolved {
                 ui.colored_label(
                     semantic_warning(self.dark_mode),
-                    "所选网卡当前不可用，请重新选择或点击刷新",
+                    t("The selected NIC is currently unavailable; reselect or click refresh"),
                 );
             } else if self.game_network.is_none() {
-                ui.weak("未检测到游戏连接，将按公网/内网方向启发式解析");
+                ui.weak(t("No game connection detected; parsing by public/private direction heuristics"));
             }
         });
     }
@@ -1083,6 +1152,7 @@ impl DpsApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.columns(2, |columns| {
+                    self.settings_interface_section(&mut columns[0]);
                     self.settings_parse_section(&mut columns[0]);
                     self.settings_hud_section(&mut columns[1]);
                     self.settings_team_section(&mut columns[1]);
@@ -1096,35 +1166,70 @@ impl DpsApp {
         }
     }
 
+    /// Interface preferences shown at the top of settings. Currently the UI
+    /// language picker; the dropdown lists each language written in its own script
+    /// (English / 简体中文) and persists the choice to the config file.
+    fn settings_interface_section(&mut self, ui: &mut egui::Ui) {
+        egui::CollapsingHeader::new(t("Interface"))
+            .default_open(true)
+            .show(ui, |ui| {
+                egui::Grid::new("settings_interface")
+                    .num_columns(2)
+                    .spacing([14.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(t("Language"));
+                        let mut language = self.language;
+                        egui::ComboBox::from_id_salt("ui_language")
+                            .width(150.0)
+                            .selected_text(language.native_name())
+                            .show_ui(ui, |ui| {
+                                ui.set_min_width(150.0);
+                                for option in Language::all() {
+                                    stable_popup_selectable_value(
+                                        ui,
+                                        &mut language,
+                                        *option,
+                                        option.native_name(),
+                                    );
+                                }
+                            });
+                        if language != self.language {
+                            self.set_language(language);
+                        }
+                        ui.end_row();
+                    });
+            });
+    }
+
     fn settings_parse_section(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("解析设置")
+        egui::CollapsingHeader::new(t("Parse Settings"))
             .default_open(true)
             .show(ui, |ui| {
                 egui::Grid::new("settings_parse")
                     .num_columns(2)
                     .spacing([14.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("BPF 过滤");
+                        ui.label(t("BPF Filter"));
                         ui.add(egui::TextEdit::singleline(&mut self.filter).desired_width(260.0))
-                            .on_hover_text("抓包过滤表达式，重新抓包后生效");
+                            .on_hover_text(t("Capture filter expression; takes effect on the next capture"));
                         ui.end_row();
-                        ui.label("采集网卡");
+                        ui.label(t("Capture NIC"));
                         self.capture_device_selector(ui);
                         ui.end_row();
-                        ui.label("伤害来源");
+                        ui.label(t("Damage Source"));
                         ui.checkbox(
                             &mut self.server_damage_calibration,
-                            "使用服务端 HP 差值校准",
+                            t("Calibrate with server-side HP deltas"),
                         )
-                        .on_hover_text(
-                            "重新抓包或重新导入后生效；只在服务端 HP 同步能与单条命中明确配对时覆盖伤害数值",
-                        );
+                        .on_hover_text(t(
+                            "Takes effect after re-capturing or re-importing; only overrides damage when a server HP sync can be unambiguously paired to a single hit",
+                        ));
                         ui.end_row();
-                        ui.label("DPS 时间");
+                        ui.label(t("DPS Time"));
                         let mut dps_time_mode = self.dps_time_mode;
                         egui::ComboBox::from_id_salt("dps_time_mode")
                             .width(150.0)
-                            .selected_text(dps_time_mode.label())
+                            .selected_text(t(dps_time_mode.label()))
                             .show_ui(ui, |ui| {
                                 ui.set_min_width(150.0);
                                 for option in DpsTimeMode::all() {
@@ -1132,19 +1237,19 @@ impl DpsApp {
                                         ui,
                                         &mut dps_time_mode,
                                         *option,
-                                        option.label(),
+                                        t(option.label()),
                                     );
                                 }
                             })
                             .response
-                            .on_hover_text(dps_time_mode.description());
+                            .on_hover_text(t(dps_time_mode.description()));
                         if dps_time_mode != self.dps_time_mode {
                             self.dps_time_mode = dps_time_mode;
                             self.character_hit_cache = HitDetailCache::default();
                             self.team_hit_cache = HitDetailCache::default();
                         }
                         ui.end_row();
-                        ui.label("穿透热键");
+                        ui.label(t("Passthrough Hotkey"));
                         let mut hotkey = self.passthrough_hotkey;
                         egui::ComboBox::from_id_salt("passthrough_hotkey")
                             .width(PASSTHROUGH_HOTKEY_COMBO_WIDTH)
@@ -1177,32 +1282,38 @@ impl DpsApp {
                     .num_columns(2)
                     .spacing([14.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("顶部");
+                        ui.label(t("Top"));
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut self.hud_config.show_title, "标题");
+                            ui.checkbox(&mut self.hud_config.show_title, t("Title"));
                             ui.checkbox(&mut self.hud_config.show_team_dps, "DPS");
-                            ui.checkbox(&mut self.hud_config.show_duration, "时间");
-                            ui.checkbox(&mut self.hud_config.show_total_damage, "总伤害");
-                            ui.checkbox(&mut self.hud_config.show_damage_taken, "受击");
+                            ui.checkbox(&mut self.hud_config.show_duration, t("Time"));
+                            ui.checkbox(&mut self.hud_config.show_total_damage, t("Total Damage"));
+                            ui.checkbox(&mut self.hud_config.show_damage_taken, t("Damage Taken"));
                         });
                         ui.end_row();
-                        ui.label("模块");
+                        ui.label(t("Modules"));
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut self.hud_config.show_character_rows, "角色排行");
-                            ui.checkbox(&mut self.hud_config.show_abyss_half, "深渊");
-                            ui.checkbox(&mut self.hud_config.show_passthrough_state, "穿透");
-                            ui.checkbox(&mut self.hud_config.show_mini_timeline, "曲线");
+                            ui.checkbox(
+                                &mut self.hud_config.show_character_rows,
+                                t("Character Ranking"),
+                            );
+                            ui.checkbox(&mut self.hud_config.show_abyss_half, t("Abyss"));
+                            ui.checkbox(
+                                &mut self.hud_config.show_passthrough_state,
+                                t("Passthrough"),
+                            );
+                            ui.checkbox(&mut self.hud_config.show_mini_timeline, t("Curve"));
                         });
                         ui.end_row();
-                        ui.label("预设");
+                        ui.label(t("Presets"));
                         ui.horizontal(|ui| {
-                            if ui.button("精简").clicked() {
+                            if ui.button(t("Minimal")).clicked() {
                                 self.hud_config = HudConfig::minimal();
                             }
-                            if ui.button("标准").clicked() {
+                            if ui.button(t("Standard")).clicked() {
                                 self.hud_config = HudConfig::default();
                             }
-                            if ui.button("详细").clicked() {
+                            if ui.button(t("Detailed")).clicked() {
                                 self.hud_config = HudConfig::detailed();
                             }
                         });
@@ -1212,31 +1323,31 @@ impl DpsApp {
     }
 
     fn settings_team_section(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("队伍数据")
+        egui::CollapsingHeader::new(t("Team Data"))
             .default_open(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui
-                        .button("导入 DPS 数据")
-                        .on_hover_text("导入队伍 DPS 数据（json），用于深渊通关预测")
+                        .button(t("Import DPS Data"))
+                        .on_hover_text(t("Import team DPS data (json) for abyss clear prediction"))
                         .clicked()
                     {
                         self.import_team_dps(ui.ctx());
                     }
                     if ui
-                        .button("导出队伍数据")
-                        .on_hover_text("导出当前队伍与深渊上下队伍的 DPS（json，不含封包）")
+                        .button(t("Export Team Data"))
+                        .on_hover_text(t("Export the current team and the abyss upper/lower teams' DPS (json, no packets)"))
                         .clicked()
                     {
                         self.export_team_dps(ui.ctx());
                     }
                 });
-                ui.small("导入/导出与场景无关，大世界与深渊均可使用");
+                ui.small(t("Import/export is scene-independent; works in both open world and abyss"));
             });
     }
 
     fn settings_capture_logs_section(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("抓包文件")
+        egui::CollapsingHeader::new(t("Capture Files"))
             .default_open(false)
             .show(ui, |ui| {
                 if self.capture_log_stats.is_none() {
@@ -1244,16 +1355,18 @@ impl DpsApp {
                 }
                 let stats = self.capture_log_stats.unwrap_or_default();
                 ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "原始抓包：{} 个 · {}",
-                        stats.count,
-                        capture_logs::format_bytes(stats.total_bytes)
+                    ui.label(tf(
+                        "Raw captures: {} · {}",
+                        &[
+                            &stats.count.to_string(),
+                            &capture_logs::format_bytes(stats.total_bytes),
+                        ],
                     ));
-                    if ui.button("刷新").clicked() {
+                    if ui.button(t("Refresh")).clicked() {
                         self.refresh_capture_log_stats();
                     }
                     if ui
-                        .add_enabled(stats.count > 0, egui::Button::new("清空"))
+                        .add_enabled(stats.count > 0, egui::Button::new(t("Clear")))
                         .clicked()
                     {
                         self.request_confirmation_for(
@@ -1262,17 +1375,19 @@ impl DpsApp {
                         );
                     }
                 });
-                ui.small("实时抓包会把原始帧写入 logs/nte_raw_*.pcapng；清空不影响统计与历史。");
+                ui.small(t("Live capture writes raw frames to logs/nte_raw_*.pcapng; clearing does not affect stats or history."));
             });
     }
 
     fn settings_abyss_section(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("深渊数值")
+        egui::CollapsingHeader::new(t("Abyss Values"))
             .default_open(true)
             .show(ui, |ui| {
                 if ui
-                    .button("打开深渊数值表")
-                    .on_hover_text("以独立窗口打开，便于与实时 DPS 并排查看")
+                    .button(t("Open Abyss Value Tables"))
+                    .on_hover_text(t(
+                        "Opens in a separate window so you can view it side by side with live DPS",
+                    ))
                     .clicked()
                 {
                     self.abyss_overview_open = true;
@@ -1289,14 +1404,17 @@ impl DpsApp {
         }
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(!self.resource_audit.loading, egui::Button::new("刷新检查"))
+                .add_enabled(
+                    !self.resource_audit.loading,
+                    egui::Button::new(t("Refresh Check")),
+                )
                 .clicked()
             {
                 self.request_resource_audit();
             }
             if self.resource_audit.loading {
                 ui.add(egui::Spinner::new().size(16.0));
-                ui.label("正在检查运行资源");
+                ui.label(t("Checking runtime resources"));
             } else if !self.resource_audit.message.is_empty() {
                 ui.label(
                     RichText::new(&self.resource_audit.message)
@@ -1304,7 +1422,7 @@ impl DpsApp {
                 );
             }
             if let Some(summary) = &self.resource_audit.summary
-                && ui.button("复制脱敏报告").clicked()
+                && ui.button(t("Copy Redacted Report")).clicked()
             {
                 ui.ctx().copy_text(summary.redacted_text());
             }
@@ -1316,7 +1434,8 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("等待资源检查结果").color(ui.visuals().weak_text_color()),
+                        RichText::new(t("Waiting for resource check results"))
+                            .color(ui.visuals().weak_text_color()),
                     );
                 },
             );
@@ -1325,21 +1444,21 @@ impl DpsApp {
         ui.columns(4, |columns| {
             compact_metric(
                 &mut columns[0],
-                "错误",
+                &t("Errors"),
                 summary.error_count().to_string(),
                 semantic_danger(self.dark_mode),
                 true,
             );
             compact_metric(
                 &mut columns[1],
-                "警告",
+                &t("Warnings"),
                 summary.warning_count().to_string(),
                 semantic_warning(self.dark_mode),
                 true,
             );
             compact_metric(
                 &mut columns[2],
-                "角色/技能",
+                &t("Characters/Skills"),
                 format!(
                     "{} / {}",
                     summary.counts.characters, summary.counts.skill_damage
@@ -1350,7 +1469,7 @@ impl DpsApp {
             let abyss_reaction_color = columns[3].visuals().text_color();
             compact_metric(
                 &mut columns[3],
-                "深渊/反应",
+                &t("Abyss/Reactions"),
                 format!(
                     "{} / {}",
                     summary.counts.abyss_monsters, summary.counts.reactions
@@ -1361,47 +1480,47 @@ impl DpsApp {
         });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label("等级");
+            ui.label(t("Level"));
             egui::ComboBox::from_id_salt("resource_audit_severity_filter")
                 .width(120.0)
-                .selected_text(self.resource_audit.severity_filter.label())
+                .selected_text(t(self.resource_audit.severity_filter.label()))
                 .show_ui(ui, |ui| {
                     stable_popup_selectable_value(
                         ui,
                         &mut self.resource_audit.severity_filter,
                         ResourceAuditSeverityFilter::All,
-                        ResourceAuditSeverityFilter::All.label(),
+                        t(ResourceAuditSeverityFilter::All.label()),
                     );
                     stable_popup_selectable_value(
                         ui,
                         &mut self.resource_audit.severity_filter,
                         ResourceAuditSeverityFilter::Error,
-                        ResourceAuditSeverityFilter::Error.label(),
+                        t(ResourceAuditSeverityFilter::Error.label()),
                     );
                     stable_popup_selectable_value(
                         ui,
                         &mut self.resource_audit.severity_filter,
                         ResourceAuditSeverityFilter::Warning,
-                        ResourceAuditSeverityFilter::Warning.label(),
+                        t(ResourceAuditSeverityFilter::Warning.label()),
                     );
                 });
-            ui.label("分类");
+            ui.label(t("Category"));
             egui::ComboBox::from_id_salt("resource_audit_category_filter")
                 .width(120.0)
-                .selected_text(self.resource_audit.category_filter.label())
+                .selected_text(t(self.resource_audit.category_filter.label()))
                 .show_ui(ui, |ui| {
                     stable_popup_selectable_value(
                         ui,
                         &mut self.resource_audit.category_filter,
                         ResourceAuditCategoryFilter::All,
-                        ResourceAuditCategoryFilter::All.label(),
+                        t(ResourceAuditCategoryFilter::All.label()),
                     );
                     for category in ResourceAuditCategory::all() {
                         stable_popup_selectable_value(
                             ui,
                             &mut self.resource_audit.category_filter,
                             ResourceAuditCategoryFilter::Category(*category),
-                            category.label(),
+                            t(category.label()),
                         );
                     }
                 });
@@ -1419,7 +1538,7 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("当前筛选下没有资源缺口")
+                        RichText::new(t("No resource gaps under the current filter"))
                             .color(ui.visuals().weak_text_color()),
                     );
                 },
@@ -1450,40 +1569,40 @@ impl DpsApp {
     }
 
     pub(crate) fn diagnostics_contents_inner(&mut self, ui: &mut egui::Ui) {
-        egui::CollapsingHeader::new("采集环境")
+        egui::CollapsingHeader::new(t("Capture Environment"))
             .default_open(true)
             .show(ui, |ui| {
                 egui::Grid::new("diagnostics_environment")
                     .num_columns(2)
                     .spacing([14.0, 5.0])
                     .show(ui, |ui| {
-                        ui.label("网卡");
+                        ui.label(t("NIC"));
                         let device_label = self
                             .devices
                             .get(self.selected_device)
                             .map(|device| {
                                 if device.description.is_empty() {
-                                    device.name.as_str()
+                                    device.name.clone()
                                 } else {
-                                    device.description.as_str()
+                                    device.description.clone()
                                 }
                             })
-                            .unwrap_or("未检测到");
+                            .unwrap_or_else(|| t("Not detected"));
                         let mode_suffix = if self.manual_capture_device.is_some() {
-                            "（手动）"
+                            t("(manual)")
                         } else {
-                            "（自动）"
+                            t("(auto)")
                         };
                         ui.monospace(format!("{device_label}{mode_suffix}"));
                         ui.end_row();
-                        ui.label("本机 IP");
+                        ui.label(t("Local IP"));
                         ui.monospace(if self.local_ip.is_empty() {
-                            "未检测到"
+                            t("Not detected")
                         } else {
-                            &self.local_ip
+                            self.local_ip.clone()
                         });
                         ui.end_row();
-                        ui.label("游戏连接");
+                        ui.label(t("Game Connection"));
                         if let Some(network) = &self.game_network {
                             ui.monospace(format!(
                                 "PID {}  {} -> {}:{}",
@@ -1493,52 +1612,55 @@ impl DpsApp {
                                 network.remote_port
                             ));
                         } else {
-                            ui.monospace("未检测到");
+                            ui.monospace(t("Not detected"));
                         }
                         ui.end_row();
-                        ui.label("诊断");
-                        ui.monospace(self.diagnostic.as_deref().unwrap_or("正常"));
+                        ui.label(t("Diagnostics"));
+                        ui.monospace(self.diagnostic.clone().unwrap_or_else(|| t("Normal")));
                         ui.end_row();
-                        ui.label("实际 BPF");
-                        ui.monospace(self.active_capture_filter.as_deref().unwrap_or_else(|| {
+                        ui.label(t("Actual BPF"));
+                        ui.monospace(self.active_capture_filter.clone().unwrap_or_else(|| {
                             if self.capture.is_some() {
-                                "正在确定"
+                                t("Determining")
                             } else {
-                                "未启动"
+                                t("Not started")
                             }
                         }));
                         ui.end_row();
-                        ui.label("原始抓包");
+                        ui.label(t("Raw Capture"));
                         let raw_capture_label = self.raw_capture.as_ref().map_or_else(
-                            || "无原始抓包".to_owned(),
+                            || t("No raw capture"),
                             |capture| {
                                 let file = capture.path().map_or_else(
-                                    || "写入不可用".to_owned(),
+                                    || t("Write unavailable"),
                                     |path| {
                                         path.file_name()
                                             .and_then(|name| name.to_str())
-                                            .unwrap_or("原始抓包文件")
-                                            .to_owned()
+                                            .map(|name| name.to_owned())
+                                            .unwrap_or_else(|| t("Raw capture file"))
                                     },
                                 );
-                                format!("{} 包 · {file}", capture.packet_count())
+                                tf(
+                                    "{} packets · {}",
+                                    &[&capture.packet_count().to_string(), &file],
+                                )
                             },
                         );
                         ui.monospace(raw_capture_label);
                         ui.end_row();
                     });
                 ui.horizontal(|ui| {
-                    if ui.button("重新检测").clicked()
+                    if ui.button(t("Re-detect")).clicked()
                         && let Err(error) = self.refresh_game_network()
                     {
                         self.set_last_error_in(ui.ctx(), error, Some(ErrorAction::RefreshNetwork));
                     }
-                    ui.label("受击记录已启用");
+                    ui.label(t("Damage-taken logging enabled"));
                     let can_export_json = self.capture.is_none()
                         && self.replay_thread.is_none()
                         && (!self.state.hits.is_empty() || !self.state.packets.is_empty());
                     if ui
-                        .add_enabled(can_export_json, egui::Button::new("导出解析 JSON"))
+                        .add_enabled(can_export_json, egui::Button::new(t("Export Parsed JSON")))
                         .clicked()
                     {
                         self.export_capture_info(ui.ctx());
@@ -1549,39 +1671,39 @@ impl DpsApp {
                             .as_ref()
                             .is_some_and(|capture| capture.packet_count() > 0);
                     if ui
-                        .add_enabled(can_export_raw, egui::Button::new("另存完整 PCAPNG"))
+                        .add_enabled(can_export_raw, egui::Button::new(t("Save Full PCAPNG As")))
                         .clicked()
                     {
                         self.export_raw_capture(ui.ctx());
                     }
                 });
                 ui.horizontal(|ui| {
-                    if ui.button("导入 pcapng").clicked() {
+                    if ui.button(t("Import pcapng")).clicked() {
                         self.request_debug_import(ui.ctx(), DebugImportKind::Pcapng);
                     }
-                    if ui.button("导入抓包 JSON").clicked() {
+                    if ui.button(t("Import Capture JSON")).clicked() {
                         self.request_debug_import(ui.ctx(), DebugImportKind::CaptureJson);
                     }
-                    ui.small("导入会清空当前统计，并使用与实时抓包相同的解析流程");
+                    ui.small(t("Importing clears the current stats and uses the same parse pipeline as live capture"));
                 });
             });
         ui.add_space(8.0);
-        egui::CollapsingHeader::new("自动诊断向导")
+        egui::CollapsingHeader::new(t("Auto-diagnostics Wizard"))
             .default_open(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui
-                        .add_enabled(!self.diagnostics_running, egui::Button::new("运行诊断"))
+                        .add_enabled(!self.diagnostics_running, egui::Button::new(t("Run Diagnostics")))
                         .clicked()
                     {
                         self.request_capture_diagnostics();
                     }
                     if self.diagnostics_running {
                         ui.add(egui::Spinner::new().size(16.0));
-                        ui.label("正在检查 Npcap、游戏连接和当前抓包状态");
+                        ui.label(t("Checking Npcap, the game connection and the current capture state"));
                     }
                     if let Some(report) = &self.diagnostics_report
-                        && ui.button("复制脱敏报告").clicked()
+                        && ui.button(t("Copy Redacted Report")).clicked()
                     {
                         ui.ctx().copy_text(report.redacted_text());
                     }
@@ -1591,7 +1713,7 @@ impl DpsApp {
                     draw_diagnostic_report(ui, report, self.dark_mode);
                 } else {
                     ui.label(
-                        RichText::new("点击运行诊断后，会逐项检查采集环境并给出下一步建议")
+                        RichText::new(t("After you click Run Diagnostics, it checks the capture environment step by step and suggests next steps"))
                             .color(ui.visuals().weak_text_color()),
                     );
                 }
@@ -1604,12 +1726,12 @@ impl DpsApp {
     pub(crate) fn debug_packets_contents(&mut self, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.debug_only_hits, "仅显示命中包");
-            ui.label("搜索");
+            ui.checkbox(&mut self.debug_only_hits, t("Hit packets only"));
+            ui.label(t("Search"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.debug_search)
                     .desired_width(260.0)
-                    .hint_text("IP / ID / 协议名称"),
+                    .hint_text(t("IP / ID / protocol name")),
             );
             ui.separator();
             ui.monospace(format!(
@@ -1685,7 +1807,7 @@ impl DpsApp {
                             );
                         }
                         ui.label(
-                            RichText::new("自动解析")
+                            RichText::new(t("Auto Parse"))
                                 .strong()
                                 .color(theme_accent(self.dark_mode)),
                         );
@@ -1703,31 +1825,31 @@ impl DpsApp {
 
     pub(crate) fn debug_characters_contents(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label("新增 ID");
+            ui.label(t("New ID"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.character_editor.new_id)
                     .desired_width(100.0)
-                    .hint_text("例如 1080"),
+                    .hint_text(t("e.g. 1080")),
             );
-            if ui.button("新增").clicked()
+            if ui.button(t("Add")).clicked()
                 && let Err(error) = self.character_editor.start_new()
             {
                 self.character_editor.message = error;
             }
-            if ui.button("重新载入").clicked() {
+            if ui.button(t("Reload")).clicked() {
                 let path = data_root().join(CHARACTER_DATA_PATH);
                 match CharacterEditorState::load(&path) {
                     Ok(editor) => {
                         self.character_editor = editor;
-                        self.status = "已重新载入 characters.json".to_owned();
+                        self.status = t("Reloaded characters.json");
                     }
                     Err(error) => self.character_editor.message = error,
                 }
             }
             ui.separator();
-            ui.label(format!(
-                "共 {} 条",
-                self.character_editor.character_ids().len()
+            ui.label(tf(
+                "Total {} entries",
+                &[&self.character_editor.character_ids().len().to_string()],
             ));
         });
         if !self.character_editor.message.is_empty() {
@@ -1744,11 +1866,11 @@ impl DpsApp {
             columns[0].set_min_width(240.0);
             columns[0].set_max_width(320.0);
             columns[0].horizontal(|ui| {
-                ui.label("搜索");
+                ui.label(t("Search"));
                 ui.add(
                     egui::TextEdit::singleline(&mut self.character_editor.search)
                         .desired_width(180.0)
-                        .hint_text("ID / 名称 / 属性"),
+                        .hint_text(t("ID / name / attribute")),
                 );
             });
             columns[0].separator();
@@ -1812,7 +1934,7 @@ impl DpsApp {
                         if clicked {
                             if self.character_editor.dirty {
                                 self.character_editor.message =
-                                    "请先保存当前修改，再切换角色".to_owned();
+                                    t("Save the current changes before switching characters");
                             } else {
                                 self.character_editor.select(&id);
                             }
@@ -1821,22 +1943,24 @@ impl DpsApp {
                 });
 
             columns[1].heading(if self.character_editor.selected_id.is_some() {
-                "编辑角色"
+                t("Edit Character")
             } else if self.character_editor.form.id.is_empty() {
-                "选择或新增角色"
+                t("Select or add a character")
             } else {
-                "新增角色"
+                t("Add Character")
             });
             columns[1].separator();
             if self.character_editor.form.id.is_empty() {
-                columns[1].label("从左侧选择一条记录，或输入新 ID 后点击“新增”。");
+                columns[1].label(t(
+                    "Select a record on the left, or enter a new ID and click Add.",
+                ));
                 return;
             }
             egui::Grid::new("character_editor_form")
                 .num_columns(2)
                 .spacing([12.0, 7.0])
                 .show(&mut columns[1], |ui| {
-                    ui.label("角色 ID");
+                    ui.label(t("Character ID"));
                     ui.add_enabled(
                         self.character_editor.selected_id.is_none(),
                         egui::TextEdit::singleline(&mut self.character_editor.form.id),
@@ -1844,13 +1968,13 @@ impl DpsApp {
                     ui.end_row();
                     character_text_field(
                         ui,
-                        "中文名",
+                        &t("Chinese Name"),
                         &mut self.character_editor.form.name_zh,
                         &mut self.character_editor.dirty,
                     );
                     character_text_field(
                         ui,
-                        "英文名",
+                        &t("English Name"),
                         &mut self.character_editor.form.name_en,
                         &mut self.character_editor.dirty,
                     );
@@ -1860,14 +1984,14 @@ impl DpsApp {
                         &mut self.character_editor.form.codename,
                         &mut self.character_editor.dirty,
                     );
-                    ui.label("属性");
+                    ui.label(t("Attribute"));
                     let previous_attribute = self.character_editor.form.attribute.clone();
                     egui::ComboBox::from_id_salt("character_attribute")
                         .width(CHARACTER_ATTRIBUTE_COMBO_WIDTH)
                         .selected_text(if self.character_editor.form.attribute.is_empty() {
-                            "未设置"
+                            t("Not set")
                         } else {
-                            self.character_editor.form.attribute.as_str()
+                            self.character_editor.form.attribute.clone()
                         })
                         .show_ui(ui, |ui| {
                             ui.set_min_width(CHARACTER_ATTRIBUTE_COMBO_WIDTH);
@@ -1876,7 +2000,7 @@ impl DpsApp {
                                 ui,
                                 &mut self.character_editor.form.attribute,
                                 String::new(),
-                                "未设置",
+                                t("Not set"),
                             );
                             for attribute in CHARACTER_ATTRIBUTES {
                                 stable_popup_selectable_value(
@@ -1891,7 +2015,7 @@ impl DpsApp {
                         self.character_editor.dirty = true;
                     }
                     ui.end_row();
-                    ui.label("已验证");
+                    ui.label(t("Verified"));
                     if ui
                         .checkbox(&mut self.character_editor.form.verified, "")
                         .changed()
@@ -1901,13 +2025,13 @@ impl DpsApp {
                     ui.end_row();
                     character_text_field(
                         ui,
-                        "颜色",
+                        &t("Color"),
                         &mut self.character_editor.form.color,
                         &mut self.character_editor.dirty,
                     );
                     character_text_field(
                         ui,
-                        "头像路径",
+                        &t("Avatar Path"),
                         &mut self.character_editor.form.avatar,
                         &mut self.character_editor.dirty,
                     );
@@ -1917,20 +2041,23 @@ impl DpsApp {
                 if ui
                     .add_enabled(
                         self.character_editor.dirty,
-                        egui::Button::new("保存到 characters.json"),
+                        egui::Button::new(t("Save to characters.json")),
                     )
                     .clicked()
                 {
                     self.save_character_editor(ui.ctx());
                 }
                 if ui
-                    .add_enabled(self.character_editor.dirty, egui::Button::new("取消修改"))
+                    .add_enabled(
+                        self.character_editor.dirty,
+                        egui::Button::new(t("Cancel Changes")),
+                    )
                     .clicked()
                 {
                     self.character_editor.cancel_edit();
                 }
                 if self.character_editor.dirty {
-                    ui.label("有未保存修改");
+                    ui.label(t("Unsaved changes"));
                 }
             });
         });
@@ -1965,13 +2092,19 @@ impl DpsApp {
         let text = match serde_json::to_string_pretty(&self.character_editor.document) {
             Ok(text) => format!("{text}\n"),
             Err(error) => {
-                self.character_editor.message = format!("角色表序列化失败: {error}");
+                self.character_editor.message = tf(
+                    "Character table serialization failed: {}",
+                    &[&error.to_string()],
+                );
                 self.character_editor.dirty = true;
                 return;
             }
         };
         if let Err(error) = atomic_write_text(&path, &text) {
-            self.character_editor.message = format!("保存 {} 失败: {error}", path.display());
+            self.character_editor.message = tf(
+                "Failed to save {}: {}",
+                &[&path.display().to_string(), &error],
+            );
             self.character_editor.dirty = true;
             return;
         }
@@ -1979,13 +2112,16 @@ impl DpsApp {
             Ok(characters) => {
                 self.avatar_textures = load_character_avatars(ctx, &data_root(), &characters);
                 self.characters = Arc::new(characters);
-                self.character_editor.message =
-                    format!("ID {id} 已保存并重新加载；实时抓包中的映射将在下次启动时更新");
-                self.status = "characters.json 已保存".to_owned();
+                self.character_editor.message = tf(
+                    "ID {} saved and reloaded; the live-capture mapping updates on next startup",
+                    &[&id],
+                );
+                self.status = t("characters.json saved");
                 self.clear_last_error();
             }
             Err(error) => {
-                self.character_editor.message = format!("文件已写入，但重新加载失败: {error}");
+                self.character_editor.message =
+                    tf("File written, but reload failed: {}", &[&error.to_string()]);
                 self.character_editor.dirty = true;
             }
         }
@@ -2006,7 +2142,7 @@ impl DpsApp {
         let (title, message, confirm_label) = confirmation_content(action);
         let mut confirmed = false;
         let mut cancelled = false;
-        egui::Window::new(title)
+        egui::Window::new(t(title))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -2014,10 +2150,10 @@ impl DpsApp {
                 ui.label(message);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button(confirm_label).clicked() {
+                    if ui.button(t(confirm_label)).clicked() {
                         confirmed = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if ui.button(t("Cancel")).clicked() {
                         cancelled = true;
                     }
                 });
@@ -2041,7 +2177,7 @@ impl DpsApp {
         let action = self.last_error_action;
         let mut run_action = None;
         let mut close = false;
-        egui::Window::new("错误")
+        egui::Window::new(t("Error"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -2050,11 +2186,11 @@ impl DpsApp {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if let Some(action) = action
-                        && ui.button(error_action_label(action)).clicked()
+                        && ui.button(t(error_action_label(action))).clicked()
                     {
                         run_action = Some(action);
                     }
-                    if ui.button("关闭").clicked() {
+                    if ui.button(t("Close")).clicked() {
                         close = true;
                     }
                 });
@@ -2112,12 +2248,15 @@ fn draw_combat_segment_chip(
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.label(
-                RichText::new(format!(
-                    "段{index} · {}~{} · {} · {} DPS",
-                    format_timeline_seconds(segment.start_offset),
-                    format_timeline_seconds(segment.end_offset),
-                    format_number(segment.total_damage),
-                    format_number(segment.dps),
+                RichText::new(tf(
+                    "Seg {} · {}~{} · {} · {} DPS",
+                    &[
+                        &index.to_string(),
+                        &format_timeline_seconds(segment.start_offset),
+                        &format_timeline_seconds(segment.end_offset),
+                        &format_number(segment.total_damage),
+                        &format_number(segment.dps),
+                    ],
                 ))
                 .size(11.0),
             );

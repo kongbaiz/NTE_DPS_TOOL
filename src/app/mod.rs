@@ -42,9 +42,10 @@ use crate::platform::window_attributes::{
 use crate::storage::capture_logs::{self, CaptureLogStats};
 use crate::storage::config::{
     self, DpsTimeMode, HudConfig, PassthroughHotkey, TIMELINE_BUCKET_SECONDS_MAX,
-    TIMELINE_BUCKET_SECONDS_MIN, TimelineDpsViewMode, UiConfig, WINDOW_SCALE_MAX, WINDOW_SCALE_MIN,
+    TIMELINE_BUCKET_SECONDS_MIN, TimelineDpsViewMode, UiConfig,
 };
 use crate::storage::history::{self, HistoryComparison, HistoryRecord};
+use crate::storage::i18n::{self, Language, t, tf};
 use crate::storage::io_util::{atomic_write_file, atomic_write_text};
 use crate::storage::resource::{read_resource_bytes, read_resource_text};
 use crate::support::character_editor::{
@@ -79,11 +80,10 @@ const MAIN_TITLE_BAR_HEIGHT: f32 = 40.0;
 const MAIN_CONTROLS_SINGLE_ROW_HEIGHT: f32 = 34.0;
 const TITLE_BAR_BUTTON_SIZE: egui::Vec2 = egui::vec2(28.0, 28.0);
 const TITLE_BAR_TOGGLE_SIZE: egui::Vec2 = egui::vec2(64.0, 28.0);
-/// Default (100%) inner sizes for each window. The title-bar −／＋ stepper scales
-/// these proportionally instead of free drag-resize, which keeps the aspect ratio
-/// and avoids the Windows resize crash (egui #4061 / #4091). `main` is also used
-/// by `main.rs` for the initial root viewport size.
-pub(crate) const MAIN_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(520.0, 420.0);
+/// Default inner size each window opens at before the user has dragged it (and no persisted size
+/// exists). `main` is also used by `main.rs` for the initial root viewport size. Windows are now
+/// freely resizable from their edges (`window_resize_grips`); these are just the starting sizes.
+pub(crate) const MAIN_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(600.0, 420.0);
 const ABYSS_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(1040.0, 720.0);
 const HIT_DETAIL_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(1120.0, 760.0);
 const TEAM_HIT_DETAIL_WINDOW_BASE_SIZE: egui::Vec2 = egui::vec2(980.0, 660.0);
@@ -95,7 +95,6 @@ const CHARACTER_EDITOR_AVATAR_SIZE: f32 = 48.0;
 /// Width the HUD window shrinks to; height is computed per row count so the
 /// window hugs the readout with no empty translucent area.
 const HUD_WINDOW_WIDTH: f32 = 380.0;
-const WINDOW_SCALE_STEP: f32 = 0.1;
 const UI_CONFIG_SAVE_DELAY: Duration = Duration::from_millis(350);
 const UI_CONFIG_SAVE_RETRY_DELAY: Duration = Duration::from_secs(2);
 const STATUS_TOAST_DURATION: Duration = Duration::from_secs(4);
@@ -111,11 +110,12 @@ pub(crate) enum DebugImportKind {
 }
 
 impl DebugImportKind {
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     fn label(self) -> &'static str {
         match self {
             Self::Pcapng => "PCAPNG",
-            Self::CaptureJson => "抓包 JSON",
-            Self::EncryptedIni => "加密 INI",
+            Self::CaptureJson => "Capture JSON",
+            Self::EncryptedIni => "Encrypted INI",
         }
     }
 }
@@ -374,8 +374,12 @@ struct EncryptedIniEditorState {
 
 impl EncryptedIniEditorState {
     fn load(path: PathBuf) -> Result<Self, String> {
-        let encrypted = std::fs::read_to_string(&path)
-            .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
+        let encrypted = std::fs::read_to_string(&path).map_err(|error| {
+            tf(
+                "Cannot read {}: {}",
+                &[&path.display().to_string(), &error.to_string()],
+            )
+        })?;
         let (key, plaintext, records, line_ending, final_newline) =
             parse_encrypted_ini_text(&encrypted)?;
         let encrypted_lines = records.len();
@@ -394,16 +398,18 @@ impl EncryptedIniEditorState {
             search_cache_query: String::new(),
             search_matches_dirty: false,
             dirty: false,
-            message: format!("已解析 {encrypted_lines} 行密文，使用 {} key", key.label()),
+            message: tf(
+                "Parsed {} lines of ciphertext using the {} key",
+                &[&encrypted_lines.to_string(), &t(key.label())],
+            ),
             layout_cache: EncryptedIniLayoutCache::default(),
         })
     }
 
     fn display_path(&self) -> String {
-        self.path.as_ref().map_or_else(
-            || "未打开文件".to_owned(),
-            |path| path.display().to_string(),
-        )
+        self.path
+            .as_ref()
+            .map_or_else(|| t("No file open"), |path| path.display().to_string())
     }
 
     fn refresh_search_matches(&mut self) {
@@ -638,11 +644,12 @@ enum ResourceAuditSeverityFilter {
 }
 
 impl ResourceAuditSeverityFilter {
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     fn label(self) -> &'static str {
         match self {
-            Self::All => "全部等级",
-            Self::Error => "仅错误",
-            Self::Warning => "仅警告",
+            Self::All => "All Levels",
+            Self::Error => "Errors Only",
+            Self::Warning => "Warnings Only",
         }
     }
 
@@ -663,9 +670,10 @@ enum ResourceAuditCategoryFilter {
 }
 
 impl ResourceAuditCategoryFilter {
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     fn label(self) -> &'static str {
         match self {
-            Self::All => "全部分类",
+            Self::All => "All Categories",
             Self::Category(category) => category.label(),
         }
     }
@@ -838,6 +846,9 @@ pub struct DpsApp {
     character_editor: CharacterEditorState,
     encrypted_ini_editor: EncryptedIniEditorState,
     paused: bool,
+    /// Active UI language. Mirrors `UiConfig::language`; the settings dropdown writes
+    /// it and calls [`crate::storage::i18n::set_language`] to swap the live locale.
+    language: Language,
     dark_mode: bool,
     always_on_top: bool,
     mouse_passthrough: bool,
@@ -845,13 +856,18 @@ pub struct DpsApp {
     opacity: f32,
     applied_opacity: Option<f32>,
     corner_applied_hwnd: Option<isize>,
-    // Per-window proportional size factor (1.0 = the window's default size). Set
-    // by the title-bar −／＋ stepper and persisted in the UI config.
-    main_window_scale: f32,
-    abyss_window_scale: f32,
-    hit_detail_window_scale: f32,
-    team_hit_detail_window_scale: f32,
-    console_window_scale: f32,
+    // Live inner size (logical points) of each window, updated every frame from the viewport's
+    // `screen_rect` while it is open and persisted (debounced) so the window reopens at the size
+    // the user last dragged it to. Replaces the retired −／＋ scale factor.
+    main_window_size: egui::Vec2,
+    abyss_window_size: egui::Vec2,
+    hit_detail_window_size: egui::Vec2,
+    team_hit_detail_window_size: egui::Vec2,
+    console_window_size: egui::Vec2,
+    /// Frames to skip main-window size tracking after a programmatic `InnerSize` (HUD exit), while
+    /// Windows applies the resize asynchronously and `content_rect` still reports the old HUD size.
+    /// Without this, tracking would clobber `main_window_size` with the small HUD size.
+    main_size_restore_frames: u8,
     style_dark_mode_applied: Option<bool>,
     opacity_reapply_frames: u8,
     theme_transition_from: Option<Color32>,
@@ -939,8 +955,8 @@ impl eframe::App for DpsApp {
         }
 
         // Shrink the window to hug the HUD on entry (so there's no big translucent
-        // rectangle); restore the normal size on exit. Programmatic `InnerSize` is
-        // the safe discrete resize — see `window_scale_stepper`.
+        // rectangle); restore the tracked normal size on exit. These are discrete programmatic
+        // `InnerSize` commands, distinct from the interactive edge-drag resize (`window_resize_grips`).
         if self.hud_mode {
             let rows = self.hud_visible_row_count();
             let show_title = !self.mouse_passthrough;
@@ -961,10 +977,11 @@ impl eframe::App for DpsApp {
                 self.hud_size_key = Some(size_key);
             }
         } else if self.hud_size_key.take().is_some() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(scaled_window_size(
-                MAIN_WINDOW_BASE_SIZE,
-                self.main_window_scale,
-            )));
+            // Leaving HUD mode: restore the normal window to the size the user last dragged it to.
+            // Suppress size tracking until Windows applies the resize, so the transient HUD size is
+            // not mistaken for a user drag and written back over `main_window_size`.
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(self.main_window_size));
+            self.main_size_restore_frames = 8;
         }
         self.update_status_toast(ctx);
     }
@@ -1039,6 +1056,17 @@ impl eframe::App for DpsApp {
                 }
             });
 
+        // Native edge/corner drag-resize for the borderless main window, plus tracking its size so
+        // it restores on the next launch. Skipped in HUD mode, where the window auto-hugs the HUD.
+        if !self.hud_mode {
+            if self.main_size_restore_frames > 0 {
+                self.main_size_restore_frames -= 1;
+            } else {
+                track_window_size(&ctx, &mut self.main_window_size);
+            }
+            window_resize_grips(&ctx);
+        }
+
         if self.console_open {
             self.console_panel(&ctx);
         }
@@ -1062,7 +1090,7 @@ impl eframe::App for DpsApp {
                         .inner_margin(egui::Margin::symmetric(28, 20))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("松开以导入 PCAPNG / JSON")
+                                RichText::new(t("Release to import PCAPNG / JSON"))
                                     .size(18.0)
                                     .strong()
                                     .color(theme_accent(self.dark_mode)),
@@ -1100,8 +1128,7 @@ mod tests {
         follow_up_damage_digit_key_for_hit, hit_detail_filter_available, hit_type_label,
         is_party_member_row, mixed_damage_digit_key, parse_hex_color, qte_type_filter_label,
         reaction_text_key_for_hit, reaction_text_key_from_trigger_attack_type, resolve_cached_hit,
-        scaled_window_size, skill_display_name, snapshot_team_from_stats,
-        summarize_qte_type_filters,
+        skill_display_name, snapshot_team_from_stats, summarize_qte_type_filters,
     };
     use crate::engine::model::{
         CharacterInfo, CharacterStats, CombatSessionSkillSummary, CombatState, Hit, TeamDps,
@@ -1589,22 +1616,6 @@ mod tests {
         assert!(export.single.is_none());
         assert_eq!(export.upper.unwrap().members[0].id, 10);
         assert_eq!(export.lower.unwrap().members[0].id, 20);
-    }
-
-    #[test]
-    fn scaled_window_size_applies_saved_scale() {
-        assert_eq!(
-            scaled_window_size(egui::vec2(520.0, 420.0), 1.5),
-            egui::vec2(780.0, 630.0)
-        );
-        assert_eq!(
-            scaled_window_size(egui::vec2(101.0, 99.0), 1.25),
-            egui::vec2(126.0, 124.0)
-        );
-        assert_eq!(
-            scaled_window_size(egui::vec2(520.0, 420.0), f32::NAN),
-            egui::vec2(520.0, 420.0)
-        );
     }
 
     #[test]

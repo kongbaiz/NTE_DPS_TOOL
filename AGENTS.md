@@ -32,6 +32,7 @@
 - `src/platform/window_attributes.rs`：Win32 窗口圆角、透明度和进程窗口属性处理。平台相关 `unsafe` 必须有 `SAFETY:` 注释。
 - `src/platform/hotkey.rs`、`src/platform/file_drop.rs`：全局穿透热键与原生文件拖放桥接，平台相关边界同上。
 - `src/storage/config.rs`：UI 配置加载、保存、迁移与净化。新增字段必须有默认值和兼容旧 JSON 的行为。
+- `src/storage/i18n.rs`：UI 本地化。源码统一以英文字符串为键；`res/languages/<code>.json` 提供“英文键→本地化值”覆盖表（英文无需文件）。`t`/`tf` 做查表与占位符替换，缺失键回退到英文键本身。语言存于 `UiConfig::language`，入口在控制台设置页下拉框。
 - `src/storage/history.rs`：本地脱敏战斗历史库的结构、读写、迁移与裁剪。
 - `src/storage/io_util.rs`：原子写文件等通用 I/O 辅助。不得依赖 UI。
 - `src/storage/resource.rs`：内嵌/外置运行资源的字节与文本读取。
@@ -89,7 +90,7 @@ cargo test -- --ignored
 - egui 是 immediate mode：UI 函数只做渲染、轻量状态更新和事件派发。
 - 长列表、命中详情和技能汇总必须使用缓存、分页或预算控制；不得移除现有 UI 事件预算常量的保护意图。
 - 从后台线程改变状态后，应通过 `Context::request_repaint()` 触发刷新。
-- UI 文案保持中文，术语沿用现有口径：深渊、上下行线、创生花、覆纹、延滞、黯星、浊燃、浸染、盈蓄等不得随意改名。
+- UI 支持中英双语（默认简体中文，可在控制台设置页切换）。新增用户可见文案必须以英文为键调用 `t("...")`/`tf("...", &[...])`，并在 `res/languages/zh-CN.json` 补上对应中文值；不要再硬编码裸中文字面量。游戏内专用名词优先取自 `NTE_Assets` 官方本地化，匹配不到则保留原值；深渊、上下行线、创生花、覆纹、延滞、黯星、浊燃、浸染、盈蓄等术语的既有中文口径不得随意改名（这些是 `zh-CN.json` 的值，不是键）。引擎/模型层仅返回稳定英文键或原始数据，翻译只在 UI 展示点进行。
 - UI 改动需说明人工验证范围；涉及窗口透明、置顶、穿透、快捷键或 debug 面板时必须单独列出。
 
 ## 抓包与解析规范

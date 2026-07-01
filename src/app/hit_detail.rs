@@ -45,29 +45,33 @@ pub(crate) fn hit_detail_hover_text(
 ) -> String {
     let mut lines = Vec::new();
     if include_character {
-        lines.push(format!("{} · {}", hit.char_name, hit_type_label(hit)));
+        lines.push(format!("{} · {}", hit.char_name, t(hit_type_label(hit))));
     } else {
-        lines.push(hit_type_label(hit).to_owned());
+        lines.push(t(hit_type_label(hit)));
     }
     if hit.follow_up_damage > 0.0 {
-        lines.push(format!(
-            "伤害：{} + {}",
-            format_number(hit.damage),
-            format_number(hit.follow_up_damage)
+        lines.push(tf(
+            "Damage: {} + {}",
+            &[
+                &format_number(hit.damage),
+                &format_number(hit.follow_up_damage),
+            ],
         ));
     } else {
-        lines.push(format!("伤害：{}", format_number(hit.damage)));
+        lines.push(tf("Damage: {}", &[&format_number(hit.damage)]));
     }
     if hit.target_max_hp > 0.0 {
-        lines.push(format!(
-            "目标 HP：{} / {}  {:.1}%",
-            format_number(hit.target_hp_after),
-            format_number(hit.target_max_hp),
-            hit.target_hp_percent
+        lines.push(tf(
+            "Target HP: {} / {}  {}%",
+            &[
+                &format_number(hit.target_hp_after),
+                &format_number(hit.target_max_hp),
+                &format!("{:.1}", hit.target_hp_percent),
+            ],
         ));
     }
     if hit.direction == "unknown" {
-        lines.push("方向尚未确认".to_owned());
+        lines.push(t("Direction not yet confirmed"));
     } else if let Some(ability_name) = hit.ability_name.as_deref() {
         lines.push(format!("GA：{ability_name}"));
     }
@@ -191,13 +195,13 @@ pub(crate) fn draw_qte_damage_summary(
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         ui.spacing_mut().item_spacing.y = 6.0;
-        ui.add_sized(
-            egui::vec2(92.0, 36.0),
+        ui.add(
             egui::Label::new(
-                RichText::new("环合伤害")
+                RichText::new(t("Reaction Damage"))
                     .strong()
                     .color(ui.visuals().weak_text_color()),
-            ),
+            )
+            .selectable(false),
         );
         for summary in qte_summaries {
             qte_damage_summary_chip(ui, summary, total_damage, selected);
@@ -284,10 +288,13 @@ pub(crate) fn qte_damage_summary_chip(
         },
     );
     if response
-        .on_hover_text(format!(
-            "{} 次 · 总伤害 {} · 占总伤害 {share:.1}%",
-            summary.hits,
-            format_number(summary.damage)
+        .on_hover_text(tf(
+            "{} hits · total damage {} · {}% of total",
+            &[
+                &summary.hits.to_string(),
+                &format_number(summary.damage),
+                &format!("{share:.1}"),
+            ],
         ))
         .clicked()
     {
@@ -452,7 +459,7 @@ pub(crate) fn draw_skill_damage_summary(
     dark_mode: bool,
 ) {
     egui::CollapsingHeader::new(
-        RichText::new("招式输出构成")
+        RichText::new(t("Move Output Composition"))
             .strong()
             .color(shadcn_foreground(dark_mode)),
     )
@@ -466,14 +473,14 @@ pub(crate) fn draw_skill_damage_summary(
         ui.painter().text(
             header_rect.left_center() + egui::vec2(10.0, 0.0),
             egui::Align2::LEFT_CENTER,
-            "具体招式",
+            t("Specific Move"),
             header_font.clone(),
             header_color,
         );
         ui.painter().text(
             header_rect.right_center() - egui::vec2(10.0, 0.0),
             egui::Align2::RIGHT_CENTER,
-            "伤害占比 / 总伤害 / 次数",
+            t("Share / Total / Count"),
             header_font,
             header_color,
         );
@@ -544,9 +551,9 @@ pub(crate) fn draw_skill_damage_summary(
                         rect.right_center() - egui::vec2(10.0, 0.0),
                         egui::Align2::RIGHT_CENTER,
                         format!(
-                            "{share:.1}%  ·  {}  ·  {}次",
+                            "{share:.1}%  ·  {}  ·  {}",
                             format_number(summary.damage),
-                            summary.hits
+                            tf("{} hits", &[&summary.hits.to_string()])
                         ),
                         egui::FontId::monospace(11.5),
                         foreground,
@@ -671,28 +678,28 @@ pub(crate) fn draw_character_hit_header(ui: &mut egui::Ui, layout: CharacterHitL
     painter.text(
         egui::pos2(x + layout.time_x, y),
         egui::Align2::LEFT_CENTER,
-        "时间",
+        t("Time"),
         font.clone(),
         color,
     );
     painter.text(
         egui::pos2(x + layout.type_x, y),
         egui::Align2::LEFT_CENTER,
-        "类型",
+        t("Type"),
         font.clone(),
         color,
     );
     painter.text(
         egui::pos2(x + layout.damage_x, y),
         egui::Align2::LEFT_CENTER,
-        "伤害",
+        t("Damage"),
         font.clone(),
         color,
     );
     painter.text(
         egui::pos2(x + layout.hp_x, y),
         egui::Align2::LEFT_CENTER,
-        "目标 / HP",
+        t("Target / HP"),
         font,
         color,
     );
@@ -1070,11 +1077,11 @@ pub(crate) fn draw_team_hit_header(ui: &mut egui::Ui, layout: TeamHitLayout) {
     draw_team_hit_column_separators(painter, rect, layout);
 
     for (offset, label) in [
-        (layout.time_x, "时间"),
-        (layout.character_x, "角色"),
-        (layout.type_x, "类型"),
-        (layout.damage_x, "伤害"),
-        (layout.hp_x, "目标 / HP"),
+        (layout.time_x, t("Time")),
+        (layout.character_x, t("Character")),
+        (layout.type_x, t("Type")),
+        (layout.damage_x, t("Damage")),
+        (layout.hp_x, t("Target / HP")),
     ] {
         painter.text(
             egui::pos2(x + offset, y),
@@ -1482,13 +1489,15 @@ pub(crate) fn draw_target_hp_text(
 
 pub(crate) fn draw_direction_summary(ui: &mut egui::Ui, summary: HitDirectionSummary) {
     ui.add_space(5.0);
-    let text = format!(
-        "已确认输出 {}（{} 次） · 候选输出 {}（{} 次，占总输出 {:.1}%）",
-        format_number(summary.outgoing_damage),
-        summary.outgoing_hits,
-        format_number(summary.unknown_damage),
-        summary.unknown_hits,
-        summary.unknown_share()
+    let text = tf(
+        "Confirmed output {} ({} hits) · candidate output {} ({} hits, {}% of total output)",
+        &[
+            &format_number(summary.outgoing_damage),
+            &summary.outgoing_hits.to_string(),
+            &format_number(summary.unknown_damage),
+            &summary.unknown_hits.to_string(),
+            &format!("{:.1}", summary.unknown_share()),
+        ],
     );
     ui.add(
         egui::Label::new(

@@ -862,10 +862,11 @@ pub enum AbyssHalf {
 }
 
 impl AbyssHalf {
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn label(self) -> &'static str {
         match self {
-            Self::First => "上行线",
-            Self::Second => "下行线",
+            Self::First => "Ascending Line",
+            Self::Second => "Descending Line",
         }
     }
 }
@@ -1294,8 +1295,8 @@ impl AbyssRunState {
     ) -> Vec<TimelineMarker> {
         let mut markers = Vec::new();
         let (timestamp, label) = match half {
-            AbyssHalf::First => (self.first_half_at, "上行线"),
-            AbyssHalf::Second => (self.second_half_at, "下行线"),
+            AbyssHalf::First => (self.first_half_at, "Ascending Line"),
+            AbyssHalf::Second => (self.second_half_at, "Descending Line"),
         };
         push_timeline_marker(
             &mut markers,
@@ -1310,7 +1311,7 @@ impl AbyssRunState {
             self.success_at,
             start,
             end,
-            "通关",
+            "Cleared",
             TimelineMarkerKind::Clear,
         );
         push_timeline_marker(
@@ -1318,7 +1319,7 @@ impl AbyssRunState {
             self.exited_at,
             start,
             end,
-            "离开",
+            "Left",
             TimelineMarkerKind::Exit,
         );
         sort_timeline_markers(&mut markers);
@@ -1332,7 +1333,7 @@ impl AbyssRunState {
             self.first_half_at,
             start,
             end,
-            "上行线",
+            "Ascending Line",
             TimelineMarkerKind::HalfStart,
         );
         push_timeline_marker(
@@ -1340,7 +1341,7 @@ impl AbyssRunState {
             self.second_half_at,
             start,
             end,
-            "下行线",
+            "Descending Line",
             TimelineMarkerKind::HalfStart,
         );
         push_timeline_marker(
@@ -1348,7 +1349,7 @@ impl AbyssRunState {
             self.success_at,
             start,
             end,
-            "通关",
+            "Cleared",
             TimelineMarkerKind::Clear,
         );
         push_timeline_marker(
@@ -1356,7 +1357,7 @@ impl AbyssRunState {
             self.exited_at,
             start,
             end,
-            "离开",
+            "Left",
             TimelineMarkerKind::Exit,
         );
         sort_timeline_markers(&mut markers);
@@ -2198,17 +2199,17 @@ mod tests {
         assert_eq!(timeline.start_timestamp, Some(1.0));
         assert_eq!(timeline.end_timestamp, Some(2.0));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "上行线"
+            marker.label == "Ascending Line"
                 && marker.kind == TimelineMarkerKind::HalfStart
                 && marker.offset == 0.0
         }));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "通关"
+            marker.label == "Cleared"
                 && marker.kind == TimelineMarkerKind::Clear
                 && (marker.offset - 1.0).abs() < 1e-9
         }));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "离开"
+            marker.label == "Left"
                 && marker.kind == TimelineMarkerKind::Exit
                 && (marker.offset - 1.0).abs() < 1e-9
         }));
@@ -2239,17 +2240,17 @@ mod tests {
         assert_eq!(timeline.start_timestamp, Some(1.0));
         assert_eq!(timeline.end_timestamp, Some(2.0));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "上行线"
+            marker.label == "Ascending Line"
                 && marker.kind == TimelineMarkerKind::HalfStart
                 && marker.offset == 0.0
         }));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "通关"
+            marker.label == "Cleared"
                 && marker.kind == TimelineMarkerKind::Clear
                 && (marker.offset - 1.0).abs() < 1e-9
         }));
         assert!(timeline.markers.iter().any(|marker| {
-            marker.label == "离开"
+            marker.label == "Left"
                 && marker.kind == TimelineMarkerKind::Exit
                 && (marker.offset - 1.0).abs() < 1e-9
         }));
@@ -2483,8 +2484,8 @@ mod tests {
 
     #[test]
     fn abyss_half_labels_are_utf8_chinese() {
-        assert_eq!(AbyssHalf::First.label(), "上行线");
-        assert_eq!(AbyssHalf::Second.label(), "下行线");
+        assert_eq!(AbyssHalf::First.label(), "Ascending Line");
+        assert_eq!(AbyssHalf::Second.label(), "Descending Line");
     }
 
     #[test]

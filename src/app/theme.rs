@@ -58,24 +58,50 @@ pub(crate) fn party_row_height(available_height: f32, row_count: usize) -> f32 {
     ((available_height - spacing - 2.0) / row_count as f32).clamp(38.0, 52.0)
 }
 
-pub(crate) fn primary_button(label: &'static str, dark_mode: bool) -> egui::Button<'static> {
+pub(crate) fn primary_button(label: impl Into<String>, dark_mode: bool) -> egui::Button<'static> {
     let fill = theme_accent(dark_mode);
-    egui::Button::new(RichText::new(label).strong().color(contrast_text(fill)))
-        .fill(fill)
-        .stroke(Stroke::new(1.0, fill))
+    egui::Button::new(
+        RichText::new(label.into())
+            .strong()
+            .color(contrast_text(fill)),
+    )
+    .fill(fill)
+    .stroke(Stroke::new(1.0, fill))
 }
 
+/// Severity color for the live status text. The status string can be in either
+/// language (app text is localized; engine-sent status stays Chinese), so both
+/// languages' severity keywords are matched. ASCII is lowercased for
+/// case-insensitive English matching; Chinese needles are unaffected.
 pub(crate) fn status_color(status: &str, paused: bool, dark_mode: bool) -> Color32 {
     if paused {
-        semantic_warning(dark_mode)
-    } else if status.contains("失败") || status.contains("不可用") || status.contains("未检测到")
-    {
+        return semantic_warning(dark_mode);
+    }
+    let lower = status.to_ascii_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    if has(&[
+        "失败",
+        "不可用",
+        "未检测到",
+        "failed",
+        "unavailable",
+        "not detected",
+        "no game connection",
+        "error",
+    ]) {
         semantic_danger(dark_mode)
-    } else if status.contains("正在")
-        || status.contains("启动")
-        || status.contains("导入")
-        || status.contains("处理")
-    {
+    } else if has(&[
+        "正在",
+        "启动",
+        "导入",
+        "处理",
+        "starting",
+        "importing",
+        "processing",
+        "capturing",
+        "detecting",
+        "...",
+    ]) {
         semantic_warning(dark_mode)
     } else {
         semantic_success(dark_mode)
@@ -272,10 +298,12 @@ pub(crate) fn format_short_time(timestamp: f64) -> String {
 pub(crate) fn show_detail_limit_notice(ui: &mut egui::Ui, filtered_count: usize) {
     if filtered_count > MAX_DETAIL_HITS {
         ui.label(
-            RichText::new(format!(
-                "仅显示最近 {} 条，当前筛选共 {} 条；完整保留范围内统计已计入上方汇总。",
-                format_number(MAX_DETAIL_HITS as f64),
-                format_number(filtered_count as f64)
+            RichText::new(tf(
+                "Showing the latest {} of {} matching rows; stats within the full retained range are already counted in the summary above.",
+                &[
+                    &format_number(MAX_DETAIL_HITS as f64),
+                    &format_number(filtered_count as f64),
+                ],
             ))
             .size(11.0)
             .color(ui.visuals().weak_text_color()),

@@ -50,7 +50,7 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("当前筛选条件下暂无命中记录")
+                        RichText::new(t("No hit records under the current filter"))
                             .color(ui.visuals().weak_text_color()),
                     );
                 },
@@ -145,7 +145,7 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("当前筛选条件下暂无命中记录")
+                        RichText::new(t("No hit records under the current filter"))
                             .color(ui.visuals().weak_text_color()),
                     );
                 },
@@ -261,23 +261,23 @@ impl DpsApp {
                 )
             };
         let title = if self.state.abyss.is_active() {
-            format!("队伍战斗明细 - {}", self.selected_abyss_half.label())
+            tf(
+                "Team Combat Details - {}",
+                &[&t(self.selected_abyss_half.label())],
+            )
         } else {
-            "队伍战斗明细".to_owned()
+            t("Team Combat Details")
         };
         let close_requested = ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
-                .with_inner_size(scaled_window_size(
-                    TEAM_HIT_DETAIL_WINDOW_BASE_SIZE,
-                    self.team_hit_detail_window_scale,
-                ))
+                .with_inner_size(self.team_hit_detail_window_size)
+                .with_min_inner_size(egui::Vec2::from(config::TEAM_HIT_DETAIL_WINDOW_MIN_SIZE))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                // Not transparent and not resizable on purpose — see
-                // window_scale_stepper for the Windows resize-crash rationale.
-                .with_resizable(false),
+                // Borderless but freely resizable via the edge grips (window_resize_grips).
+                .with_resizable(true),
             |ctx, _class| {
                 if !self.team_hit_detail_corner_applied {
                     apply_rounding_to_process_windows();
@@ -293,12 +293,7 @@ impl DpsApp {
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
                     .show_inside(ctx, |ui| {
-                        close_clicked = secondary_title_bar(
-                            ui,
-                            &title,
-                            &mut self.team_hit_detail_window_scale,
-                            TEAM_HIT_DETAIL_WINDOW_BASE_SIZE,
-                        );
+                        close_clicked = secondary_title_bar(ui, &title);
                     });
                 egui::CentralPanel::default()
                     .frame(
@@ -314,22 +309,36 @@ impl DpsApp {
                             .inner_margin(egui::Margin::same(12))
                             .show(ui, |ui| {
                                 let text_color = ui.visuals().text_color();
+                                let (label_out, label_count, label_taken, label_time) = (
+                                    t("Total Output"),
+                                    t("Output Count"),
+                                    t("Total Damage Taken"),
+                                    t("Combat Time"),
+                                );
                                 draw_hit_metric_row(
                                     ui,
                                     [
                                         (
-                                            "总输出",
+                                            label_out.as_str(),
                                             format_number(total_damage),
                                             theme_accent(self.dark_mode),
                                         ),
                                         ("DPS", format_number(dps), theme_accent(self.dark_mode)),
-                                        ("输出次数", outgoing_count.to_string(), text_color),
                                         (
-                                            "总受击",
+                                            label_count.as_str(),
+                                            outgoing_count.to_string(),
+                                            text_color,
+                                        ),
+                                        (
+                                            label_taken.as_str(),
                                             format_number(total_damage_taken),
                                             semantic_danger(self.dark_mode),
                                         ),
-                                        ("战斗时间", format!("{duration:.1}s"), text_color),
+                                        (
+                                            label_time.as_str(),
+                                            format!("{duration:.1}s"),
+                                            text_color,
+                                        ),
                                     ],
                                 );
                                 draw_direction_summary(ui, direction_summary);
@@ -338,31 +347,31 @@ impl DpsApp {
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().interact_size.y = 28.0;
                             ui.spacing_mut().button_padding.y = 4.0;
-                            ui.add_sized(
-                                egui::vec2(92.0, 28.0),
+                            ui.add(
                                 egui::Label::new(
-                                    RichText::new("命中类型")
+                                    RichText::new(t("Hit Type"))
                                         .strong()
                                         .color(ui.visuals().weak_text_color()),
-                                ),
+                                )
+                                .selectable(false),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::All,
-                                format!("全部 {}", outgoing_count + incoming_count),
+                                tf("All {}", &[&(outgoing_count + incoming_count).to_string()]),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::Outgoing,
-                                format!("输出 {outgoing_count}"),
+                                tf("Outgoing {}", &[&outgoing_count.to_string()]),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.team_hit_detail_filter,
                                 HitDetailFilter::Incoming,
-                                format!("受击 {incoming_count}"),
+                                tf("Taken {}", &[&incoming_count.to_string()]),
                             );
                         });
                         ui.add_space(4.0);
@@ -376,6 +385,8 @@ impl DpsApp {
                         ui.separator();
                         self.team_hits(ui, self.team_hit_detail_filter.clone());
                     });
+                track_window_size(ctx, &mut self.team_hit_detail_window_size);
+                window_resize_grips(ctx);
                 self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
@@ -392,16 +403,13 @@ impl DpsApp {
         let close_requested = ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
-                .with_title("深渊怪物数值")
-                .with_inner_size(scaled_window_size(
-                    ABYSS_WINDOW_BASE_SIZE,
-                    self.abyss_window_scale,
-                ))
+                .with_title(t("Abyss Monster Stats"))
+                .with_inner_size(self.abyss_window_size)
+                .with_min_inner_size(egui::Vec2::from(config::ABYSS_WINDOW_MIN_SIZE))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                // Not transparent and not resizable on purpose — see
-                // window_scale_stepper for the Windows resize-crash rationale.
-                .with_resizable(false),
+                // Borderless but freely resizable via the edge grips (window_resize_grips).
+                .with_resizable(true),
             |ctx, _class| {
                 if !self.abyss_overview_corner_applied {
                     apply_rounding_to_process_windows();
@@ -417,12 +425,7 @@ impl DpsApp {
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
                     .show_inside(ctx, |ui| {
-                        close_clicked = secondary_title_bar(
-                            ui,
-                            "深渊怪物数值",
-                            &mut self.abyss_window_scale,
-                            ABYSS_WINDOW_BASE_SIZE,
-                        );
+                        close_clicked = secondary_title_bar(ui, &t("Abyss Monster Stats"));
                     });
                 egui::CentralPanel::default()
                     .frame(
@@ -433,6 +436,8 @@ impl DpsApp {
                     .show_inside(ctx, |ui| {
                         self.abyss_overview_contents(ui);
                     });
+                track_window_size(ctx, &mut self.abyss_window_size);
+                window_resize_grips(ctx);
                 self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },
@@ -452,7 +457,7 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::TopDown),
                 |ui| {
                     ui.label(
-                        RichText::new("深渊怪物数值表未加载")
+                        RichText::new(t("Abyss monster stats table not loaded"))
                             .size(18.0)
                             .strong()
                             .color(semantic_danger(self.dark_mode)),
@@ -462,7 +467,7 @@ impl DpsApp {
                         ui.label(RichText::new(error).color(ui.visuals().weak_text_color()));
                     }
                     ui.add_space(10.0);
-                    if ui.button("重新加载").clicked() {
+                    if ui.button(t("Reload")).clicked() {
                         self.abyss_overview.reload();
                     }
                 },
@@ -516,16 +521,20 @@ impl DpsApp {
 
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(format!(
-                    "共 {} 期 · {} 站 · {} 只深渊敌人",
-                    season_count, floor_count, total_monsters
+                RichText::new(tf(
+                    "{} seasons · {} floors · {} abyss enemies",
+                    &[
+                        &season_count.to_string(),
+                        &floor_count.to_string(),
+                        &total_monsters.to_string(),
+                    ],
                 ))
                 .size(12.0)
                 .strong()
                 .color(shadcn_foreground(self.dark_mode)),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("重新加载").clicked() {
+                if ui.button(t("Reload")).clicked() {
                     self.abyss_overview.reload();
                 }
             });
@@ -534,7 +543,9 @@ impl DpsApp {
 
         let available = ui.available_size();
         let (main_rect, _) = ui.allocate_exact_size(available, egui::Sense::hover());
-        let nav_width = 170.0_f32.min((main_rect.width() * 0.26).max(140.0));
+        // Wide enough for a floor name plus the "{n} monsters · {n} waves" count in
+        // either language; capped so it never eats the detail pane on small windows.
+        let nav_width = (main_rect.width() * 0.30).clamp(180.0, 240.0);
         let gap = 12.0;
         let nav_rect =
             egui::Rect::from_min_size(main_rect.min, egui::vec2(nav_width, main_rect.height()));
@@ -572,7 +583,8 @@ impl DpsApp {
         content_ui.set_clip_rect(content_rect);
         let Some(floor) = selected_floor else {
             content_ui.label(
-                RichText::new("请选择深渊站点").color(content_ui.visuals().weak_text_color()),
+                RichText::new(t("Select an abyss site"))
+                    .color(content_ui.visuals().weak_text_color()),
             );
             return;
         };
@@ -628,7 +640,7 @@ impl DpsApp {
                     if team.is_none() {
                         self.set_last_error_in(
                             ctx,
-                            "DPS 数据文件里没有可用于该行的队伍",
+                            t("The DPS data file has no team usable for this line"),
                             Some(ErrorAction::OpenTeamDpsImport),
                         );
                         return;
@@ -654,7 +666,7 @@ impl DpsApp {
     ) -> Option<TeamDpsExport> {
         let path = self.open_native_file_dialog(ctx, || {
             rfd::FileDialog::new()
-                .add_filter("NTE 队伍数据", &["json"])
+                .add_filter(t("NTE team data"), &["json"])
                 .pick_file()
         })?;
         match std::fs::read_to_string(&path)
@@ -664,7 +676,11 @@ impl DpsApp {
             }) {
             Ok(export) => Some(export),
             Err(error) => {
-                self.set_last_error_in(ctx, format!("导入 DPS 数据失败：{error}"), retry_action);
+                self.set_last_error_in(
+                    ctx,
+                    tf("Failed to import DPS data: {}", &[&error]),
+                    retry_action,
+                );
                 None
             }
         }
@@ -682,7 +698,7 @@ impl DpsApp {
         if upper.is_none() && lower.is_none() {
             self.set_last_error_in(
                 ctx,
-                "DPS 数据文件里没有队伍数据",
+                t("The DPS data file has no team data"),
                 Some(ErrorAction::OpenTeamDpsImport),
             );
             return;
@@ -693,7 +709,7 @@ impl DpsApp {
         if lower.is_some() {
             self.abyss_overview.lower_team = lower;
         }
-        self.status = "已导入 DPS 队伍数据".to_owned();
+        self.status = t("Imported DPS team data");
         self.clear_last_error();
     }
 
@@ -707,17 +723,21 @@ impl DpsApp {
             &self.abyss_overview,
             self.subtract_time_stop_for_dps(),
         ) else {
-            self.set_last_error_in(ctx, "没有可导出的队伍数据，请先抓包或设置深渊队伍", None);
+            self.set_last_error_in(
+                ctx,
+                t("No team data to export; capture first or set the abyss teams"),
+                None,
+            );
             return;
         };
         let Ok(json) = serde_json::to_string(&export) else {
-            self.set_last_error_in(ctx, "序列化队伍数据失败", None);
+            self.set_last_error_in(ctx, t("Failed to serialize team data"), None);
             return;
         };
         let default_name = format!("nte_team_dps_{}.json", Local::now().format("%Y%m%d_%H%M%S"));
         let Some(path) = self.open_native_file_dialog(ctx, || {
             rfd::FileDialog::new()
-                .add_filter("NTE 队伍数据", &["json"])
+                .add_filter(t("NTE team data"), &["json"])
                 .set_file_name(&default_name)
                 .save_file()
         }) else {
@@ -725,10 +745,14 @@ impl DpsApp {
         };
         match atomic_write_text(&path, &json) {
             Ok(()) => {
-                self.status = "已导出队伍数据".to_owned();
+                self.status = t("Team data exported");
                 self.clear_last_error();
             }
-            Err(error) => self.set_last_error_in(ctx, format!("导出队伍数据失败：{error}"), None),
+            Err(error) => self.set_last_error_in(
+                ctx,
+                tf("Failed to export team data: {}", &[&error.to_string()]),
+                None,
+            ),
         }
     }
 
@@ -738,7 +762,11 @@ impl DpsApp {
             self.dps_time_mode.label(),
             self.subtract_time_stop_for_dps(),
         ) else {
-            self.set_last_error_in(ctx, "没有可保存的战斗摘要，请先抓包或导入回放", None);
+            self.set_last_error_in(
+                ctx,
+                t("No combat summary to save; capture first or import a replay"),
+                None,
+            );
             return;
         };
         match history::save_summary(summary) {
@@ -746,12 +774,16 @@ impl DpsApp {
                 self.history.reload();
                 self.history.selected_id = Some(record.id);
                 self.history.ensure_selection();
-                self.history.message = "已保存本次摘要".to_owned();
-                self.status = "历史摘要已保存".to_owned();
+                self.history.message = t("This summary saved");
+                self.status = t("History summary saved");
                 self.clear_last_error();
             }
             Err(error) => {
-                self.set_last_error_in(ctx, format!("保存历史摘要失败：{error}"), None);
+                self.set_last_error_in(
+                    ctx,
+                    tf("Failed to save history summary: {}", &[&error.to_string()]),
+                    None,
+                );
             }
         }
     }
@@ -764,15 +796,22 @@ impl DpsApp {
         match history::delete_record(&record_id) {
             Ok(true) => {
                 self.history.reload();
-                self.history.message = "已删除历史摘要".to_owned();
-                self.status = "历史摘要已删除".to_owned();
+                self.history.message = t("History summary deleted");
+                self.status = t("History summary deleted");
                 self.clear_last_error();
             }
             Ok(false) => {
-                self.set_last_error_for(viewport, "未找到要删除的历史摘要", None);
+                self.set_last_error_for(viewport, t("No history summary found to delete"), None);
             }
             Err(error) => {
-                self.set_last_error_for(viewport, format!("删除历史摘要失败：{error}"), None);
+                self.set_last_error_for(
+                    viewport,
+                    tf(
+                        "Failed to delete history summary: {}",
+                        &[&error.to_string()],
+                    ),
+                    None,
+                );
             }
         }
     }
@@ -797,14 +836,16 @@ impl DpsApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.abyss_overview.search)
-                        .hint_text("搜索怪物 / ID")
+                        .hint_text(t("Search monster / ID"))
                         .desired_width(190.0),
                 );
                 let has_team = self.abyss_overview.upper_team.is_some()
                     || self.abyss_overview.lower_team.is_some();
                 if ui
-                    .add_enabled(has_team, egui::Button::new("交换上下队伍"))
-                    .on_hover_text("交换上行线与下行线的预测队伍")
+                    .add_enabled(has_team, egui::Button::new(t("Swap Teams")))
+                    .on_hover_text(t(
+                        "Swap the ascending-line and descending-line prediction teams",
+                    ))
                     .clicked()
                 {
                     self.abyss_overview.swap_teams();
@@ -833,7 +874,10 @@ impl DpsApp {
                 egui::vec2(ui.available_width(), 92.0),
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
-                    ui.label(RichText::new("没有匹配的怪物").color(ui.visuals().weak_text_color()));
+                    ui.label(
+                        RichText::new(t("No matching monster"))
+                            .color(ui.visuals().weak_text_color()),
+                    );
                 },
             );
         } else {
@@ -858,7 +902,7 @@ impl DpsApp {
             if !upper_line.is_empty() || !lower_line.is_empty() {
                 let upper_result = draw_abyss_line_section(
                     ui,
-                    "上行线",
+                    &t("Ascending Line"),
                     &upper_line,
                     selected_pack_id.as_deref(),
                     &mut self.abyss_overview.selected_monster_pack_id,
@@ -878,7 +922,7 @@ impl DpsApp {
                 ui.add_space(6.0);
                 let lower_result = draw_abyss_line_section(
                     ui,
-                    "下行线",
+                    &t("Descending Line"),
                     &lower_line,
                     selected_pack_id.as_deref(),
                     &mut self.abyss_overview.selected_monster_pack_id,
@@ -904,7 +948,7 @@ impl DpsApp {
                 }
                 draw_abyss_line_section(
                     ui,
-                    "整层配置",
+                    &t("Full floor config"),
                     &unassigned,
                     selected_pack_id.as_deref(),
                     &mut self.abyss_overview.selected_monster_pack_id,
@@ -935,7 +979,7 @@ impl DpsApp {
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
                     ui.label(
-                        RichText::new("点击怪物卡片查看全部数值字段")
+                        RichText::new(t("Click a monster card to see all stat fields"))
                             .color(ui.visuals().weak_text_color()),
                     );
                 },
@@ -990,20 +1034,17 @@ impl DpsApp {
             character_color(char_id, &self.characters, 0),
             self.dark_mode,
         );
-        let title = format!("{} - 战斗明细", stats.name);
+        let title = tf("{} - Combat Details", &[&stats.name]);
         let close_requested = ctx.show_viewport_immediate(
             viewport_id,
             egui::ViewportBuilder::default()
                 .with_title(&title)
-                .with_inner_size(scaled_window_size(
-                    HIT_DETAIL_WINDOW_BASE_SIZE,
-                    self.hit_detail_window_scale,
-                ))
+                .with_inner_size(self.hit_detail_window_size)
+                .with_min_inner_size(egui::Vec2::from(config::HIT_DETAIL_WINDOW_MIN_SIZE))
                 .with_window_level(egui::WindowLevel::AlwaysOnTop)
                 .with_decorations(false)
-                // Not transparent and not resizable on purpose — see
-                // window_scale_stepper for the Windows resize-crash rationale.
-                .with_resizable(false),
+                // Borderless but freely resizable via the edge grips (window_resize_grips).
+                .with_resizable(true),
             |ctx, _class| {
                 if !self.hit_detail_corner_applied {
                     apply_rounding_to_process_windows();
@@ -1019,12 +1060,7 @@ impl DpsApp {
                             .inner_margin(egui::Margin::symmetric(10, 3)),
                     )
                     .show_inside(ctx, |ui| {
-                        close_clicked = secondary_title_bar(
-                            ui,
-                            &title,
-                            &mut self.hit_detail_window_scale,
-                            HIT_DETAIL_WINDOW_BASE_SIZE,
-                        );
+                        close_clicked = secondary_title_bar(ui, &title);
                     });
                 egui::CentralPanel::default()
                     .frame(
@@ -1093,9 +1129,12 @@ impl DpsApp {
                                                         .truncate(),
                                                     );
                                                     ui.label(
-                                                        RichText::new(format!("角色 ID {char_id}"))
-                                                            .size(11.0)
-                                                            .color(ui.visuals().weak_text_color()),
+                                                        RichText::new(tf(
+                                                            "Character ID {}",
+                                                            &[&char_id.to_string()],
+                                                        ))
+                                                        .size(11.0)
+                                                        .color(ui.visuals().weak_text_color()),
                                                     );
                                                 });
                                             },
@@ -1106,11 +1145,22 @@ impl DpsApp {
                                             egui::vec2(ui.available_width(), 62.0),
                                             egui::Layout::top_down(egui::Align::Min),
                                             |ui| {
+                                                let (
+                                                    label_out,
+                                                    label_count,
+                                                    label_taken,
+                                                    label_time,
+                                                ) = (
+                                                    t("Total Output"),
+                                                    t("Output Count"),
+                                                    t("Total Damage Taken"),
+                                                    t("Combat Time"),
+                                                );
                                                 draw_hit_metric_row(
                                                     ui,
                                                     [
                                                         (
-                                                            "总输出",
+                                                            label_out.as_str(),
                                                             format_number(stats.damage),
                                                             theme_accent(self.dark_mode),
                                                         ),
@@ -1120,17 +1170,17 @@ impl DpsApp {
                                                             theme_accent(self.dark_mode),
                                                         ),
                                                         (
-                                                            "输出次数",
+                                                            label_count.as_str(),
                                                             outgoing_count.to_string(),
                                                             text_color,
                                                         ),
                                                         (
-                                                            "总受击",
+                                                            label_taken.as_str(),
                                                             format_number(stats.damage_taken),
                                                             semantic_danger(self.dark_mode),
                                                         ),
                                                         (
-                                                            "战斗时间",
+                                                            label_time.as_str(),
                                                             format!("{stats_duration:.1}s"),
                                                             text_color,
                                                         ),
@@ -1146,40 +1196,40 @@ impl DpsApp {
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().interact_size.y = 28.0;
                             ui.spacing_mut().button_padding.y = 4.0;
-                            ui.add_sized(
-                                egui::vec2(92.0, 28.0),
+                            ui.add(
                                 egui::Label::new(
-                                    RichText::new("伤害类型")
+                                    RichText::new(t("Damage Type"))
                                         .strong()
                                         .color(ui.visuals().weak_text_color()),
-                                ),
+                                )
+                                .selectable(false),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::All,
-                                format!("全部 {}", outgoing_count + incoming_count),
+                                tf("All {}", &[&(outgoing_count + incoming_count).to_string()]),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::Outgoing,
-                                format!("输出 {outgoing_count}"),
+                                tf("Outgoing {}", &[&outgoing_count.to_string()]),
                             );
                             stable_selectable_value(
                                 ui,
                                 &mut self.hit_detail_filter,
                                 HitDetailFilter::Incoming,
-                                format!("受击 {incoming_count}"),
+                                tf("Taken {}", &[&incoming_count.to_string()]),
                             );
                             ui.separator();
-                            ui.add_sized(
-                                egui::vec2(92.0, 28.0),
+                            ui.add(
                                 egui::Label::new(
-                                    RichText::new("具体招式")
+                                    RichText::new(t("Specific Move"))
                                         .strong()
                                         .color(ui.visuals().weak_text_color()),
-                                ),
+                                )
+                                .selectable(false),
                             );
                             ui.scope(|ui| {
                                 ui.spacing_mut().interact_size.y = 27.0;
@@ -1187,7 +1237,7 @@ impl DpsApp {
                                 egui::ComboBox::from_id_salt(("hit_skill_filter", char_id))
                                     .width(240.0)
                                     .selected_text(if self.hit_detail_skill_filter.is_empty() {
-                                        "全部招式".to_owned()
+                                        t("All moves")
                                     } else {
                                         self.hit_detail_skill_filter.clone()
                                     })
@@ -1196,14 +1246,18 @@ impl DpsApp {
                                             ui,
                                             &mut self.hit_detail_skill_filter,
                                             String::new(),
-                                            "全部招式",
+                                            t("All moves"),
                                         );
                                         for summary in &skill_summaries {
                                             stable_popup_selectable_value(
                                                 ui,
                                                 &mut self.hit_detail_skill_filter,
                                                 summary.name.clone(),
-                                                format!("{}  {}次", summary.name, summary.hits),
+                                                format!(
+                                                    "{}  {}",
+                                                    summary.name,
+                                                    tf("{} hits", &[&summary.hits.to_string()])
+                                                ),
                                             );
                                         }
                                     });
@@ -1234,6 +1288,8 @@ impl DpsApp {
                             &skill_filter,
                         );
                     });
+                track_window_size(ctx, &mut self.hit_detail_window_size);
+                window_resize_grips(ctx);
                 self.show_viewport_dialogs(ctx);
                 close_clicked || ctx.input(|input| input.viewport().close_requested())
             },

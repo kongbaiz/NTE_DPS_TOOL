@@ -16,17 +16,23 @@ use std::sync::Arc;
 fn main() -> Result<()> {
     install_panic_log();
     let (ui_config, config_warning) = storage::config::load();
+    // Load the active locale before the first frame so the UI never flashes English keys.
+    storage::i18n::set_language(ui_config.language);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("NTE DPS TOOL")
-            // Restore the saved title-bar −／＋ scale. Free drag-resize is disabled
-            // (with_resizable(false)) to avoid the Windows resize crash.
-            .with_inner_size(app::scaled_window_size(
-                app::MAIN_WINDOW_BASE_SIZE,
-                ui_config.main_window_scale,
-            ))
+            // Reopen at the last dragged size (native edge-resize via BeginResize grips), falling
+            // back to the base size on first run. The window stays borderless; resize is driven by
+            // the custom grips in `window_resize_grips`.
+            .with_inner_size(
+                ui_config
+                    .main_window_size
+                    .map(egui::Vec2::from)
+                    .unwrap_or(app::MAIN_WINDOW_BASE_SIZE),
+            )
+            .with_min_inner_size(egui::Vec2::from(storage::config::MAIN_WINDOW_MIN_SIZE))
             .with_decorations(false)
-            .with_resizable(false)
+            .with_resizable(true)
             .with_transparent(true)
             .with_has_shadow(false)
             .with_icon(Arc::new(app_icon()))

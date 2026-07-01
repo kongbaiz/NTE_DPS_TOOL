@@ -34,10 +34,11 @@ pub enum ResourceAuditSeverity {
 }
 
 impl ResourceAuditSeverity {
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Error => "错误",
-            Self::Warning => "警告",
+            Self::Error => "Error",
+            Self::Warning => "Warning",
         }
     }
 
@@ -72,14 +73,15 @@ impl ResourceAuditCategory {
         ]
     }
 
+    /// English key; wrap with [`crate::storage::i18n::t`] at the display site.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Character => "角色",
-            Self::Skill => "技能",
+            Self::Character => "Character",
+            Self::Skill => "Skill",
             Self::GameplayEffect => "GE",
-            Self::Abyss => "深渊",
-            Self::Reaction => "反应",
-            Self::File => "文件",
+            Self::Abyss => "Abyss",
+            Self::Reaction => "Reaction",
+            Self::File => "File",
         }
     }
 }

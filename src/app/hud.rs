@@ -62,10 +62,13 @@ pub(crate) fn hit_specific_type(hit: &crate::engine::model::Hit) -> &str {
         .unwrap_or("未知招式")
 }
 
+/// English key (or the raw move name for outgoing hits). Wrap with
+/// [`crate::storage::i18n::t`] at the display site; the raw move-name branch is left
+/// untranslated so it keeps its original value and stays comparable to skill filters.
 pub(crate) fn hit_type_label(hit: &crate::engine::model::Hit) -> &str {
     match hit.direction.as_str() {
-        "incoming" => "受击",
-        "unknown" => "候选输出",
+        "incoming" => "Incoming",
+        "unknown" => "Candidate Output",
         _ => hit_specific_type(hit),
     }
 }
