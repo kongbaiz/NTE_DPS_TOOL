@@ -137,19 +137,15 @@ The program looks for `res` in the current directory or the executable's parent 
 
 | Main window | Abyss stats |
 |---|---|
-| <img src="images/main_menu.png" alt="Main window" width="360"> | <img src="images/abyss.png" alt="Abyss stats" width="520"> |
+| <img src="images/EN/main_menu_EN.png" alt="Main window" width="360"> | <img src="images/EN/abyss_EN.png" alt="Abyss stats" width="520"> |
 
 | Team hit details | Character hit details |
 |---|---|
-| <img src="images/team_battle_detail.png" alt="Team hit details" width="520"> | <img src="images/character_battle_detail.png" alt="Character hit details" width="520"> |
+| <img src="images/EN/team_battle_detail_EN.png" alt="Team hit details" width="520"> | <img src="images/EN/character_battle_detail_EN.png" alt="Character hit details" width="520"> |
 
-| Combat timeline | History |
+| Combat timeline | Customizable HUD |
 |---|---|
-| <img src="images/timeline.png" alt="Combat timeline" width="520"> | <img src="images/history.png" alt="History" width="520"> |
-
-| Customizable HUD |
-|---|
-| <img src="images/HUD.png" alt="Customizable HUD" width="520"> |
+| <img src="images/EN/timeline_EN.png" alt="Combat timeline" width="520"> | <img src="images/EN/HUD_EN.png" alt="Customizable HUD" width="520"> |
 
 ### Verifying a build
 

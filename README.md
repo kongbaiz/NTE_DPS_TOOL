@@ -137,19 +137,15 @@ res/
 
 | 主界面 | 深渊统计 |
 |---|---|
-| <img src="images/main_menu.png" alt="主界面" width="360"> | <img src="images/abyss.png" alt="深渊统计" width="520"> |
+| <img src="images/CN/main_menu_CN.png" alt="主界面" width="360"> | <img src="images/CN/abyss_CN.png" alt="深渊统计" width="520"> |
 
 | 队伍命中明细 | 角色命中明细 |
 |---|---|
-| <img src="images/team_battle_detail.png" alt="队伍命中明细" width="520"> | <img src="images/character_battle_detail.png" alt="角色命中明细" width="520"> |
+| <img src="images/CN/team_battle_detail_CN.png" alt="队伍命中明细" width="520"> | <img src="images/CN/character_battle_detail_CN.png" alt="角色命中明细" width="520"> |
 
-| 战斗时间轴 | 历史记录 |
+| 战斗时间轴 | 可定制 HUD |
 |---|---|
-| <img src="images/timeline.png" alt="战斗时间轴" width="520"> | <img src="images/history.png" alt="历史记录" width="520"> |
-
-| 可定制 HUD |
-|---|
-| <img src="images/HUD.png" alt="可定制 HUD" width="520"> |
+| <img src="images/CN/timeline_CN.png" alt="战斗时间轴" width="520"> | <img src="images/CN/HUD_CN.png" alt="可定制 HUD" width="520"> |
 
 ### 验证构建
 

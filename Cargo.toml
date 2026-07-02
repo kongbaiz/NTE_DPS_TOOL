@@ -1,6 +1,6 @@
 [package]
 name = "nte-dps-tool"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2024"
 description = "Local Windows DPS diagnostics tool for NTE."
 repository = "https://github.com/kongbaiz/nte-dps-toolkit"
@@ -17,7 +17,8 @@ aes = "0.8"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 crossbeam-channel = "0.5"
-eframe = { version = "0.34.3", features = ["accesskit", "default_fonts", "glow"], default-features = false }
+eframe = { version = "0.34.3", features = ["accesskit", "default_fonts", "wgpu"], default-features = false }
+env_logger = "0.11"
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 libloading = "0.8"
@@ -45,6 +46,18 @@ lto = true
 opt-level = "z"
 strip = true
 debug = false
+
+# Patched egui-winit 0.34.3: sets WS_EX_NOREDIRECTIONBITMAP on transparent
+# windows, paired with the app's `Dx12SwapchainKind::DxgiFromVisual` wgpu
+# option (see main.rs). Without this, the window's default GDI redirection
+# surface still shows through/around the DirectComposition visual. Upstream
+# doesn't expose this Windows-only winit attribute through eframe/egui-winit's
+# public API (checked against egui's unreleased main branch too), so this is
+# vendored under vendor/egui-winit-0.34.3 with a small patch until upstream
+# adds a hook. Re-diff against a fresh egui-winit release before bumping the
+# eframe/egui-winit version pin.
+[patch.crates-io]
+egui-winit = { path = "vendor/egui-winit-0.34.3" }
 
 [build-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
